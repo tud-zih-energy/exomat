@@ -6,35 +6,21 @@
 ## Version Bump
 - [ ] Bump version number in:
     - [ ] `Cargo.toml`
-    - [ ] `.gitlab-ci.yml`
-    - [ ] `package_fdomat.sh`
 
-## Building packages
-- [ ] build ARM/AMD64 with
-    ```bash
-    cargo bulid -r
-    cargo bulid -r --target aarch64-unknown-linux-musl
-    ```
-- [ ] package each into deb and rpm
-    ```bash
-    ./package_fdomat deb [path to release folder]
-    ./package_fdomat rpm [path to release folder]
-    ```
-    > there should be 4 artifacts now: ARM/DEB, ARM/RPM, AMD64/DEB, AMD64/RPM
-- [ ] sign artifacts (in pwd) : `find . -type f -exec ssh-keygen -Y sign -f KEY -n file '{}' ';'`
+## Building Binaries (optional)
+```bash
+nix flake update
+nix build .#exomat_all_archs -L
+```
+
+> Takes a while, may build a musl cross-compiler.
 
 ## Add release(s)
-- [ ] GitHub/GitLab
+- [ ] GitHub
     - [ ] create annotated commit
         ```bash
         git tag -a v$VERSION
         git push origin v$VERSION
         ```
-    - [ ] add release
-- [ ] crates.io
-    - [ ] assert [metadata-](https://doc.rust-lang.org/cargo/reference/manifest.html) and [API guidelines](https://rust-lang.github.io/api-guidelines/) are fulfilled
-    - [ ] test and create release
-        ```bash
-        cargo publish --dry-run
-        cargo publish
-        ```
+    - [ ] add release in web frontend
+      - [ ] upload built packages

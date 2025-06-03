@@ -4,6 +4,8 @@ set -euo pipefail
 # this script creates a directory with the correct structure to turn it into a
 # .deb/.rpm package using fpm
 
+# configure PACKAGE_VERSION from outside
+
 # check for deb/fpm
 PACKAGE_TYPE=$1
 test "$PACKAGE_TYPE" = "deb" -o "$PACKAGE_TYPE" = "rpm" || (echo "Unsupported package type: $PACKAGE_TYPE" >&2 && exit 127)
@@ -13,8 +15,6 @@ EXOMAT_BIN_DIR=$2
 test -d $EXOMAT_BIN_DIR || (echo "exomat binary dir not a directory: $EXOMAT_BIN_DIR" >&2 && exit 127)
 test -f "$EXOMAT_BIN_DIR/exomat" -a -x "$EXOMAT_BIN_DIR/exomat" || (echo "exomat binary dir found at: $EXOMAT_BIN_DIR/exomat" >&2 && exit 127)
 
-# set version
-PACKAGE_VERSION="0.1.0"
 
 # get target architecture, build name
 if [ "$(file $EXOMAT_BIN_DIR/exomat | grep x86-64)" ]
