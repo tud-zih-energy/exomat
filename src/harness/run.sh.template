@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+#####################################################################
+# This file is executed once for each environment (and repetition). #
+# Put your experiment code here.                                    #
+#####################################################################
+
+# All output will be collected in the experiment series directory in runs/stdout.log
+echo "It is now: $(date)"
+
+# For the make-table command to work, create output files like this.
+# All files with "out_$NAME" will be scraped.
+cat /proc/loadavg | awk '{print $1}' > out_loadavg_1min
+cat /proc/uptime | awk '{print $1}' > out_uptime.s
+
+# Any env you defined in envs/*.env will be available to this script.
+# (There is no additional setup/command required within this script.)
+#
+# To make the example below work, run: exomat env --add CPU $(seq 0 $(($(nproc) - 1)))
+# taskset --cpu-list $CPU echo "This runs on cpu $CPU"
