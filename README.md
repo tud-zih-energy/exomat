@@ -1,6 +1,8 @@
 # exomat
 The `exomat` (experiment-o-matic) is a simple tool for organized creation and running of experiments.
 
+Download a binary from the [releases page](https://github.com/tud-zih-energy/exomat/releases) or install with `cargo install --git https://github.com/tud-zih-energy/exomat`.
+
 ## Overview
 `exomat` is a suite of tools for the entire experiment lifecycle:
 

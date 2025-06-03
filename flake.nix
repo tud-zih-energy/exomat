@@ -45,7 +45,7 @@
               runHook preInstall
 
               mkdir -p $out/bin
-              cp -a ${exomat}/bin/exomat ${package_name}
+              cp -a ${exomat}/bin/exomat $out/bin/${package_name}
 
               runHook postInstall
             '';
@@ -59,7 +59,7 @@
             ];
           in pkgs.symlinkJoin {
             name = "exomat_archs";
-            paths = builtins.map (pkgs: (pkgs.extend self.overlays.default).exomat_static) pkgs_archs;
+            paths = builtins.map (pkgs: (pkgs.extend self.overlays.default).exomat_static_renamed) pkgs_archs;
           };
       };
   } //
