@@ -24,7 +24,7 @@ pub enum Error {
     #[error("Encountered error while trying to run {experiment}: {err}")]
     HarnessRunError { experiment: String, err: String },
 
-    #[error("Something went wrong in .env generation: {reason:?}")]
+    #[error("Invalid environment: {reason:?}")]
     EnvError { reason: String },
 
     /// Occurs when the make-table command could not generate CSV output.

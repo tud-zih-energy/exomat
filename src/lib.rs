@@ -190,9 +190,11 @@ pub fn run_trial(
     env: PathBuf,
     log_progress_handler: MultiProgress,
 ) -> Result<()> {
-    disable_console_log();
+    // 1 fetch envs a.k.a. check for validity;
+    // The internet told me it's ok to do this just to see if there would be errors
+    harness::env::Environment::from_file(&env)?;
 
-    // 1 fetch envs -> given as parameter
+    disable_console_log();
 
     // 2 build series directory
     let format = &Local::now()
