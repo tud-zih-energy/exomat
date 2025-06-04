@@ -110,7 +110,14 @@ pub enum Commands {
         remove: Vec<Vec<String>>,
     },
 
-    /// Execute an experiment from an experiment directory
+    /// Execute an experiment from an experiment source directory
+    ///
+    /// This will cause the following phases to be executed:
+    /// 1. gather environments (either by reading `experiment/envs/` or the file in `--trial`)
+    /// 2. create a new experiment series directory
+    /// 3. execute experiment
+    ///     -> `--repetitions` times per environment
+    /// 4. only if `--trial` is given: gather output
     Run {
         /// Path to the experiment to run. Try PWD if not given.
         ///
@@ -119,18 +126,19 @@ pub enum Commands {
         #[clap()]
         experiment: PathBuf,
 
-        /// Start a trial run of the experiment.
+        /// Start a trial run of the experiment using this environment.
         ///
-        /// Executes one run of an experiment with one env combination. The resulting
-        /// experiment series directory will be deleted after completing the run.
+        /// Executes one run of an experiment with one env combination. An experiment
+        /// series directory is created in `/tmp/`. exact location is logged and
+        /// will be printed to console.
         ///
         /// The exomat will then report on:
         /// - exit code of `run.sh`
         /// - content of exomat/stdout/stderr.log
         ///
         /// Custom output directories and repetition counts will be ignored.
-        #[arg(short = 't', long, default_value_t = false)]
-        trial: bool,
+        #[arg(short = 't', long)]
+        trial: Option<PathBuf>,
 
         /// Output folder.
         ///
