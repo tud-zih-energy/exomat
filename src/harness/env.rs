@@ -112,11 +112,11 @@ pub fn load_envs(env_file: &PathBuf) -> Result<EnvFileContent> {
 ///   the correct extension) or if an error occured during parsing.
 pub fn deserialize_envs(file: &PathBuf) -> Result<EnvFileContent> {
     // check for .env extension
-    assert!(
-        file.extension().unwrap() == "env",
-        "env file with missing extension: {}",
-        file.display()
-    );
+    if file.extension() != Some(std::ffi::OsStr::new("env")) {
+        return Err(Error::EnvError {
+            reason: format!("env file with missing extension: {}", file.display()),
+        });
+    }
 
     let mut file_envs: EnvFileContent = HashMap::new();
 
