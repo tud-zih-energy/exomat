@@ -477,40 +477,38 @@ mod tests {
             assert_eq!(output.lines().count(), 1);
             assert!(output.contains("BAR"));
         }
+    }
+    #[test]
+    fn trial_e2e() {
+        // create ouput dir
+        let tmpdir = TempDir::new().unwrap();
+        let tmpdir = tmpdir.path().to_path_buf();
+        std::env::set_current_dir(&tmpdir).unwrap();
+        let exp_name = "SomeExperiment";
 
-        #[test]
-        fn trial_e2e() {
-            // create ouput dir
-            let tmpdir = TempDir::new().unwrap();
-            let tmpdir = tmpdir.path().to_path_buf();
-            std::env::set_current_dir(&tmpdir).unwrap();
-            let exp_name = "SomeExperiment";
+        // build basic experiment
+        harness::skeleton::main(&PathBuf::from(exp_name)).unwrap();
 
-            // build basic experiment
-            harness::skeleton::main(&PathBuf::from(exp_name)).unwrap();
+        // Write something to run.sh that uses env var
+        let mut run_sh = OpenOptions::new()
+            .append(true)
+            .open(&tmpdir.join(exp_name).join("template").join("run.sh"))
+            .unwrap();
+        run_sh
+            .write("echo $FOO\necho $FOO >> out_file".as_bytes()) // write to stdout and in file
+            .unwrap();
 
-            // Write something to run.sh that uses env var
-            let mut run_sh = OpenOptions::new()
-                .append(true)
-                .open(&tmpdir.join(exp_name).join("template").join("run.sh"))
-                .unwrap();
-            run_sh
-                .write("echo $FOO\necho $FOO >> out_file".as_bytes()) // write to stdout and in file
-                .unwrap();
+        // make multiple .env files
+        let mut env1 =
+            std::fs::File::create(&tmpdir.join(exp_name).join("envs").join("0.env")).unwrap();
 
-            // make multiple .env files that set $FOO to different values
-            let mut env1 =
-                std::fs::File::create(&tmpdir.join(exp_name).join("envs").join("0.env")).unwrap();
+        let env2_path = tmpdir.join(exp_name).join("envs").join("m.env");
+        let mut env2 = std::fs::File::create(&env2_path).unwrap();
 
+        env1.write_all("invalid content".as_bytes()).unwrap(); // should not produce errors, since it is not read
+        env2.write_all("FOO=Z".as_bytes()).unwrap();
 
-            let env2_path = tmpdir.join(exp_name).join("envs").join("m.env");
-            let mut env2 = std::fs::File::create(&env2_path).unwrap();
-
-            env1.write_all("FOO=BAR".as_bytes()).unwrap();
-            env2.write_all("FOO=Z".as_bytes()).unwrap();
-
-            // no error
-            run_trial(&PathBuf::from(exp_name), env2_path, MultiProgress::new()).unwrap();
-        }
+        // no error
+        run_trial(&PathBuf::from(exp_name), env2_path, MultiProgress::new()).unwrap();
     }
 }
