@@ -12,20 +12,14 @@ pub fn main(
 ) -> Result<()> {
     let experiment = experiment.canonicalize()?;
 
-    match trial {
-        false => {
-            let output = match output {
-                Some(x) => Ok(x),
-                None => exomat::harness::skeleton::generate_build_series_filepath(&experiment),
-            };
+    if trial {
+        exomat::run_trial(&experiment, log_handler)
+    } else {
+        let output = match output {
+            Some(x) => Ok(x),
+            None => exomat::harness::skeleton::generate_build_series_filepath(&experiment),
+        }?;
 
-            match output {
-                Ok(output) => {
-                    exomat::run_experiment(&experiment, repetitions, output, log_handler, false)
-                }
-                Err(err) => Err(err),
-            }
-        }
-        true => exomat::run_trial(&experiment, log_handler),
+        exomat::run_experiment(&experiment, repetitions, output, log_handler, false)
     }
 }
