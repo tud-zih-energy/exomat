@@ -126,18 +126,18 @@ pub enum Commands {
         #[clap()]
         experiment: PathBuf,
 
-        /// Start a trial run of the experiment using this environment.
+        /// Start a trial run of the experiment.
         ///
-        /// Executes one run of an experiment with one env combination. An experiment
-        /// series directory is created in `/tmp/`. exact location is logged and
-        /// will be printed to console.
+        /// Runs the experiment once in this environment.
         ///
-        /// The exomat will then report on:
-        /// - exit code of `run.sh`
-        /// - content of exomat/stdout/stderr.log
+        /// An experiment series directory is created in `/tmp/`. Its exact location is logged and
+        /// will be printed to console after finishing the trial.
+        ///
+        /// The exomat will then report on the exit code of `run.sh` and the content
+        /// of exomat/stdout/stderr.log
         ///
         /// Custom output directories and repetition counts will be ignored.
-        #[arg(short = 't', long)]
+        #[arg(short = 't', long, value_name = "ENV")]
         trial: Option<PathBuf>,
 
         /// Output folder.
