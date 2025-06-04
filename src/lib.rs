@@ -152,15 +152,28 @@ pub fn run_experiment(
     repetitions: u64,
     output: PathBuf,
     log_progress_handler: MultiProgress,
-    is_trial: bool,
 ) -> Result<()> {
-    harness::skeleton::build_series_directory(experiment, &output)?;
+    // 1 fetch envs
+    let envs = harness::env::fetch_env_files(&experiment.join(SRC_ENV_DIR)).ok_or_else(|| {
+        Error::HarnessRunError {
+            experiment: experiment.display().to_string(),
+            err: format!(
+                "No environments found in {}",
+                experiment.join(SRC_ENV_DIR).display()
+            ),
+        }
+    })?;
+
+    // 2 build series directory
+    harness::skeleton::build_series_directory(&experiment, &output)?;
+
+    // 3 execute
     execute_exp_repetitions(
-        experiment,
+        &experiment,
         &output,
+        envs,
         repetitions,
         log_progress_handler,
-        is_trial,
     )
 }
 
@@ -169,37 +182,35 @@ pub fn run_experiment(
 /// output/errors/results.
 ///
 /// The new experiment series directory will be created as a tempdir. The
-pub fn run_trial(experiment: &PathBuf, log_progress_handler: MultiProgress) -> Result<()> {
-    let exp_name = file_name_string(&experiment.canonicalize().unwrap());
+pub fn run_trial(
+    experiment: &PathBuf,
+    env: PathBuf,
+    log_progress_handler: MultiProgress,
+) -> Result<()> {
+    disable_console_log();
 
-    if experiment.display().to_string() == "." {
-        return Err(Error::HarnessRunError {
-            experiment: exp_name,
-            err: "Cannot start experiment run from the experiment source folder.".to_string(),
-        });
-    }
+    // 1 fetch envs -> given as parameter
 
+    // 2 build series directory
     let format = &Local::now()
         .format("exomat_trial-%Y-%m-%d-%H-%M-%S")
         .to_string();
 
     let trial_dir_path = std::env::temp_dir().join(format);
+    harness::skeleton::build_series_directory(experiment, &trial_dir_path)?;
 
-    disable_console_log();
-
-    // run experiment once
-    let res = run_experiment(
+    // 3 execute
+    let res = execute_exp_repetitions(
         experiment,
+        &trial_dir_path,
+        vec![env],
         1,
-        trial_dir_path.clone(),
         log_progress_handler,
-        true,
     );
 
-    // flush exomat log
+    // 4 gather results
     spdlog::default_logger().flush();
 
-    // gather results
     let stdout =
         std::fs::read_to_string(trial_dir_path.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG))?;
     let stderr =
@@ -207,6 +218,7 @@ pub fn run_trial(experiment: &PathBuf, log_progress_handler: MultiProgress) -> R
     let exomat =
         std::fs::read_to_string(trial_dir_path.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG))?;
 
+    let exp_name = file_name_string(&experiment.canonicalize().unwrap());
     let eval_res = harness::run::create_report(&exp_name, &res, &stdout, &stderr, &exomat);
     print!("{eval_res}");
 
@@ -223,21 +235,11 @@ pub fn run_trial(experiment: &PathBuf, log_progress_handler: MultiProgress) -> R
 fn execute_exp_repetitions(
     exp_source_dir: &Path,
     exp_series_dir: &Path,
+    envs: Vec<PathBuf>,
     repetitions: u64,
     log_progress_handler: MultiProgress,
-    is_trial: bool,
 ) -> Result<()> {
     let length = repetitions.to_string().len();
-    let envs =
-        harness::env::fetch_env_files(&exp_source_dir.join(SRC_ENV_DIR)).ok_or_else(|| {
-            Error::HarnessRunError {
-                experiment: exp_source_dir.display().to_string(),
-                err: format!(
-                    "No environments found in {}",
-                    exp_source_dir.join(SRC_ENV_DIR).display()
-                ),
-            }
-        })?;
 
     let prog_bar = ProgressBar::new(repetitions * envs.len() as u64);
     prog_bar.set_style(
@@ -251,7 +253,7 @@ fn execute_exp_repetitions(
     prog_bar.tick(); // show on 0th repetition
 
     info!("Starting experiment runs for {}", exp_source_dir.display());
-    'outer: for environment in envs {
+    for environment in envs {
         for rep in 0..repetitions {
             let run_folder =
                 harness::skeleton::build_run_directory(exp_series_dir, &environment, rep, length)?;
@@ -265,11 +267,6 @@ fn execute_exp_repetitions(
 
             // update progress
             prog_bar.inc(1);
-
-            // stop after one run if this is a trial
-            if is_trial {
-                break 'outer;
-            }
         }
     }
 
