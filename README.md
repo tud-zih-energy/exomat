@@ -19,10 +19,13 @@ also see `--help`
 ```bash
 # load completions
 $ source <(exomat completion)
+
+# create experiment source
+$ exomat skeleton loadavg
 [2025-02-31 13:33:37.420] [info] Experiment harness created under loadavg
 
 # run.sh is the entry point for your script
-# the entire template directory will be replicaed for each experiment configuration
+# the entire template directory will be replicated for each experiment configuration
 $ cat <<EOF >loadavg/template/run.sh
 #!/usr/bin/env bash
 set -euo pipefail
