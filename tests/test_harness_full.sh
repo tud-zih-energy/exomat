@@ -128,6 +128,9 @@ test -d $DIR/One_Out2/runs/run_1_rep2/
 test '!' -d $DIR/One_Out2/runs/run_0_rep3/
 test '!' -d $DIR/One_Out2/runs/run_1_rep3/
 
+# trying to run a non-source directory
+! "$EXOMAT_BIN" run One_Out1
+
 # output already exists
 ! "$EXOMAT_BIN" run One -o One_Out2
 
