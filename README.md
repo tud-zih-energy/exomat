@@ -56,8 +56,8 @@ The directory `template/` will be cloned for each env file (and repetition).
 The environment variables will be loaded, and then `run.sh` executed from this new directory.
 
 ```bash
-# test a random configuration
-$ exomat run loadavg --trial
+# test a configuration
+$ exomat run loadavg --trial loadavg/envs/2.env
 [...]
 [loadavg] returned:
 Successful
