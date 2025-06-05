@@ -39,6 +39,7 @@ cd $DIR
 # should work
 "$EXOMAT_BIN" skeleton One
 test -d $DIR/One
+test -f $DIR/One/.exomat_source
 test -f $DIR/One/template/run.sh
 test -f $DIR/One/envs/0.env
 
@@ -101,14 +102,18 @@ cd $DIR
 # should work
 "$EXOMAT_BIN" run One -o One_Out1
 test -d $DIR/One_Out1
+test -f $DIR/One_Out1/.exomat_series
 test -f $DIR/One_Out1/.src/template/run.sh
+test -f $DIR/One_Out1/.src/.exomat_source_copy
 test -f $DIR/One_Out1/.src/envs/0.env
 test -f $DIR/One_Out1/.src/envs/1.env
 test -f $DIR/One_Out1/runs/exomat.log
 test -f $DIR/One_Out1/runs/stderr.log
 test -f $DIR/One_Out1/runs/stdout.log
+test -f $DIR/One_Out1/runs/run_0_rep0/.exomat_run
 test -f $DIR/One_Out1/runs/run_0_rep0/run.sh
 test -f $DIR/One_Out1/runs/run_0_rep0/environment.env
+test -f $DIR/One_Out1/runs/run_1_rep0/.exomat_run
 test -f $DIR/One_Out1/runs/run_1_rep0/run.sh
 test -f $DIR/One_Out1/runs/run_1_rep0/environment.env
 
