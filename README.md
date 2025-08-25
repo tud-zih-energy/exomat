@@ -94,6 +94,14 @@ value,4
 value,3
 ```
 
+## Reserved Environment Variables
+The `exomat` sets certain variables for every experiment. Any manual changes done to them will either
+be overwritten or cause you unnecessary pain.
+
+Var             | Content
+----------------|---------------------------------
+$EXP_SOURCE_DIR | Absolute location of the experiment source directory
+
 ## Logging
 The amount of log content on your console can be configured using the `-v` or `-q` flag.
 Specify `-v` multiple times to increase verbosity.

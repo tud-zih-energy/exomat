@@ -25,7 +25,7 @@ use crate::helper::fs_names::*;
 ///   |-> SRC_TEMPLATE_DIR/
 ///   | \-> SRC_RUN_FILE [content: src/harness/run.sh.template]
 ///   \-> SRC_ENV_DIR/
-///     \-> SRC_ENV_FILE [EMPTY]
+///     \-> SRC_ENV_FILE [content: $EXP_SRC_DIR]
 /// ```
 ///
 /// ## Errors
@@ -65,9 +65,9 @@ use crate::helper::fs_names::*;
 /// assert_eq!(run, template);
 /// assert!(&run_file.executable());
 ///
-/// // env file is empty
+/// // env file contains $EXP_SRC_DIR
 /// let env = std::fs::read_to_string(exp_source.join(SRC_ENV_DIR).join(SRC_ENV_FILE)).unwrap();
-/// assert!(env.is_empty());
+/// assert!(env.contains("EXP_SRC_DIR="));
 /// ```
 pub fn create_source_directory(exp_src_dir: &PathBuf) -> Result<()> {
     create_harness_dir(exp_src_dir)?;
@@ -93,7 +93,17 @@ pub fn create_source_directory(exp_src_dir: &PathBuf) -> Result<()> {
     let template_runfile_bytes = include_bytes!("run.sh.template");
     run_file.write_all(template_runfile_bytes)?;
 
-    create_harness_file(&exp_src_dir.join(SRC_ENV_DIR).join(SRC_ENV_FILE))?;
+    let env_file_path = create_harness_file(&exp_src_dir.join(SRC_ENV_DIR).join(SRC_ENV_FILE))?;
+
+    // write content to env.0
+    let exp_src_env = format!(
+        "EXP_SRC_DIR={}",
+        exp_src_dir
+            .canonicalize()
+            .expect("Cannot determine experiment source dir")
+            .display()
+    );
+    std::fs::write(&env_file_path, exp_src_env)?;
 
     info!("Experiment harness created under {}", exp_src_dir.display());
     Ok(())
@@ -310,6 +320,19 @@ mod tests {
                 reason: _
             })
         ));
+    }
+
+    #[test]
+    fn test_src_path_in_env() {
+        let tmpdir = TempDir::new().unwrap();
+        let tmpdir = tmpdir.path().to_path_buf();
+
+        assert!(create_source_directory(&tmpdir).is_ok());
+
+        let env_file = tmpdir.join(SRC_ENV_DIR).join(SRC_ENV_FILE);
+        let env_content = std::fs::read_to_string(env_file).unwrap();
+
+        assert_eq!(env_content, format!("EXP_SRC_DIR={}", tmpdir.display()));
     }
 
     rusty_fork_test! {
