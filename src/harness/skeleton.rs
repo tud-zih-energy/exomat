@@ -10,6 +10,7 @@ use std::{
 };
 
 use crate::duplicate_log_to_file;
+use crate::harness::env::validate_src_env;
 use crate::helper::archivist::{
     copy_harness_dir, copy_harness_file, create_harness_dir, create_harness_file,
 };
@@ -191,7 +192,8 @@ pub fn build_series_directory(exp_source: &PathBuf, series_dir: &Path) -> Result
 
     duplicate_log_to_file(&exomat_log);
 
-    // copy exp_source/template to src and replace marker
+    // copy exp_source/template to src, replace marker, check EXP_SRC_DIR env
+    validate_src_env(&exp_source)?;
     copy_harness_dir(exp_source, &src)?;
     std::fs::remove_file(src.join(MARKER_SRC))?;
     create_harness_file(&src.join(MARKER_SRC_CP))?;

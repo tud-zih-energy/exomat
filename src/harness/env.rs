@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use crate::helper::archivist::find_marker_pwd;
 use crate::helper::errors::{Error, Result};
+use crate::helper::fs_names::SRC_ENV_DIR;
 
 /// Used to decide how an env should be edited
 enum EditMode {
@@ -342,6 +343,49 @@ pub fn remove_from_environments(
     // combine them, produces list of all env files with content
     let files_to_write = try_edit_values(existing_envs, &to_remove, EditMode::Remove)?;
     Ok(files_to_write)
+}
+
+/// Set the $EXP_SRC_DIR env in `src_dir` to the absolute path of`src_dir`
+///
+/// Will overwrite $EXP_SRC_DIR if it is invalid of missing, otherwise does nothing.
+/// Touches all `.env` files if one contains an invalid value.
+pub fn validate_src_env(src_dir: &PathBuf) -> Result<()> {
+    let exp_src_dir = src_dir
+        .canonicalize()
+        .expect("could not determine experiment source dir")
+        .display()
+        .to_string();
+
+    let existing = get_existing_envs(&src_dir.join(SRC_ENV_DIR))?;
+
+    // rewrite $EXP_SRC_DIR if it is incorrect in at least one file
+    for env_file in &existing {
+        if let Some(env_src_dir) = env_file.get("EXP_SRC_DIR") {
+            if *env_src_dir != exp_src_dir {
+                warn!("$EXP_SRC_DIR invalid. Will be changed to {exp_src_dir}");
+
+                let mut to_serialize =
+                    remove_from_environments(&existing, vec![vec![String::from("EXP_SRC_DIR")]])?;
+
+                to_serialize = add_environments(
+                    &to_serialize,
+                    vec![vec![String::from("EXP_SRC_DIR"), exp_src_dir.clone()]],
+                )?;
+
+                serialize_envs(&src_dir.join(SRC_ENV_DIR), &to_serialize)?;
+            }
+        } else {
+            warn!("$EXP_SRC_DIR missing. Will be set to {exp_src_dir}");
+            let to_serialize = add_environments(
+                &existing,
+                vec![vec![String::from("EXP_SRC_DIR"), exp_src_dir.clone()]],
+            )?;
+
+            serialize_envs(&src_dir.join(SRC_ENV_DIR), &to_serialize)?;
+        }
+    }
+
+    Ok(())
 }
 
 /// Check if a condition is true for any iterator `T`.
