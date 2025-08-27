@@ -156,6 +156,25 @@ pub fn serialize_envs(exp_src_envs: &Path, files_to_write: &EnvFileList) -> Resu
     Ok(())
 }
 
+/// Writes all envs in `file_to_write` to `exp_src_envs/file_name`.
+///
+/// Will create a file if `file_name` does not exist and will overwrite it if it does.
+/// This will fail if any parent directories of `exp_src_envs` to not exist.
+///
+/// ## Errors
+/// - Returns an EnvError if writing failed
+fn serialize_named_env(
+    exp_src_envs: &Path,
+    file_name: &str,
+    file_to_write: &EnvFileContent,
+) -> Result<()> {
+    let file_path = &exp_src_envs.join(file_name);
+
+    serde_envfile::to_file(file_path, &file_to_write).map_err(|e| Error::EnvError {
+        reason: e.to_string(),
+    })
+}
+
 /// Collects paths of all .env files in `from`. Returns `None` if
 /// no .env files were found.
 ///
@@ -356,32 +375,38 @@ pub fn validate_src_env(src_dir: &PathBuf) -> Result<()> {
         .display()
         .to_string();
 
-    let existing = get_existing_envs(&src_dir.join(SRC_ENV_DIR))?;
+    let existing = fetch_env_files(&src_dir.join(SRC_ENV_DIR)).unwrap_or(vec![]);
 
-    // rewrite $EXP_SRC_DIR if it is incorrect in at least one file
+    // rewrite $EXP_SRC_DIR if it is incorrect in a file
     for env_file in &existing {
-        if let Some(env_src_dir) = env_file.get("EXP_SRC_DIR") {
+        let mut env_content = deserialize_envs(env_file)?;
+
+        if let Some(env_src_dir) = env_content.get("EXP_SRC_DIR") {
             if *env_src_dir != exp_src_dir {
-                warn!("$EXP_SRC_DIR invalid. Will be changed to {exp_src_dir}");
+                warn!(
+                    "$EXP_SRC_DIR invalid in {}. Will be changed to {exp_src_dir}",
+                    env_file.display().to_string()
+                );
 
-                let mut to_serialize =
-                    remove_from_environments(&existing, vec![vec![String::from("EXP_SRC_DIR")]])?;
-
-                to_serialize = add_environments(
-                    &to_serialize,
-                    vec![vec![String::from("EXP_SRC_DIR"), exp_src_dir.clone()]],
+                *env_content.get_mut("EXP_SRC_DIR").unwrap() = exp_src_dir.clone();
+                serialize_named_env(
+                    &src_dir.join(SRC_ENV_DIR),
+                    &env_file.file_name().unwrap().to_str().unwrap(),
+                    &env_content,
                 )?;
-
-                serialize_envs(&src_dir.join(SRC_ENV_DIR), &to_serialize)?;
             }
         } else {
-            warn!("$EXP_SRC_DIR missing. Will be set to {exp_src_dir}");
-            let to_serialize = add_environments(
-                &existing,
-                vec![vec![String::from("EXP_SRC_DIR"), exp_src_dir.clone()]],
-            )?;
+            warn!(
+                "$EXP_SRC_DIR missing  in {}. Will be set to {exp_src_dir}\n",
+                env_file.display().to_string()
+            );
 
-            serialize_envs(&src_dir.join(SRC_ENV_DIR), &to_serialize)?;
+            env_content.insert(String::from("EXP_SRC_DIR"), exp_src_dir.clone());
+            serialize_named_env(
+                &src_dir.join(SRC_ENV_DIR),
+                &env_file.file_name().unwrap().to_str().unwrap(),
+                &env_content,
+            )?;
         }
     }
 
