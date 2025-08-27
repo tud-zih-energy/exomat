@@ -380,31 +380,16 @@ pub fn validate_src_env(src_dir: &PathBuf) -> Result<()> {
     // rewrite $EXP_SRC_DIR if it is incorrect in a file
     for env_file in &existing {
         let mut env_content = deserialize_envs(env_file)?;
+        let needs_update = match env_content.get("EXP_SRC_DIR") {
+            Some(val) if val == &exp_src_dir => false,
+            _ => true,
+        };
 
-        if let Some(env_src_dir) = env_content.get("EXP_SRC_DIR") {
-            if *env_src_dir != exp_src_dir {
-                warn!(
-                    "$EXP_SRC_DIR invalid in {}. Will be changed to {exp_src_dir}",
-                    env_file.display().to_string()
-                );
-
-                *env_content.get_mut("EXP_SRC_DIR").unwrap() = exp_src_dir.clone();
-                serialize_named_env(
-                    &src_dir.join(SRC_ENV_DIR),
-                    &env_file.file_name().unwrap().to_str().unwrap(),
-                    &env_content,
-                )?;
-            }
-        } else {
-            warn!(
-                "$EXP_SRC_DIR missing  in {}. Will be set to {exp_src_dir}\n",
-                env_file.display().to_string()
-            );
-
-            env_content.insert(String::from("EXP_SRC_DIR"), exp_src_dir.clone());
+        if needs_update {
+            env_content.insert("EXP_SRC_DIR".to_string(), exp_src_dir.clone());
             serialize_named_env(
                 &src_dir.join(SRC_ENV_DIR),
-                &env_file.file_name().unwrap().to_str().unwrap(),
+                env_file.file_name().unwrap().to_str().unwrap(),
                 &env_content,
             )?;
         }
@@ -1194,5 +1179,39 @@ mod tests {
                 all_envs_no_fname,
                 vec![expected_env_bar, expected_env_baz]);
         }
+    }
+
+    #[test]
+    fn update_exp_src_env() {
+        let tmpdir = TempDir::new().unwrap();
+        let src_dir = tmpdir.path().to_path_buf();
+        let envs_dir = src_dir.join(SRC_ENV_DIR);
+        let src_dir_str = src_dir.canonicalize().unwrap().display().to_string();
+        std::fs::create_dir(&envs_dir).unwrap();
+
+        // Write a .env file with an incorrect EXP_SRC_DIR value
+        let env_file_path = envs_dir.join("test.env");
+        std::fs::write(&env_file_path, "EXP_SRC_DIR=\"/wrong/path\"\nFOO=1").unwrap();
+
+        // Updates EXP_SRC_DIR and leave FOO
+        validate_src_env(&src_dir).unwrap();
+        let envs = deserialize_envs(&env_file_path).unwrap();
+        assert_eq!(envs.get("EXP_SRC_DIR"), Some(&src_dir_str));
+        assert_eq!(envs.get("FOO"), Some(&"1".to_string()));
+
+        // Doesn't break on valid EXP_SRC_DIR
+        validate_src_env(&src_dir).unwrap();
+        let envs = deserialize_envs(&env_file_path).unwrap();
+        assert_eq!(envs.get("EXP_SRC_DIR"), Some(&src_dir_str));
+        assert_eq!(envs.get("FOO"), Some(&"1".to_string()));
+
+        // Adds env on missing EXP_SRC_DIR
+        let env_file_path2 = envs_dir.join("test2.env");
+        std::fs::write(&env_file_path2, "FOO=2").unwrap();
+
+        validate_src_env(&src_dir).unwrap();
+        let envs = deserialize_envs(&env_file_path2).unwrap();
+        assert_eq!(envs.get("EXP_SRC_DIR"), Some(&src_dir_str));
+        assert_eq!(envs.get("FOO"), Some(&"2".to_string()));
     }
 }
