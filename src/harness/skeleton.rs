@@ -270,6 +270,13 @@ pub fn build_run_directory(
     copy_harness_file(&run_to_cp, &run.join(RUN_RUN_FILE))?;
     copy_harness_file(&env_file, &run.join(RUN_ENV_FILE))?;
 
+    // add repetition number to env file
+    let mut env_file = OpenOptions::new()
+        .append(true)
+        .open(&run.join(RUN_ENV_FILE))
+        .unwrap();
+    env_file.write(format!("REP={it}").as_bytes()).unwrap();
+
     Ok(run)
 }
 
@@ -359,6 +366,10 @@ mod tests {
             assert!(run_dir.join(RUN_ENV_FILE).is_file());
             assert!(run_dir.join(RUN_RUN_FILE).is_file());
             assert!(run_dir.join(RUN_RUN_FILE).executable());
+
+            // check that repetition number is an env
+            let envs = crate::harness::env::deserialize_envs(&run_dir.join(RUN_ENV_FILE)).unwrap();
+            assert_eq!(envs.get("REP"), Some(&String::from("1")));
 
             // it_format_length changes the name of each experiment run directory:
             let run_dir = build_run_directory(&exp_series, &default_env, 1, 3).unwrap();
