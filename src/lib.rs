@@ -14,6 +14,7 @@ use chrono::Local;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use indicatif_log_bridge::LogWrapper;
 use log::{info, trace};
+use rand::seq::SliceRandom;
 use spdlog::formatter::{pattern, PatternFormatter};
 use spdlog::sink::FileSink;
 use std::{path::Path, path::PathBuf, sync::Arc};
@@ -228,7 +229,7 @@ fn execute_exp_repetitions(
     is_trial: bool,
 ) -> Result<()> {
     let length = repetitions.to_string().len();
-    let envs =
+    let mut envs =
         harness::env::fetch_env_files(&exp_source_dir.join(SRC_ENV_DIR)).ok_or_else(|| {
             Error::HarnessRunError {
                 experiment: exp_source_dir.display().to_string(),
@@ -251,6 +252,8 @@ fn execute_exp_repetitions(
     prog_bar.tick(); // show on 0th repetition
 
     info!("Starting experiment runs for {}", exp_source_dir.display());
+
+    envs.shuffle(&mut rand::rng());
     'outer: for environment in envs {
         for rep in 0..repetitions {
             let run_folder =
