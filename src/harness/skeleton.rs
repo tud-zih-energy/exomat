@@ -3,6 +3,7 @@
 use chrono::Local;
 use log::{debug, info};
 use std::{
+    collections::HashMap,
     fs::OpenOptions,
     io::Write,
     os::unix::fs::OpenOptionsExt,
@@ -10,7 +11,7 @@ use std::{
 };
 
 use crate::duplicate_log_to_file;
-use crate::harness::env::validate_src_env;
+use crate::harness::env::{serialize_envs, validate_src_env};
 use crate::helper::archivist::{
     copy_harness_dir, copy_harness_file, create_harness_dir, create_harness_file,
 };
@@ -94,17 +95,16 @@ pub fn create_source_directory(exp_src_dir: &PathBuf) -> Result<()> {
     let template_runfile_bytes = include_bytes!("run.sh.template");
     run_file.write_all(template_runfile_bytes)?;
 
-    let env_file_path = create_harness_file(&exp_src_dir.join(SRC_ENV_DIR).join(SRC_ENV_FILE))?;
-
-    // write content to env.0
-    let exp_src_env = format!(
-        "EXP_SRC_DIR={}",
+    // write content to 0.env
+    let to_serialize = vec![HashMap::from([(
+        String::from("EXP_SRC_DIR"),
         exp_src_dir
             .canonicalize()
             .expect("Cannot determine experiment source dir")
             .display()
-    );
-    std::fs::write(&env_file_path, exp_src_env)?;
+            .to_string(),
+    )])];
+    serialize_envs(&exp_src_dir.join(SRC_ENV_DIR), &to_serialize)?;
 
     info!("Experiment harness created under {}", exp_src_dir.display());
     Ok(())
@@ -334,7 +334,7 @@ mod tests {
         let env_file = tmpdir.join(SRC_ENV_DIR).join(SRC_ENV_FILE);
         let env_content = std::fs::read_to_string(env_file).unwrap();
 
-        assert_eq!(env_content, format!("EXP_SRC_DIR={}", tmpdir.display()));
+        assert_eq!(env_content, format!("EXP_SRC_DIR=\"{}\"", tmpdir.display()));
     }
 
     rusty_fork_test! {
