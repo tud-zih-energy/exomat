@@ -6,7 +6,7 @@ use log::{debug, error, trace, warn};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::harness::env::deserialize_envs;
+use crate::harness::env::Environment;
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
 
@@ -69,20 +69,19 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
     let run_repetitions = find_all_run_repetitions(&runs_dir);
 
     // (1) fetch vars from all experiment run directories
-    let mut value_by_var_by_dir: HashMap<PathBuf, HashMap<String, String>> = HashMap::new();
+    let mut value_by_var_by_dir: HashMap<PathBuf, Environment> = HashMap::new();
     for repetition_dir in &run_repetitions {
         debug!("fetching vars from: {}", repetition_dir.display());
 
         // (1a) initialize with content from env
         let env_file = repetition_dir.join(RUN_ENV_FILE);
-        let mut value_by_var: HashMap<String, String> =
-            deserialize_envs(&env_file).unwrap_or_else(|err| {
-                error!(
-                    "could not load environment variables from {RUN_ENV_FILE} in {}: {err}",
-                    repetition_dir.display()
-                );
-                HashMap::new()
-            });
+        let mut value_by_var = Environment::from_file(&env_file).unwrap_or_else(|err| {
+            error!(
+                "could not load environment variables from {RUN_ENV_FILE} in {}: {err}",
+                repetition_dir.display()
+            );
+            Environment::new()
+        });
 
         // (1b) insert content from out_ files
         let prefix = "out_";
@@ -102,14 +101,14 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
                     "variable name (prefix out_ alone is not permitted)".to_string(),
                 ));
             }
-            if value_by_var.contains_key(&var_name) {
+            if value_by_var.contains_variable(&var_name) {
                 warn!(
                     "in {}: out_{var_name} shadows input environment variable ${var_name}",
                     repetition_dir.display()
                 );
             }
 
-            value_by_var.insert(var_name, std::fs::read_to_string(file)?.trim().to_string());
+            value_by_var.add_variable(var_name, std::fs::read_to_string(file)?.trim().to_string());
         }
 
         value_by_var_by_dir.insert(repetition_dir.to_path_buf(), value_by_var);
@@ -120,7 +119,7 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
 
     // (2a) collect all var names
     for (dir, value_by_var) in &value_by_var_by_dir {
-        for var in value_by_var.keys() {
+        for var in value_by_var.get_variables() {
             if !values_by_var.contains_key(var) {
                 trace!("adding key to output from {}: {var}", dir.display());
                 values_by_var.insert(var.clone(), Vec::new());
@@ -131,7 +130,7 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
     // (2b) populate content for each var
     for (dir, value_by_var) in &value_by_var_by_dir {
         for (var, values) in values_by_var.iter_mut() {
-            values.push(match value_by_var.get(var) {
+            values.push(match value_by_var.get_value(var) {
                 None => {
                     warn!(
                         "experiment in {} misses value for variable: {var}",

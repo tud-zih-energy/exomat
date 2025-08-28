@@ -16,6 +16,94 @@ enum EditMode {
     Remove,
 }
 
+// Represents one environment file
+#[derive(Debug, Clone, PartialEq)]
+pub struct Environment {
+    variables: HashMap<String, String>,
+}
+
+impl Environment {
+    /// Constructs an empty Environment
+    pub fn new() -> Self {
+        Environment {
+            variables: HashMap::new(),
+        }
+    }
+
+    /// Constructs a new Environment with all variables and values from a file.
+    /// Does not include process environemnt variables.
+    ///
+    /// ## Parameters
+    /// `file` needs to be a valid env file, see Errors and Panics
+    ///
+    ///  ## Errors and Panics
+    /// - Panics if `file` does not end in ".env"
+    /// - Returns an `EnvError` if `file` isn't a valid .env file (this does not include having
+    ///   the correct extension) or if an error occured during parsing.
+    pub fn from_file(file: &Path) -> Result<Self> {
+        // check for .env extension
+        assert!(
+            file.extension().unwrap() == "env",
+            "env file with missing extension: {}",
+            file.display()
+        );
+
+        let mut env = Environment {
+            variables: HashMap::new(),
+        };
+
+        // Not using serde_envfile here, because it converts "VAR" to "var" :(
+        for item in dotenvy::from_filename_iter(file)? {
+            let (var, val) = item.map_err(|e| Error::EnvError {
+                reason: e.to_string(),
+            })?;
+
+            env.variables.insert(var, val);
+        }
+
+        Ok(env)
+    }
+
+    pub fn from_env_list(list: Vec<(String, String)>) -> Self {
+        Environment {
+            variables: list.into_iter().collect(),
+        }
+    }
+
+    /// Serialize current envs to `exp_src_envs/file_name`.
+    ///
+    /// Will create a new file if `file_name` does not exist and will overwrite it if it does.
+    /// This will fail if any parent directories of `exp_src_envs` do not exist.
+    ///
+    /// ## Errors
+    /// - Returns an EnvError if writing failed
+    pub fn to_file(&self, file_path: &PathBuf) -> Result<()> {
+        serde_envfile::to_file(file_path, &self.variables).map_err(|e| Error::EnvError {
+            reason: e.to_string(),
+        })
+    }
+
+    pub fn to_env_list(&self) -> &HashMap<String, String> {
+        &self.variables
+    }
+
+    pub fn contains_variable(&self, var: &str) -> bool {
+        self.variables.contains_key(var)
+    }
+
+    pub fn add_variable(&mut self, var: String, val: String) {
+        self.variables.insert(var, val);
+    }
+
+    pub fn get_value(&self, var: &str) -> Option<&String> {
+        self.variables.get(var)
+    }
+
+    pub fn get_variables(&self) -> Vec<&String> {
+        self.variables.keys().collect()
+    }
+}
+
 /// map of all variables with all possible values
 ///
 /// ## Example
@@ -28,17 +116,6 @@ enum EditMode {
 /// - `["FOO" = ["true", "false"], "BAR" = ["1", "2"]]`
 pub type EnvVarList = HashMap<String, Vec<String>>;
 
-/// map with all variables and one possible value (content of one .env file)
-///
-/// ## Example
-/// - `0.env`: FOO=true, BAR=1
-/// - `1.env`: FOO=true, BAR=2
-///
-/// can be encoded with EnvFileContent like this:
-/// - `["FOO" = "true", "BAR" = "1"]`
-/// - `["FOO" = "true", "BAR" = "2"]`
-pub type EnvFileContent = HashMap<String, String>;
-
 /// list of maps with variables (and values) taken from multiple .env files
 ///
 /// ## Example
@@ -47,7 +124,7 @@ pub type EnvFileContent = HashMap<String, String>;
 ///
 /// can be encoded in an EnvFileList like this:
 /// - `[["FOO" = "true", "BAR" = "1"], ["FOO" = "true", "BAR" = "2"]]`
-pub type EnvFileList = Vec<EnvFileContent>;
+pub type EnvFileList = Vec<Environment>;
 
 /// Loads and returns all currently loaded environment variables, complete with variables
 /// defined in `env_file`.
@@ -71,66 +148,18 @@ pub type EnvFileList = Vec<EnvFileContent>;
 ///
 /// // load_envs returns **all** currently loaded envs, so there will be more than
 /// // just the one we set
-/// assert!(envs.len() > 1);
+/// assert!(envs.to_env_list().len() > 1);
 ///
 /// // load_envs has created a variable called "TEST" with the value "true"
-/// assert!(envs.contains_key("TEST"));
-/// assert_eq!(envs.get("TEST"), Some(&String::from("true")));
+/// assert!(envs.contains_variable("TEST"));
+/// assert_eq!(envs.get_value("TEST"), Some(&String::from("true")));
 ///
 /// // and it is actually loaded
 /// assert_eq!(dotenvy::var("TEST").unwrap(), "true");
 /// ```
-pub fn load_envs(env_file: &PathBuf) -> Result<EnvFileContent> {
+pub fn load_envs(env_file: &PathBuf) -> Result<Environment> {
     dotenvy::from_path_override(env_file)?;
-    Ok(dotenvy::vars().collect())
-}
-
-/// Parses all variables and values from `file`.
-///
-/// ## Example
-/// ```
-/// use exomat::harness::env::deserialize_envs;
-///
-/// // create an .env file with TEST=true
-/// let mock_env_file = tempfile::Builder::new()
-///     .suffix(".env")
-///     .tempfile()
-///     .unwrap();
-/// let mock_env_file = mock_env_file.path().to_path_buf();
-/// std::fs::write(&mock_env_file, "TEST=true").unwrap();
-///
-/// let envs_in_file = deserialize_envs(&mock_env_file).unwrap();
-///
-/// assert_eq!(envs_in_file.len(), 1);
-/// assert_eq!(envs_in_file.get("TEST"), Some(&String::from("true")));
-///
-/// // has not been loaded (use load_envs() for that purpose)
-/// assert!(dotenvy::var("TEST").is_err());
-/// ```
-/// ## Errors and Panics
-/// - Panics if `file` does not end in ".env"
-/// - Returns an `EnvError` if `file` isn't a valid .env file (this does not include having
-///   the correct extension) or if an error occured during parsing.
-pub fn deserialize_envs(file: &PathBuf) -> Result<EnvFileContent> {
-    // check for .env extension
-    assert!(
-        file.extension().unwrap() == "env",
-        "env file with missing extension: {}",
-        file.display()
-    );
-
-    let mut file_envs: EnvFileContent = HashMap::new();
-
-    // Not using serde_envfile here, because it converts "VAR" to "var" :(
-    for item in dotenvy::from_filename_iter(file)? {
-        let (var, val) = item.map_err(|e| Error::EnvError {
-            reason: e.to_string(),
-        })?;
-
-        file_envs.insert(var, val);
-    }
-
-    Ok(file_envs)
+    Ok(Environment::from_env_list(dotenvy::vars().collect()))
 }
 
 /// Writes all envs of each HashMap in `files_to_write` to `exp_src_envs/[i].env`.
@@ -144,35 +173,14 @@ pub fn deserialize_envs(file: &PathBuf) -> Result<EnvFileContent> {
 pub fn serialize_envs(exp_src_envs: &Path, files_to_write: &EnvFileList) -> Result<()> {
     let leading_zeros = files_to_write.len().to_string().len();
 
-    for (counter, file_content) in files_to_write.iter().enumerate() {
+    for (counter, environment) in files_to_write.iter().enumerate() {
         let env_file_name = format!("{:0lz$}.env", counter, lz = leading_zeros);
-        let file_path = &exp_src_envs.join(env_file_name);
+        let file_path = &exp_src_envs.join(&env_file_name);
 
-        serde_envfile::to_file(file_path, &file_content).map_err(|e| Error::EnvError {
-            reason: e.to_string(),
-        })?;
+        environment.to_file(&file_path)?;
     }
 
     Ok(())
-}
-
-/// Writes all envs in `file_to_write` to `exp_src_envs/file_name`.
-///
-/// Will create a file if `file_name` does not exist and will overwrite it if it does.
-/// This will fail if any parent directories of `exp_src_envs` to not exist.
-///
-/// ## Errors
-/// - Returns an EnvError if writing failed
-fn serialize_named_env(
-    exp_src_envs: &Path,
-    file_name: &str,
-    file_to_write: &EnvFileContent,
-) -> Result<()> {
-    let file_path = &exp_src_envs.join(file_name);
-
-    serde_envfile::to_file(file_path, &file_to_write).map_err(|e| Error::EnvError {
-        reason: e.to_string(),
-    })
 }
 
 /// Collects paths of all .env files in `from`. Returns `None` if
@@ -251,11 +259,11 @@ pub fn add_environments(
 
     // combine them, produces list of all env files with content
     if existing_envs.is_empty() {
-        files_to_write = try_assemble_all(&HashMap::new(), &to_add)?;
+        files_to_write = try_assemble_all(&Environment::new(), &to_add)?;
     } else {
         for file in existing_envs {
             for var in to_add.keys() {
-                if file.contains_key(var) {
+                if file.variables.contains_key(var) {
                     return Err(Error::EnvError {
                         reason: format!("Var '{var}' is already set"),
                     });
@@ -286,7 +294,7 @@ pub fn append_to_environments(
     to_append: Vec<Vec<String>>,
 ) -> Result<EnvFileList> {
     if to_append.is_empty() {
-        return Ok(existing_envs.to_owned());
+        return Ok((*existing_envs).to_owned());
     }
 
     // check to_append, needs to happen before transforming
@@ -302,10 +310,11 @@ pub fn append_to_environments(
 
     // env exists?
     for var in to_append.keys() {
-        assert_exists(existing_envs, |env_file| env_file.contains_key(var)).map_err(|e| {
-            Error::EnvError {
-                reason: format!("Variable {var} cannot be edited: {e}"),
-            }
+        assert_exists(existing_envs, |env_file| {
+            env_file.variables.contains_key(var)
+        })
+        .map_err(|e| Error::EnvError {
+            reason: format!("Variable {var} cannot be edited: {e}"),
         })?;
     }
 
@@ -342,16 +351,17 @@ pub fn remove_from_environments(
 
     for (var, vals) in &to_remove {
         // var exists?
-        assert_exists(existing_envs, |env_file| env_file.contains_key(var)).map_err(|e| {
-            Error::EnvError {
-                reason: format!("Variable {var} cannot be edited: {e}"),
-            }
+        assert_exists(existing_envs, |env_file| {
+            env_file.variables.contains_key(var)
+        })
+        .map_err(|e| Error::EnvError {
+            reason: format!("Variable {var} cannot be edited: {e}"),
         })?;
 
         // vals exists?
         for val in vals {
             assert_exists(existing_envs, |env_file| {
-                env_file.get(var).unwrap().contains(val)
+                env_file.variables.get(var).unwrap().contains(val)
             })
             .map_err(|e| Error::EnvError {
                 reason: format!("Value {val} of {var} cannot be edited: {e}"),
@@ -379,19 +389,17 @@ pub fn validate_src_env(src_dir: &PathBuf) -> Result<()> {
 
     // rewrite $EXP_SRC_DIR if it is incorrect in a file
     for env_file in &existing {
-        let mut env_content = deserialize_envs(env_file)?;
-        let needs_update = match env_content.get("EXP_SRC_DIR") {
+        let mut env_content = Environment::from_file(env_file)?;
+        let needs_update = match env_content.variables.get("EXP_SRC_DIR") {
             Some(val) if val == &exp_src_dir => false,
             _ => true,
         };
 
         if needs_update {
-            env_content.insert("EXP_SRC_DIR".to_string(), exp_src_dir.clone());
-            serialize_named_env(
-                &src_dir.join(SRC_ENV_DIR),
-                env_file.file_name().unwrap().to_str().unwrap(),
-                &env_content,
-            )?;
+            env_content
+                .variables
+                .insert("EXP_SRC_DIR".to_string(), exp_src_dir.clone());
+            env_content.to_file(&env_file)?;
         }
     }
 
@@ -461,7 +469,7 @@ where
 ///
 /// # Errors
 /// - Returns `EnvError` if a key from `to_add` is already in `given`
-fn try_assemble_all(given: &EnvFileContent, to_add: &EnvVarList) -> Result<EnvFileList> {
+fn try_assemble_all(given: &Environment, to_add: &EnvVarList) -> Result<EnvFileList> {
     // combine all values from to_add
     let mut combinations: EnvFileList = to_add
         .values()
@@ -469,11 +477,12 @@ fn try_assemble_all(given: &EnvFileContent, to_add: &EnvVarList) -> Result<EnvFi
         .collect::<Vec<_>>() // list of all possible value combinations without keys
         .into_iter()
         .map(|val_combos| {
-            to_add
+            let pairs = to_add
                 .keys()
                 .cloned()
-                .zip(val_combos.iter().map(|s| s.to_string())) // zip with keys
-                .collect::<EnvFileContent>()
+                .zip(val_combos.iter().map(|s| s.to_string()))
+                .collect::<Vec<(String, String)>>();
+            Environment::from_env_list(pairs)
         })
         .collect::<EnvFileList>();
 
@@ -482,7 +491,7 @@ fn try_assemble_all(given: &EnvFileContent, to_add: &EnvVarList) -> Result<EnvFi
     // add existing variables to each list
     combinations
         .iter_mut()
-        .for_each(|combo| combo.extend(given.clone()));
+        .for_each(|combo| combo.variables.extend(given.variables.clone()));
 
     debug!("Finished assembling environments: {combinations:?}");
 
@@ -515,7 +524,7 @@ fn try_edit_values(
     // create a list of all possible values from all given files
     // collect values with the same key in one Vec
     for env_file_content in given {
-        for (var, val) in env_file_content {
+        for (var, val) in env_file_content.variables.iter() {
             // push to value of entry "var"
             possible_envs
                 .entry(var.clone())
@@ -554,7 +563,7 @@ fn try_edit_values(
     }
 
     // assemble files that need to be created, return
-    try_assemble_all(&HashMap::new(), &possible_envs)
+    try_assemble_all(&Environment::new(), &possible_envs)
 }
 
 /// Remove any value of a key given in `to_edit` from `possible_envs`.
@@ -660,13 +669,13 @@ pub fn get_existing_envs(from: &PathBuf) -> Result<EnvFileList> {
 /// ## Errors and Panics
 /// - Panics if `from` could not be read
 /// - Returns an `EnvError` if something went wrong during the deserialization of envs
-pub fn get_existing_envs_by_fname(from: &PathBuf) -> Result<HashMap<String, EnvFileContent>> {
-    let mut envs: HashMap<String, EnvFileContent> = HashMap::new();
+pub fn get_existing_envs_by_fname(from: &PathBuf) -> Result<HashMap<String, Environment>> {
+    let mut envs: HashMap<String, Environment> = HashMap::new();
 
     // if there are .env files present, read existing vars from them
     if let Some(env_files) = fetch_env_files(from) {
         for file in env_files {
-            let envs_in_file = deserialize_envs(&file)?;
+            let envs_in_file = Environment::from_file(&file)?;
             envs.insert(
                 file.file_name()
                     .expect("file name must not be empty")
@@ -740,7 +749,7 @@ fn generate_environments(
 /// print a pretty table of all configured environments in env_path
 fn print_all_environments(env_path: PathBuf) -> Result<()> {
     let all_envs_by_fname = get_existing_envs_by_fname(&env_path)?;
-    let all_envs_with_fname: Vec<(String, EnvFileContent)> = all_envs_by_fname
+    let all_envs_with_fname: Vec<(String, Environment)> = all_envs_by_fname
         .into_iter()
         .sorted_by_cached_key(|(k, _)| k.clone())
         .collect();
@@ -749,7 +758,12 @@ fn print_all_environments(env_path: PathBuf) -> Result<()> {
     let mut table_builder = tabled::builder::Builder::default();
     info!("{} env files found", all_envs_with_fname.len());
     for (fname, env) in all_envs_with_fname {
-        let this_env_keys: Vec<String> = env.keys().sorted().map(|s| s.to_string()).collect();
+        let this_env_keys: Vec<String> = env
+            .variables
+            .keys()
+            .sorted()
+            .map(|s| s.to_string())
+            .collect();
         match keys {
             None => {
                 table_builder.push_record(
@@ -771,7 +785,8 @@ fn print_all_environments(env_path: PathBuf) -> Result<()> {
         // reorder values by list of keys
         table_builder.push_record(
             std::iter::once(fname.to_string()).chain(keys.iter().map(|s| {
-                env.get(s)
+                env.variables
+                    .get(s)
                     .expect("key precondition check failed")
                     .to_string()
             })),
@@ -858,7 +873,7 @@ mod tests {
 
     #[test]
     fn env_assemble_with_none() {
-        let given = HashMap::new();
+        let given = Environment::new();
         let to_add = HashMap::new();
 
         // should not throw (?)
@@ -867,7 +882,7 @@ mod tests {
 
     #[test]
     fn env_assemble_with_given() {
-        let given = HashMap::from([("1".to_string(), "a".to_string())]);
+        let given = Environment::from_env_list(vec![("1".to_string(), "a".to_string())]);
         let to_add = HashMap::new();
 
         let assembled = try_assemble_all(&given, &to_add).unwrap();
@@ -879,27 +894,30 @@ mod tests {
 
     #[test]
     fn env_assemble_with_to_add() {
-        let given = HashMap::new();
+        let given = Environment::new();
         let to_add = HashMap::from([("1".to_string(), vec!["a".to_string()])]);
 
         let assembled = try_assemble_all(&given, &to_add).unwrap();
 
         // should contain the only possible variant from to_add
         assert_eq!(assembled.len(), 1);
-        assert!(assembled.contains(&HashMap::from([("1".to_string(), "a".to_string())])));
+        assert!(assembled.contains(&Environment::from_env_list(vec![(
+            "1".to_string(),
+            "a".to_string()
+        )])));
     }
 
     #[test]
     fn env_assemble_with_one() {
         // Note: assembling with multiple values is tested in doctest
 
-        let given = HashMap::from([("1".to_string(), "a".to_string())]);
+        let given = Environment::from_env_list(vec![("1".to_string(), "a".to_string())]);
         let to_add = HashMap::from([("2".to_string(), vec!["b".to_string()])]);
 
         let assembled = try_assemble_all(&given, &to_add).unwrap();
 
         assert_eq!(assembled.len(), 1);
-        assert!(assembled.contains(&HashMap::from([
+        assert!(assembled.contains(&Environment::from_env_list(vec![
             ("1".to_string(), "a".to_string()),
             ("2".to_string(), "b".to_string()),
         ])));
@@ -964,7 +982,7 @@ mod tests {
 
         // env was written
         assert_eq!(
-            combined.first().unwrap().get("VAR"),
+            combined.first().unwrap().variables.get("VAR"),
             Some(&"VAL".to_string())
         );
 
@@ -990,7 +1008,10 @@ mod tests {
     #[test]
     fn env_append_valid() {
         // list with "VAR"
-        let existing = vec![HashMap::from([("VAR".to_string(), "VAL".to_string())])];
+        let existing = vec![Environment::from_env_list(vec![(
+            "VAR".to_string(),
+            "VAL".to_string(),
+        )])];
 
         // edit "VAR"
         let to_append = vec![vec!["VAR".to_string(), "ANOTHER".to_string()]];
@@ -998,8 +1019,8 @@ mod tests {
 
         // check "VAR", has to be set to "VAL" once and to "ANOTHER" once
         assert_eq!(res.len(), 2);
-        let res_first = res.first().unwrap().get("VAR").unwrap();
-        let res_last = res.last().unwrap().get("VAR").unwrap();
+        let res_first = res.first().unwrap().variables.get("VAR").unwrap();
+        let res_last = res.last().unwrap().variables.get("VAR").unwrap();
 
         assert_eq!(res_first, &"ANOTHER".to_string());
         assert_eq!(res_last, &"VAL".to_string());
@@ -1008,7 +1029,7 @@ mod tests {
     #[test]
     fn env_append_no_value() {
         // list with "VAR"
-        let existing = vec![HashMap::from([
+        let existing = vec![Environment::from_env_list(vec![
             ("VAR1".to_string(), "VAL1".to_string()),
             ("VAR2".to_string(), "VAL2".to_string()),
         ])];
@@ -1022,10 +1043,10 @@ mod tests {
 
         // expected: no error, value of VAR1 changed but VAR2 not touched
         assert_eq!(res.len(), 2);
-        let res_first_1 = res.first().unwrap().get("VAR1").unwrap();
-        let res_first_2 = res.first().unwrap().get("VAR2").unwrap();
-        let res_last_1 = res.last().unwrap().get("VAR1").unwrap();
-        let res_last_2 = res.last().unwrap().get("VAR2").unwrap();
+        let res_first_1 = res.first().unwrap().variables.get("VAR1").unwrap();
+        let res_first_2 = res.first().unwrap().variables.get("VAR2").unwrap();
+        let res_last_1 = res.last().unwrap().variables.get("VAR1").unwrap();
+        let res_last_2 = res.last().unwrap().variables.get("VAR2").unwrap();
 
         assert_eq!(res_first_1, &"VAL1".to_string());
         assert_eq!(res_first_2, &"VAL2".to_string());
@@ -1048,11 +1069,11 @@ mod tests {
     fn env_remove_valid() {
         // list with "VAR1" and "VAR2"
         let existing = vec![
-            HashMap::from([
+            Environment::from_env_list(vec![
                 ("VAR1".to_string(), "VAL".to_string()),
                 ("VAR2".to_string(), "VAL".to_string()),
             ]),
-            HashMap::from([
+            Environment::from_env_list(vec![
                 ("VAR1".to_string(), "VALUE".to_string()),
                 ("VAR2".to_string(), "VAL".to_string()),
             ]),
@@ -1067,15 +1088,15 @@ mod tests {
         let res = remove_from_environments(&existing, to_remove).unwrap();
 
         assert_eq!(res.len(), 1);
-        assert!(res.first().unwrap().get("VAR2").is_none());
+        assert!(res.first().unwrap().variables.get("VAR2").is_none());
 
-        let res_var1 = res.first().unwrap().get("VAR1").unwrap();
+        let res_var1 = res.first().unwrap().variables.get("VAR1").unwrap();
         assert_eq!(res_var1, &"VAL".to_string());
     }
 
     #[test]
     fn env_try_assemble() {
-        let given = HashMap::from([("1".to_string(), "a".to_string())]);
+        let given = Environment::from_env_list(vec![("1".to_string(), "a".to_string())]);
         let to_add = HashMap::from([
             ("2".to_string(), vec!["b".to_string(), "c".to_string()]),
             ("3".to_string(), vec!["42".to_string(), "43".to_string()]),
@@ -1085,25 +1106,25 @@ mod tests {
         assert_eq!(assembled.len(), 4);
 
         // all possible combinations of values that should be formed
-        assert!(assembled.contains(&HashMap::from([
+        assert!(assembled.contains(&Environment::from_env_list(vec![
             ("1".to_string(), "a".to_string()),
             ("2".to_string(), "b".to_string()),
             ("3".to_string(), "42".to_string()),
         ])));
 
-        assert!(assembled.contains(&HashMap::from([
+        assert!(assembled.contains(&Environment::from_env_list(vec![
             ("1".to_string(), "a".to_string()),
             ("2".to_string(), "b".to_string()),
             ("3".to_string(), "43".to_string()),
         ])));
 
-        assert!(assembled.contains(&HashMap::from([
+        assert!(assembled.contains(&Environment::from_env_list(vec![
             ("1".to_string(), "a".to_string()),
             ("2".to_string(), "c".to_string()),
             ("3".to_string(), "42".to_string()),
         ])));
 
-        assert!(assembled.contains(&HashMap::from([
+        assert!(assembled.contains(&Environment::from_env_list(vec![
             ("1".to_string(), "a".to_string()),
             ("2".to_string(), "c".to_string()),
             ("3".to_string(), "43".to_string()),
@@ -1164,8 +1185,8 @@ mod tests {
             std::fs::write("two.env", "FOO=baz").unwrap();
             std::fs::write("01.env", "FOO=bar").unwrap();
 
-            let expected_env_bar: EnvFileContent = HashMap::from([("FOO".to_string(), "bar".to_string())]);
-            let expected_env_baz: EnvFileContent = HashMap::from([("FOO".to_string(), "baz".to_string())]);
+            let expected_env_bar = Environment::from_env_list(vec![("FOO".to_string(), "bar".to_string())]);
+            let expected_env_baz = Environment::from_env_list(vec![("FOO".to_string(), "baz".to_string())]);
 
             let all_envs_with_fname = get_existing_envs_by_fname(&PathBuf::from(".")).unwrap();
             assert_eq!(
@@ -1195,23 +1216,44 @@ mod tests {
 
         // Updates EXP_SRC_DIR and leave FOO
         validate_src_env(&src_dir).unwrap();
-        let envs = deserialize_envs(&env_file_path).unwrap();
-        assert_eq!(envs.get("EXP_SRC_DIR"), Some(&src_dir_str));
-        assert_eq!(envs.get("FOO"), Some(&"1".to_string()));
+        let envs = Environment::from_file(&env_file_path).unwrap();
+        assert_eq!(envs.variables.get("EXP_SRC_DIR"), Some(&src_dir_str));
+        assert_eq!(envs.variables.get("FOO"), Some(&"1".to_string()));
 
         // Doesn't break on valid EXP_SRC_DIR
         validate_src_env(&src_dir).unwrap();
-        let envs = deserialize_envs(&env_file_path).unwrap();
-        assert_eq!(envs.get("EXP_SRC_DIR"), Some(&src_dir_str));
-        assert_eq!(envs.get("FOO"), Some(&"1".to_string()));
+        let envs = Environment::from_file(&env_file_path).unwrap();
+        assert_eq!(envs.variables.get("EXP_SRC_DIR"), Some(&src_dir_str));
+        assert_eq!(envs.variables.get("FOO"), Some(&"1".to_string()));
 
         // Adds env on missing EXP_SRC_DIR
         let env_file_path2 = envs_dir.join("test2.env");
         std::fs::write(&env_file_path2, "FOO=2").unwrap();
 
         validate_src_env(&src_dir).unwrap();
-        let envs = deserialize_envs(&env_file_path2).unwrap();
-        assert_eq!(envs.get("EXP_SRC_DIR"), Some(&src_dir_str));
-        assert_eq!(envs.get("FOO"), Some(&"2".to_string()));
+        let envs = Environment::from_file(&env_file_path2).unwrap();
+        assert_eq!(envs.variables.get("EXP_SRC_DIR"), Some(&src_dir_str));
+        assert_eq!(envs.variables.get("FOO"), Some(&"2".to_string()));
+    }
+
+    #[test]
+    fn teststest() {
+        // create an .env file with TEST=true
+        let mock_env_file = tempfile::Builder::new().suffix(".env").tempfile().unwrap();
+        let mock_env_file = mock_env_file.path().to_path_buf();
+        std::fs::write(&mock_env_file, "TEST=true").unwrap();
+
+        let envs = load_envs(&mock_env_file).unwrap();
+
+        // load_envs returns **all** currently loaded envs, so there will be more than
+        // just the one we set
+        assert!(envs.to_env_list().len() > 1);
+
+        // load_envs has created a variable called "TEST" with the value "true"
+        assert!(envs.contains_variable("TEST"));
+        assert_eq!(envs.get_value("TEST"), Some(&String::from("true")));
+
+        // and it is actually loaded
+        assert_eq!(dotenvy::var("TEST").unwrap(), "true");
     }
 }

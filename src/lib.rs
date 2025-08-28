@@ -257,10 +257,9 @@ fn execute_exp_repetitions(
     for (environment, rep) in running_order {
         let run_folder =
             harness::skeleton::build_run_directory(exp_series_dir, &environment, rep, length)?;
-
         trace!(
             "Using envs: {:?}",
-            harness::env::deserialize_envs(&environment)?
+            harness::env::Environment::from_file(&environment)?
         );
 
         harness::run::run_experiment(&file_name_string(exp_source_dir), &run_folder)?;
