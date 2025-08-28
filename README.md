@@ -95,8 +95,8 @@ value,3
 ```
 
 ## Reserved Environment Variables
-The `exomat` sets certain variables for every experiment. Any manual changes done to them will either
-be overwritten or cause you unnecessary pain.
+Some environment variable names are reserved by `exomat`. When running an
+experiment `exomat` will silently overwrite them:
 
 Var             | Content
 ----------------|---------------------------------
