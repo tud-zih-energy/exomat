@@ -3,7 +3,6 @@
 use chrono::Local;
 use log::{debug, info};
 use std::{
-    collections::HashMap,
     fs::OpenOptions,
     io::Write,
     os::unix::fs::OpenOptionsExt,
@@ -11,7 +10,7 @@ use std::{
 };
 
 use crate::duplicate_log_to_file;
-use crate::harness::env::{serialize_envs, validate_src_env};
+use crate::harness::env::{serialize_envs, validate_src_env, Environment};
 use crate::helper::archivist::{
     copy_harness_dir, copy_harness_file, create_harness_dir, create_harness_file,
 };
@@ -96,7 +95,7 @@ pub fn create_source_directory(exp_src_dir: &PathBuf) -> Result<()> {
     run_file.write_all(template_runfile_bytes)?;
 
     // write content to 0.env
-    let to_serialize = vec![HashMap::from([(
+    let to_serialize = vec![Environment::from_env_list(vec![(
         String::from("EXP_SRC_DIR"),
         exp_src_dir
             .canonicalize()

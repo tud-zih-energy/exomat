@@ -57,7 +57,7 @@ pub fn run_experiment(exp_name: &str, run_folder: &Path) -> Result<()> {
     let run = Command::new(run_folder_absolute.join(RUN_RUN_FILE))
         .stderr(Stdio::from(err_log))
         .stdout(Stdio::from(out_log))
-        .envs(envs)
+        .envs(envs.to_env_list())
         .current_dir(run_folder_absolute)
         .output()
         .map_err(|e| Error::HarnessRunError {
