@@ -10,7 +10,7 @@ use std::{
 };
 
 use crate::duplicate_log_to_file;
-use crate::harness::env::{serialize_envs, validate_src_env, Environment};
+use crate::harness::env::{validate_src_env, Environment, EnvironmentContainer};
 use crate::helper::archivist::{
     copy_harness_dir, copy_harness_file, create_harness_dir, create_harness_file,
 };
@@ -95,15 +95,16 @@ pub fn create_source_directory(exp_src_dir: &PathBuf) -> Result<()> {
     run_file.write_all(template_runfile_bytes)?;
 
     // write content to 0.env
-    let to_serialize = vec![Environment::from_env_list(vec![(
-        String::from("EXP_SRC_DIR"),
-        exp_src_dir
-            .canonicalize()
-            .expect("Cannot determine experiment source dir")
-            .display()
-            .to_string(),
-    )])];
-    serialize_envs(&exp_src_dir.join(SRC_ENV_DIR), &to_serialize)?;
+    let to_serialize =
+        EnvironmentContainer::from_env_list(vec![Environment::from_env_list(vec![(
+            String::from("EXP_SRC_DIR"),
+            exp_src_dir
+                .canonicalize()
+                .expect("Cannot determine experiment source dir")
+                .display()
+                .to_string(),
+        )])]);
+    to_serialize.serialize_envs(&exp_src_dir.join(SRC_ENV_DIR))?;
 
     info!("Experiment harness created under {}", exp_src_dir.display());
     Ok(())

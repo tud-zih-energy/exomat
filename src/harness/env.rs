@@ -140,6 +140,260 @@ impl Environment {
     }
 }
 
+/// List of multiple env files
+#[derive(Debug)]
+pub struct EnvironmentContainer {
+    environment_list: Vec<Environment>,
+}
+
+impl EnvironmentContainer {
+    /// Creates a new, empty EnvironmentContainer
+    pub fn new() -> Self {
+        EnvironmentContainer {
+            environment_list: vec![],
+        }
+    }
+
+    /// Fetch and deserialize existing environment variables from (multiple) .env files.
+    ///
+    /// Might return an empty EnvironmentContainer.
+    /// Delegates to get_existing_envs_by_fname(), has same errors & panics.
+    pub fn from_files(from: &PathBuf) -> Result<Self> {
+        let envs_by_fname = get_existing_envs_by_fname(from)?;
+
+        Ok(EnvironmentContainer {
+            environment_list: envs_by_fname
+                .into_iter()
+                .sorted_by_key(|(key, _)| key.clone())
+                .map(|(_, value)| value)
+                .collect::<Vec<Environment>>(),
+        })
+    }
+
+    pub fn from_env_list(list: Vec<Environment>) -> Self {
+        EnvironmentContainer {
+            environment_list: list,
+        }
+    }
+
+    /// Writes all envs of each HashMap in `files_to_write` to `exp_src_envs/[i].env`.
+    ///
+    /// Will each file if it does not exist and will entirely replace its
+    /// contents if it does.
+    /// This will fail if any parent directories of `exp_src_envs` to not exist.
+    ///
+    /// ## Errors
+    /// - Returns an EnvError if writing failed
+    pub fn serialize_envs(&self, exp_src_envs: &Path) -> Result<()> {
+        let leading_zeros = self.environment_list.len().to_string().len();
+
+        for (counter, environment) in self.environment_list.iter().enumerate() {
+            let env_file_name = format!("{:0lz$}.env", counter, lz = leading_zeros);
+            let file_path = &exp_src_envs.join(&env_file_name);
+
+            environment.to_file(&file_path)?;
+        }
+
+        Ok(())
+    }
+
+    /// Takes existing envs and combines them with the values from `to_add`.
+    ///
+    /// # Errors and Panics
+    /// - Panics if `to_add` is empty
+    /// - Panics if an inner vector has <= 1 elemts (variable without value)
+    /// - Same Errors and Panics as `check_env_names()`
+    pub fn add_environments(&mut self, to_add: Vec<Vec<String>>) -> Result<()> {
+        // check to_add
+        assert!(!to_add.is_empty(), "No env variables to add. Aborting.");
+        to_add
+            .iter()
+            .for_each(|v| assert!(v.len() > 1, "Found variable without value. Aborting."));
+
+        check_env_names(&to_add)?;
+
+        // collect all envs to combine
+        let to_add: EnvVarList = transform_env_list(&to_add)?;
+
+        // combine them, produces list of all env files with content
+        if self.environment_list.is_empty() {
+            self.environment_list = try_assemble_all(&Environment::new(), &to_add)?;
+        } else {
+            for file in self.environment_list.clone() {
+                for var in to_add.keys() {
+                    if file.variables.contains_key(var) {
+                        return Err(Error::EnvError {
+                            reason: format!("Var '{var}' is already set"),
+                        });
+                    }
+                }
+
+                match try_assemble_all(&file, &to_add) {
+                    Ok(file_vars) => self.environment_list.extend(file_vars),
+                    Err(e) => return Err(e),
+                };
+            }
+        };
+
+        Ok(())
+    }
+
+    /// Reads all variables from any .env files found in 'exp_source/[SRC_ENV_DIR]/'.
+    /// Appends all values from `to_append` and creates a file for each possible combination.
+    ///
+    /// Might create new files or overwrite existing .env files in `exp_source/[SRC_ENV_DIR]`.
+    ///
+    /// There are two cases where nothing will be changed:
+    /// - `to_append` is empty
+    /// - an inner vector in `to_append` is empty (only the corresponding variable is
+    ///   ignored, all other changes will still go through)
+    pub fn append_to_environments(&mut self, to_append: Vec<Vec<String>>) -> Result<()> {
+        if to_append.is_empty() {
+            return Ok(());
+        }
+
+        // check to_append, needs to happen before transforming
+        to_append.iter().filter(|v| v.len() <= 1).for_each(|v| {
+            warn!(
+                "Cannot edit variable without value. Skipping {}.",
+                v.first().unwrap()
+            )
+        });
+
+        // collect all existing envs
+        let to_append: EnvVarList = transform_env_list(&to_append)?;
+
+        // env exists?
+        for var in to_append.keys() {
+            assert_exists(&self.environment_list, |env_file| {
+                env_file.variables.contains_key(var)
+            })
+            .map_err(|e| Error::EnvError {
+                reason: format!("Variable {var} cannot be edited: {e}"),
+            })?;
+        }
+
+        // combine them, produces list of all env files with content
+        self.try_edit_values(&to_append, EditMode::Append)
+    }
+
+    /// Reads all variables from any .env files found in 'exp_source/[SRC_ENV_DIR]/'.
+    /// Removes either a whole variable with all its values, or some values of a variable,
+    /// depending on the content of `to_remove`. For example:
+    ///
+    /// `to_remove` = `[["FOO", "1", "2"], ["BAR"]]`
+    /// - removes any mentions of `FOO="1"`
+    /// - removes any mentions of `FOO="2"`
+    /// - removes any mentions of `BAR`, no matter the value
+    ///
+    /// > assuming "FOO" with at least its values "1" and "2", as well as "BAR" with
+    /// > any values, are present in at least one environment in `exp_source/[SRC_ENV_DIR]/`.
+    ///
+    /// Might remove or overwrite existing .env files in `exp_source/[SRC_ENV_DIR]`.
+    ///
+    /// `to_remove` may be empty, nothing will be changed in that case.
+    pub fn remove_from_environments(&mut self, to_remove: Vec<Vec<String>>) -> Result<()> {
+        if to_remove.is_empty() {
+            return Ok(());
+        }
+
+        // collect all existing envs
+        let to_remove: EnvVarList = transform_env_list(&to_remove)?;
+
+        for (var, vals) in &to_remove {
+            // var exists?
+            assert_exists(&self.environment_list, |env_file| {
+                env_file.variables.contains_key(var)
+            })
+            .map_err(|e| Error::EnvError {
+                reason: format!("Variable {var} cannot be edited: {e}"),
+            })?;
+
+            // vals exists?
+            for val in vals {
+                assert_exists(&self.environment_list, |env_file| {
+                    env_file.variables.get(var).unwrap().contains(val)
+                })
+                .map_err(|e| Error::EnvError {
+                    reason: format!("Value {val} of {var} cannot be edited: {e}"),
+                })?;
+            }
+        }
+
+        // combine them, produces list of all env files with content
+        self.try_edit_values(&to_remove, EditMode::Remove)
+    }
+
+    /// Edit existing environment variables.
+    ///
+    /// Depending on `edit_mode` it will:
+    /// - `EditMode::Append`:
+    ///   Collect all existing variables and add all values in `to_edit` to the list of possible values.
+    /// - `EditMode::Remove`:
+    ///   Collect all existing variables and remove all values from `to_edit` from the list of possible values.
+    ///   Variables with empty value lists will then also be removed.
+    ///
+    /// Then calls on `try_assemble_all` to generate a "list of files" so to say, which
+    /// contains all possible combinations of all values.
+    ///
+    /// Duplicate values will be removed before creating this list.
+    ///
+    /// # Panics
+    /// - panics if a key from `to_edit` cannot be found in `given`
+    fn try_edit_values(&mut self, to_edit: &EnvVarList, edit_mode: EditMode) -> Result<()> {
+        let mut possible_envs: EnvVarList = HashMap::new();
+
+        // create a list of all possible values from all given files
+        // collect values with the same key in one Vec
+        for env_file_content in &self.environment_list {
+            for (var, val) in env_file_content.variables.iter() {
+                // push to value of entry "var"
+                possible_envs
+                    .entry(var.clone())
+                    .or_default()
+                    .push(val.clone());
+            }
+        }
+
+        // remove duplicates
+        for values in possible_envs.values_mut() {
+            values.sort();
+            values.dedup();
+        }
+
+        debug!("All possible environment values: {possible_envs:?}");
+
+        match edit_mode {
+            EditMode::Append => {
+                // add new values to the list, remove duplicates
+                for (var, vals) in to_edit {
+                    let v = possible_envs.get_mut(var).unwrap();
+                    v.extend(vals.clone());
+
+                    v.sort();
+                    v.dedup();
+                }
+            }
+            EditMode::Remove => {
+                let vars_to_remove = helper_remove_env_values(&mut possible_envs, to_edit)?;
+
+                // remove vars that don't have values anymore
+                for var in vars_to_remove {
+                    assert!(possible_envs.remove_entry(&var).is_some());
+                }
+            }
+        }
+
+        // assemble files that need to be created, return
+        self.environment_list = try_assemble_all(&Environment::new(), &possible_envs)?;
+        Ok(())
+    }
+
+    pub fn environment_count(&self) -> u64 {
+        self.environment_list.len() as u64
+    }
+}
+
 /// map of all variables with all possible values
 ///
 /// ## Example
@@ -151,37 +405,6 @@ impl Environment {
 /// can be encoded in an EnvVarList like this:
 /// - `["FOO" = ["true", "false"], "BAR" = ["1", "2"]]`
 pub type EnvVarList = HashMap<String, Vec<String>>;
-
-/// list of maps with variables (and values) taken from multiple .env files
-///
-/// ## Example
-/// - `0.env`: FOO=true, BAR=1
-/// - `1.env`: FOO=true, BAR=2
-///
-/// can be encoded in an EnvFileList like this:
-/// - `[["FOO" = "true", "BAR" = "1"], ["FOO" = "true", "BAR" = "2"]]`
-pub type EnvFileList = Vec<Environment>;
-
-/// Writes all envs of each HashMap in `files_to_write` to `exp_src_envs/[i].env`.
-///
-/// Will each file if it does not exist and will entirely replace its
-/// contents if it does.
-/// This will fail if any parent directories of `exp_src_envs` to not exist.
-///
-/// ## Errors
-/// - Returns an EnvError if writing failed
-pub fn serialize_envs(exp_src_envs: &Path, files_to_write: &EnvFileList) -> Result<()> {
-    let leading_zeros = files_to_write.len().to_string().len();
-
-    for (counter, environment) in files_to_write.iter().enumerate() {
-        let env_file_name = format!("{:0lz$}.env", counter, lz = leading_zeros);
-        let file_path = &exp_src_envs.join(&env_file_name);
-
-        environment.to_file(&file_path)?;
-    }
-
-    Ok(())
-}
 
 /// Collects paths of all .env files in `from`. Returns `None` if
 /// no .env files were found.
@@ -231,147 +454,6 @@ pub fn fetch_env_files(from: &PathBuf) -> Option<Vec<PathBuf>> {
         true => None,
         false => Some(files),
     }
-}
-
-/// Reads all variables from any .env files found in 'exp_source/[SRC_ENV_DIR]/'.
-/// Combines them with the values from `to_add` and creates a file for each
-/// possible combination.
-///
-/// Might create new files or overwrite existing .env files in `exp_source`.
-///
-/// # Panics
-/// - Panics if `to_add` is empty
-pub fn add_environments(
-    existing_envs: &EnvFileList,
-    to_add: Vec<Vec<String>>,
-) -> Result<EnvFileList> {
-    // check to_add
-    assert!(!to_add.is_empty(), "No env variables to add. Aborting.");
-    to_add
-        .iter()
-        .for_each(|v| assert!(v.len() > 1, "Found variable without value. Aborting."));
-
-    check_env_names(&to_add)?;
-
-    // collect all envs to combine
-    let to_add: EnvVarList = transform_env_list(&to_add)?;
-    let mut files_to_write: EnvFileList = Vec::new();
-
-    // combine them, produces list of all env files with content
-    if existing_envs.is_empty() {
-        files_to_write = try_assemble_all(&Environment::new(), &to_add)?;
-    } else {
-        for file in existing_envs {
-            for var in to_add.keys() {
-                if file.variables.contains_key(var) {
-                    return Err(Error::EnvError {
-                        reason: format!("Var '{var}' is already set"),
-                    });
-                }
-            }
-
-            match try_assemble_all(file, &to_add) {
-                Ok(file_vars) => files_to_write.extend(file_vars),
-                Err(e) => return Err(e),
-            };
-        }
-    };
-
-    Ok(files_to_write)
-}
-
-/// Reads all variables from any .env files found in 'exp_source/[SRC_ENV_DIR]/'.
-/// Appends all values from `to_append` and creates a file for each possible combination.
-///
-/// Might create new files or overwrite existing .env files in `exp_source/[SRC_ENV_DIR]`.
-///
-/// There are two cases where nothing will be changed:
-/// - `to_append` is empty
-/// - an inner vector in `to_append` is empty (only the corresponding variable is
-///   ignored, all other changes will still go through)
-pub fn append_to_environments(
-    existing_envs: &EnvFileList,
-    to_append: Vec<Vec<String>>,
-) -> Result<EnvFileList> {
-    if to_append.is_empty() {
-        return Ok((*existing_envs).to_owned());
-    }
-
-    // check to_append, needs to happen before transforming
-    to_append.iter().filter(|v| v.len() <= 1).for_each(|v| {
-        warn!(
-            "Cannot edit variable without value. Skipping {}.",
-            v.first().unwrap()
-        )
-    });
-
-    // collect all existing envs
-    let to_append: EnvVarList = transform_env_list(&to_append)?;
-
-    // env exists?
-    for var in to_append.keys() {
-        assert_exists(existing_envs, |env_file| {
-            env_file.variables.contains_key(var)
-        })
-        .map_err(|e| Error::EnvError {
-            reason: format!("Variable {var} cannot be edited: {e}"),
-        })?;
-    }
-
-    // combine them, produces list of all env files with content
-    let files_to_write = try_edit_values(existing_envs, &to_append, EditMode::Append)?;
-    Ok(files_to_write)
-}
-
-/// Reads all variables from any .env files found in 'exp_source/[SRC_ENV_DIR]/'.
-/// Removes either a whole variable with all its values, or some values of a variable,
-/// depending on the content of `to_remove`. For example:
-///
-/// `to_remove` = `[["FOO", "1", "2"], ["BAR"]]`
-/// - removes any mentions of `FOO="1"`
-/// - removes any mentions of `FOO="2"`
-/// - removes any mentions of `BAR`, no matter the value
-///
-/// > assuming "FOO" with at least its values "1" and "2", as well as "BAR" with
-/// > any values, are present in at least one environment in `exp_source/[SRC_ENV_DIR]/`.
-///
-/// Might remove or overwrite existing .env files in `exp_source/[SRC_ENV_DIR]`.
-///
-/// `to_remove` may be empty, nothing will be changed in that case.
-pub fn remove_from_environments(
-    existing_envs: &EnvFileList,
-    to_remove: Vec<Vec<String>>,
-) -> Result<EnvFileList> {
-    if to_remove.is_empty() {
-        return Ok(existing_envs.to_owned());
-    }
-
-    // collect all existing envs
-    let to_remove: EnvVarList = transform_env_list(&to_remove)?;
-
-    for (var, vals) in &to_remove {
-        // var exists?
-        assert_exists(existing_envs, |env_file| {
-            env_file.variables.contains_key(var)
-        })
-        .map_err(|e| Error::EnvError {
-            reason: format!("Variable {var} cannot be edited: {e}"),
-        })?;
-
-        // vals exists?
-        for val in vals {
-            assert_exists(existing_envs, |env_file| {
-                env_file.variables.get(var).unwrap().contains(val)
-            })
-            .map_err(|e| Error::EnvError {
-                reason: format!("Value {val} of {var} cannot be edited: {e}"),
-            })?;
-        }
-    }
-
-    // combine them, produces list of all env files with content
-    let files_to_write = try_edit_values(existing_envs, &to_remove, EditMode::Remove)?;
-    Ok(files_to_write)
 }
 
 /// Set the $EXP_SRC_DIR env in `src_dir` to the absolute path of`src_dir`
@@ -469,101 +551,36 @@ where
 ///
 /// # Errors
 /// - Returns `EnvError` if a key from `to_add` is already in `given`
-fn try_assemble_all(given: &Environment, to_add: &EnvVarList) -> Result<EnvFileList> {
+fn try_assemble_all(given: &Environment, to_add: &EnvVarList) -> Result<Vec<Environment>> {
     // combine all values from to_add
-    let mut combinations: EnvFileList = to_add
-        .values()
-        .multi_cartesian_product()
-        .collect::<Vec<_>>() // list of all possible value combinations without keys
-        .into_iter()
-        .map(|val_combos| {
-            let pairs = to_add
-                .keys()
-                .cloned()
-                .zip(val_combos.iter().map(|s| s.to_string()))
-                .collect::<Vec<(String, String)>>();
-            Environment::from_env_list(pairs)
-        })
-        .collect::<EnvFileList>();
+    let mut combinations = EnvironmentContainer {
+        environment_list: to_add
+            .values()
+            .multi_cartesian_product()
+            .collect::<Vec<_>>() // list of all possible value combinations without keys
+            .into_iter()
+            .map(|val_combos| {
+                let pairs = to_add
+                    .keys()
+                    .cloned()
+                    .zip(val_combos.iter().map(|s| s.to_string()))
+                    .collect::<Vec<(String, String)>>();
+                Environment::from_env_list(pairs)
+            })
+            .collect(),
+    };
 
     trace!("Adding env combinations: {combinations:?}");
 
     // add existing variables to each list
     combinations
+        .environment_list
         .iter_mut()
         .for_each(|combo| combo.variables.extend(given.variables.clone()));
 
     debug!("Finished assembling environments: {combinations:?}");
 
-    Ok(combinations)
-}
-
-/// Edit existing environment variables.
-///
-/// Depending on `edit_mode` it will:
-/// - `EditMode::Append`:
-///   Collect all existing variables and add all values in `to_edit` to the list of possible values.
-/// - `EditMode::Remove`:
-///   Collect all existing variables and remove all values from `to_edit` from the list of possible values.
-///   Variables with empty value lists will then also be removed.
-///
-/// Then calls on `try_assemble_all` to generate a "list of files" so to say, which
-/// contains all possible combinations of all values.
-///
-/// Duplicate values will be removed before creating this list.
-///
-/// # Panics
-/// - panics if a key from `to_edit` cannot be found in `given`
-fn try_edit_values(
-    given: &EnvFileList,
-    to_edit: &EnvVarList,
-    edit_mode: EditMode,
-) -> Result<EnvFileList> {
-    let mut possible_envs: EnvVarList = HashMap::new();
-
-    // create a list of all possible values from all given files
-    // collect values with the same key in one Vec
-    for env_file_content in given {
-        for (var, val) in env_file_content.variables.iter() {
-            // push to value of entry "var"
-            possible_envs
-                .entry(var.clone())
-                .or_default()
-                .push(val.clone());
-        }
-    }
-
-    // remove duplicates
-    for values in possible_envs.values_mut() {
-        values.sort();
-        values.dedup();
-    }
-
-    debug!("All possible environment values: {possible_envs:?}");
-
-    match edit_mode {
-        EditMode::Append => {
-            // add new values to the list, remove duplicates
-            for (var, vals) in to_edit {
-                let v = possible_envs.get_mut(var).unwrap();
-                v.extend(vals.clone());
-
-                v.sort();
-                v.dedup();
-            }
-        }
-        EditMode::Remove => {
-            let vars_to_remove = helper_remove_env_values(&mut possible_envs, to_edit)?;
-
-            // remove vars that don't have values anymore
-            for var in vars_to_remove {
-                assert!(possible_envs.remove_entry(&var).is_some());
-            }
-        }
-    }
-
-    // assemble files that need to be created, return
-    try_assemble_all(&Environment::new(), &possible_envs)
+    Ok(combinations.environment_list)
 }
 
 /// Remove any value of a key given in `to_edit` from `possible_envs`.
@@ -649,22 +666,7 @@ fn transform_env_list(old_list: &Vec<Vec<String>>) -> Result<EnvVarList> {
     Ok(transformed)
 }
 
-/// Fetch and deserialize existing environment variables from .env files.
-///
-/// Might return an empty Vector.
-/// Delegates to get_existing_envs_by_fname(), has same errors & panics.
-pub fn get_existing_envs(from: &PathBuf) -> Result<EnvFileList> {
-    let envs_by_fname = get_existing_envs_by_fname(from)?;
-    Ok(envs_by_fname
-        .into_iter()
-        .sorted_by_key(|(key, _)| key.clone())
-        .map(|(_, value)| value)
-        .collect())
-}
-
 /// Fetch and load existing environment variables from .env file preserving file names
-///
-///
 ///
 /// ## Errors and Panics
 /// - Panics if `from` could not be read
@@ -721,19 +723,19 @@ fn generate_environments(
     to_append: Vec<Vec<String>>,
     to_remove: Vec<Vec<String>>,
 ) -> Result<()> {
-    let mut to_serialize = get_existing_envs(&env_path)?;
+    let mut env = EnvironmentContainer::from_files(&env_path)?;
 
     // edit existing envs
     if !to_add.is_empty() {
-        to_serialize = add_environments(&to_serialize, to_add)?;
+        env.add_environments(to_add)?;
     }
 
     if !to_append.is_empty() {
-        to_serialize = append_to_environments(&to_serialize, to_append)?;
+        env.append_to_environments(to_append)?;
     }
 
     if !to_remove.is_empty() {
-        to_serialize = remove_from_environments(&to_serialize, to_remove)?;
+        env.remove_from_environments(to_remove)?;
     }
 
     // remove existing env files
@@ -743,7 +745,7 @@ fn generate_environments(
     }
 
     // serialize new env files
-    serialize_envs(&env_path, &to_serialize)
+    env.serialize_envs(&env_path)
 }
 
 /// print a pretty table of all configured environments in env_path
@@ -960,29 +962,31 @@ mod tests {
     #[test]
     #[should_panic(expected = "No env variables to add")]
     fn env_add_empty() {
+        let mut env = EnvironmentContainer::new();
         let to_add: Vec<Vec<String>> = Vec::new();
 
         // should panic, because to_add is empty
-        let _ = add_environments(&Vec::new(), to_add);
+        let _ = env.add_environments(to_add);
     }
 
     #[test]
     #[should_panic]
     fn env_add_no_val() {
+        let mut env = EnvironmentContainer::new();
         let to_add = vec![vec!["VAR".to_string()]];
 
-        let _ = add_environments(&Vec::new(), to_add);
+        let _ = env.add_environments(to_add);
     }
 
     #[test]
     fn env_add_repeat_env() {
-        let existing = Vec::new();
+        let mut env = EnvironmentContainer::new();
         let to_add = vec![vec!["VAR".to_string(), "VAL".to_string()]];
-        let combined = add_environments(&existing, to_add).unwrap();
+        env.add_environments(to_add).unwrap();
 
         // env was written
         assert_eq!(
-            combined.first().unwrap().variables.get("VAR"),
+            env.environment_list.first().unwrap().variables.get("VAR"),
             Some(&"VAL".to_string())
         );
 
@@ -992,35 +996,48 @@ mod tests {
             "VAL".to_string(),
             "VAL2".to_string(),
         ]];
-        assert!(add_environments(&combined, to_add).is_err());
+        assert!(env.add_environments(to_add).is_err());
     }
 
     #[test]
     #[should_panic(expected = "Item does not exist.")]
     fn env_append_no_preexisting() {
-        let existing = Vec::new();
+        let mut env = EnvironmentContainer::new();
 
         // don't set any variables, try to edit
         let to_append = vec![vec!["VAR1".to_string(), "VALUE1".to_string()]];
-        append_to_environments(&existing, to_append).unwrap(); //panic here
+        env.append_to_environments(to_append).unwrap(); //panic here
     }
 
     #[test]
     fn env_append_valid() {
         // list with "VAR"
-        let existing = vec![Environment::from_env_list(vec![(
-            "VAR".to_string(),
-            "VAL".to_string(),
-        )])];
+        let mut env =
+            EnvironmentContainer::from_env_list(vec![Environment::from_env_list(vec![(
+                "VAR".to_string(),
+                "VAL".to_string(),
+            )])]);
 
         // edit "VAR"
         let to_append = vec![vec!["VAR".to_string(), "ANOTHER".to_string()]];
-        let res = append_to_environments(&existing, to_append).unwrap();
+        env.append_to_environments(to_append).unwrap();
 
         // check "VAR", has to be set to "VAL" once and to "ANOTHER" once
-        assert_eq!(res.len(), 2);
-        let res_first = res.first().unwrap().variables.get("VAR").unwrap();
-        let res_last = res.last().unwrap().variables.get("VAR").unwrap();
+        assert_eq!(env.environment_count(), 2);
+        let res_first = env
+            .environment_list
+            .first()
+            .unwrap()
+            .variables
+            .get("VAR")
+            .unwrap();
+        let res_last = env
+            .environment_list
+            .last()
+            .unwrap()
+            .variables
+            .get("VAR")
+            .unwrap();
 
         assert_eq!(res_first, &"ANOTHER".to_string());
         assert_eq!(res_last, &"VAL".to_string());
@@ -1029,46 +1046,44 @@ mod tests {
     #[test]
     fn env_append_no_value() {
         // list with "VAR"
-        let existing = vec![Environment::from_env_list(vec![
+        let mut env = EnvironmentContainer::from_env_list(vec![Environment::from_env_list(vec![
             ("VAR1".to_string(), "VAL1".to_string()),
             ("VAR2".to_string(), "VAL2".to_string()),
-        ])];
+        ])]);
 
         // edit "VAR1", but not "VAR2"
         let to_append = vec![
             vec!["VAR1".to_string(), "VALUE1".to_string()],
             vec!["VAR2".to_string()],
         ];
-        let res = append_to_environments(&existing, to_append).unwrap();
+        env.append_to_environments(to_append).unwrap();
 
         // expected: no error, value of VAR1 changed but VAR2 not touched
-        assert_eq!(res.len(), 2);
-        let res_first_1 = res.first().unwrap().variables.get("VAR1").unwrap();
-        let res_first_2 = res.first().unwrap().variables.get("VAR2").unwrap();
-        let res_last_1 = res.last().unwrap().variables.get("VAR1").unwrap();
-        let res_last_2 = res.last().unwrap().variables.get("VAR2").unwrap();
+        assert_eq!(env.environment_count(), 2);
+        let env1 = env.environment_list.first().unwrap();
+        let env2 = env.environment_list.last().unwrap();
 
-        assert_eq!(res_first_1, &"VAL1".to_string());
-        assert_eq!(res_first_2, &"VAL2".to_string());
-        assert_eq!(res_last_1, &"VALUE1".to_string());
-        assert_eq!(res_last_2, &"VAL2".to_string());
+        assert_eq!(env1.get_value("VAR1").unwrap(), &"VAL1".to_string());
+        assert_eq!(env1.get_value("VAR2").unwrap(), &"VAL2".to_string());
+        assert_eq!(env2.get_value("VAR1").unwrap(), &"VALUE1".to_string());
+        assert_eq!(env2.get_value("VAR2").unwrap(), &"VAL2".to_string());
     }
 
     #[test]
     #[should_panic(expected = "Item does not exist.")]
     fn env_remove_no_preexisting() {
         // list with "VAR"
-        let existing = Vec::new();
+        let mut env = EnvironmentContainer::new();
 
         // don't set any variables, try to edit
         let to_remove = vec![vec!["VAR1".to_string(), "VALUE1".to_string()]];
-        append_to_environments(&existing, to_remove).unwrap(); //panic here
+        env.append_to_environments(to_remove).unwrap(); //panic here
     }
 
     #[test]
     fn env_remove_valid() {
         // list with "VAR1" and "VAR2"
-        let existing = vec![
+        let mut env = EnvironmentContainer::from_env_list(vec![
             Environment::from_env_list(vec![
                 ("VAR1".to_string(), "VAL".to_string()),
                 ("VAR2".to_string(), "VAL".to_string()),
@@ -1077,7 +1092,7 @@ mod tests {
                 ("VAR1".to_string(), "VALUE".to_string()),
                 ("VAR2".to_string(), "VAL".to_string()),
             ]),
-        ];
+        ]);
 
         let to_remove = vec![
             vec!["VAR1".to_string(), "VALUE".to_string()], // remove value
@@ -1085,13 +1100,13 @@ mod tests {
         ];
 
         // remove
-        let res = remove_from_environments(&existing, to_remove).unwrap();
+        env.remove_from_environments(to_remove).unwrap();
 
-        assert_eq!(res.len(), 1);
-        assert!(res.first().unwrap().variables.get("VAR2").is_none());
+        assert_eq!(env.environment_count(), 1);
+        let env1 = env.environment_list.first().unwrap();
 
-        let res_var1 = res.first().unwrap().variables.get("VAR1").unwrap();
-        assert_eq!(res_var1, &"VAL".to_string());
+        assert_eq!(env1.get_value("VAR1").unwrap(), &"VAL".to_string());
+        assert!(env1.get_value("VAR2").is_none());
     }
 
     #[test]
@@ -1195,9 +1210,9 @@ mod tests {
                     ("01.env".to_string(), expected_env_bar.clone()),
                     ("two.env".to_string(), expected_env_baz.clone())]));
 
-            let all_envs_no_fname = get_existing_envs(&PathBuf::from(".")).unwrap();
+            let all_envs_no_fname = EnvironmentContainer::from_files(&PathBuf::from(".")).unwrap();
             assert_eq!(
-                all_envs_no_fname,
+                all_envs_no_fname.environment_list,
                 vec![expected_env_bar, expected_env_baz]);
         }
     }
