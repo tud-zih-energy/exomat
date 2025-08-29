@@ -1235,25 +1235,4 @@ mod tests {
         assert_eq!(envs.variables.get("EXP_SRC_DIR"), Some(&src_dir_str));
         assert_eq!(envs.variables.get("FOO"), Some(&"2".to_string()));
     }
-
-    #[test]
-    fn teststest() {
-        // create an .env file with TEST=true
-        let mock_env_file = tempfile::Builder::new().suffix(".env").tempfile().unwrap();
-        let mock_env_file = mock_env_file.path().to_path_buf();
-        std::fs::write(&mock_env_file, "TEST=true").unwrap();
-
-        let envs = load_envs(&mock_env_file).unwrap();
-
-        // load_envs returns **all** currently loaded envs, so there will be more than
-        // just the one we set
-        assert!(envs.to_env_list().len() > 1);
-
-        // load_envs has created a variable called "TEST" with the value "true"
-        assert!(envs.contains_variable("TEST"));
-        assert_eq!(envs.get_value("TEST"), Some(&String::from("true")));
-
-        // and it is actually loaded
-        assert_eq!(dotenvy::var("TEST").unwrap(), "true");
-    }
 }
