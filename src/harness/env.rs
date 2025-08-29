@@ -70,6 +70,42 @@ impl Environment {
         }
     }
 
+    /// Loads and returns all currently loaded environment variables, complete with variables
+    /// defined in `env_file`.
+    ///
+    /// If a variable set in `env_file` is already loaded, it will be overwritten with
+    /// the value given in `env_file`.
+    ///
+    /// ## Example
+    /// ```
+    /// use exomat::harness::env::Environment;
+    ///
+    /// // create an .env file with TEST=true
+    /// let mock_env_file = tempfile::Builder::new()
+    ///     .suffix(".env")
+    ///     .tempfile()
+    ///     .unwrap();
+    /// let mock_env_file = mock_env_file.path().to_path_buf();
+    /// std::fs::write(&mock_env_file, "TEST=true").unwrap();
+    ///
+    /// let envs = Environment::from_file_with_load(&mock_env_file).unwrap();
+    ///
+    /// // load_envs returns **all** currently loaded envs, so there will be more than
+    /// // just the one we set
+    /// assert!(envs.to_env_list().len() > 1);
+    ///
+    /// // load_envs has created a variable called "TEST" with the value "true"
+    /// assert!(envs.contains_variable("TEST"));
+    /// assert_eq!(envs.get_value("TEST"), Some(&String::from("true")));
+    ///
+    /// // and it is actually loaded
+    /// assert_eq!(dotenvy::var("TEST").unwrap(), "true");
+    /// ```
+    pub fn from_file_with_load(env_file: &PathBuf) -> Result<Self> {
+        dotenvy::from_path_override(env_file)?;
+        Ok(Environment::from_env_list(dotenvy::vars().collect()))
+    }
+
     /// Serialize current envs to `exp_src_envs/file_name`.
     ///
     /// Will create a new file if `file_name` does not exist and will overwrite it if it does.
@@ -125,42 +161,6 @@ pub type EnvVarList = HashMap<String, Vec<String>>;
 /// can be encoded in an EnvFileList like this:
 /// - `[["FOO" = "true", "BAR" = "1"], ["FOO" = "true", "BAR" = "2"]]`
 pub type EnvFileList = Vec<Environment>;
-
-/// Loads and returns all currently loaded environment variables, complete with variables
-/// defined in `env_file`.
-///
-/// If a variable set in `env_file` is already loaded, it will be overwritten with
-/// the value given in `env_file`.
-///
-/// ## Example
-/// ```
-/// use exomat::harness::env::load_envs;
-///
-/// // create an .env file with TEST=true
-/// let mock_env_file = tempfile::Builder::new()
-///     .suffix(".env")
-///     .tempfile()
-///     .unwrap();
-/// let mock_env_file = mock_env_file.path().to_path_buf();
-/// std::fs::write(&mock_env_file, "TEST=true").unwrap();
-///
-/// let envs = load_envs(&mock_env_file).unwrap();
-///
-/// // load_envs returns **all** currently loaded envs, so there will be more than
-/// // just the one we set
-/// assert!(envs.to_env_list().len() > 1);
-///
-/// // load_envs has created a variable called "TEST" with the value "true"
-/// assert!(envs.contains_variable("TEST"));
-/// assert_eq!(envs.get_value("TEST"), Some(&String::from("true")));
-///
-/// // and it is actually loaded
-/// assert_eq!(dotenvy::var("TEST").unwrap(), "true");
-/// ```
-pub fn load_envs(env_file: &PathBuf) -> Result<Environment> {
-    dotenvy::from_path_override(env_file)?;
-    Ok(Environment::from_env_list(dotenvy::vars().collect()))
-}
 
 /// Writes all envs of each HashMap in `files_to_write` to `exp_src_envs/[i].env`.
 ///
