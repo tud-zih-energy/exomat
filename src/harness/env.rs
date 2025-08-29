@@ -219,20 +219,21 @@ impl EnvironmentContainer {
         if self.environment_list.is_empty() {
             self.environment_list = try_assemble_all(&Environment::new(), &to_add)?;
         } else {
-            for file in self.environment_list.clone() {
+            let mut new_list = vec![];
+
+            for file in &self.environment_list {
                 for var in to_add.keys() {
-                    if file.variables.contains_key(var) {
+                    if file.contains_variable(var) {
                         return Err(Error::EnvError {
                             reason: format!("Var '{var}' is already set"),
                         });
                     }
                 }
 
-                match try_assemble_all(&file, &to_add) {
-                    Ok(file_vars) => self.environment_list.extend(file_vars),
-                    Err(e) => return Err(e),
-                };
+                new_list.extend(try_assemble_all(&file, &to_add)?);
             }
+
+            self.environment_list = new_list;
         };
 
         Ok(())
@@ -997,6 +998,37 @@ mod tests {
             "VAL2".to_string(),
         ]];
         assert!(env.add_environments(to_add).is_err());
+    }
+
+    #[test]
+    fn env_add_multiple() {
+        // add to empty EnvironmentContainer
+        let mut env = EnvironmentContainer::new();
+        let to_add = vec![
+            vec!["VAR1".to_string(), "VAL1".to_string(), "VAL11".to_string()],
+            vec!["VAR2".to_string(), "VAL2".to_string(), "VAL22".to_string()],
+        ];
+        env.add_environments(to_add).unwrap();
+
+        assert_eq!(env.environment_count(), 4);
+        assert!(env.environment_list.iter().all(|environment| {
+            environment.contains_variable("VAR1") && environment.contains_variable("VAR2")
+        }));
+
+        // add to non-empty EnvironmentContainer
+        let to_add = vec![vec![
+            "VAR3".to_string(),
+            "VAL3".to_string(),
+            "VAL33".to_string(),
+        ]];
+        env.add_environments(to_add).unwrap();
+
+        assert_eq!(env.environment_count(), 8);
+        assert!(env.environment_list.iter().all(|environment| {
+            environment.contains_variable("VAR1")
+                && environment.contains_variable("VAR2")
+                && environment.contains_variable("VAR3")
+        }))
     }
 
     #[test]
