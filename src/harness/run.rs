@@ -9,7 +9,7 @@ use std::{
 };
 use strip_ansi::strip_ansi;
 
-use super::env::load_envs;
+use super::env::Environment;
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
 
@@ -36,7 +36,7 @@ pub fn run_experiment(exp_name: &str, run_folder: &Path) -> Result<()> {
         "Missing environment.env in experiment run directory"
     );
 
-    let envs = load_envs(&run_folder.join(RUN_ENV_FILE))?;
+    let envs = Environment::from_file_with_load(&run_folder.join(RUN_ENV_FILE))?;
 
     let out_log = OpenOptions::new()
         .append(true)
