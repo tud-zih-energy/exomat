@@ -1,3 +1,5 @@
+//! Implementation of the EnvironmentContainer struct
+
 use itertools::Itertools;
 use log::{debug, warn};
 use std::collections::HashMap;
@@ -46,19 +48,21 @@ impl EnvironmentContainer {
         })
     }
 
+    /// Returns a new EnvironmentContainer from the content of `list`.
     pub fn from_env_list(list: Vec<Environment>) -> Self {
         EnvironmentContainer {
             environment_list: list,
         }
     }
 
+    /// Returns a list of all Environments currently set in this EnvironmentContainer.
     pub fn to_env_list(&self) -> &Vec<Environment> {
         &self.environment_list
     }
 
-    /// Writes all envs of each HashMap in `files_to_write` to `exp_src_envs/[i].env`.
+    /// Writes all currently defined envs to `exp_src_envs/[i].env`.
     ///
-    /// Will each file if it does not exist and will entirely replace its
+    /// Will create each file if it does not exist and will entirely replace its
     /// contents if it does.
     /// This will fail if any parent directories of `exp_src_envs` to not exist.
     ///
@@ -77,12 +81,14 @@ impl EnvironmentContainer {
         Ok(())
     }
 
-    /// Takes existing envs and combines them with the values from `to_add`.
+    /// Takes existing envs and combines them with the variables from `to_add`.
+    /// Does not overwrite existing variables.
     ///
     /// # Errors and Panics
     /// - Panics if `to_add` is empty
     /// - Panics if an inner vector has <= 1 elemts (variable without value)
     /// - Same Errors and Panics as `check_env_names()`
+    /// - Returns an `EnvError` if a variable from `to_add` is already set
     pub fn add_environments(&mut self, to_add: Vec<Vec<String>>) -> Result<()> {
         // check to_add
         assert!(!to_add.is_empty(), "No env variables to add. Aborting.");
@@ -119,15 +125,15 @@ impl EnvironmentContainer {
         Ok(())
     }
 
-    /// Reads all variables from any .env files found in 'exp_source/[SRC_ENV_DIR]/'.
-    /// Appends all values from `to_append` and creates a file for each possible combination.
-    ///
-    /// Might create new files or overwrite existing .env files in `exp_source/[SRC_ENV_DIR]`.
+    /// Appends all values from `to_append` to the existing variables.
     ///
     /// There are two cases where nothing will be changed:
     /// - `to_append` is empty
     /// - an inner vector in `to_append` is empty (only the corresponding variable is
     ///   ignored, all other changes will still go through)
+    ///
+    /// ## Errors
+    /// - Returns an `EnvError` if a variable from `to_append` does not exist yet.
     pub fn append_to_environments(&mut self, to_append: Vec<Vec<String>>) -> Result<()> {
         if to_append.is_empty() {
             return Ok(());
@@ -154,25 +160,28 @@ impl EnvironmentContainer {
             })?;
         }
 
-        // combine them, produces list of all env files with content
+        // combine them, sets self.environment_list
         self.try_edit_values(&to_append, EditMode::Append)
     }
 
-    /// Reads all variables from any .env files found in 'exp_source/[SRC_ENV_DIR]/'.
+    /// Remove a variable from all Environments.
+    ///
     /// Removes either a whole variable with all its values, or some values of a variable,
     /// depending on the content of `to_remove`. For example:
-    ///
-    /// `to_remove` = `[["FOO", "1", "2"], ["BAR"]]`
-    /// - removes any mentions of `FOO="1"`
-    /// - removes any mentions of `FOO="2"`
-    /// - removes any mentions of `BAR`, no matter the value
+    /// ```notest
+    /// env_container.remove_from_environments([vec!["FOO", "1", "2"], vec!["BAR"]])
+    /// // removes any mentions of `FOO="1"`
+    /// // removes any mentions of `FOO="2"`
+    /// // removes any mentions of `BAR`, no matter the value
+    /// ```
     ///
     /// > assuming "FOO" with at least its values "1" and "2", as well as "BAR" with
-    /// > any values, are present in at least one environment in `exp_source/[SRC_ENV_DIR]/`.
-    ///
-    /// Might remove or overwrite existing .env files in `exp_source/[SRC_ENV_DIR]`.
+    /// > any values, are present in at least one environment.
     ///
     /// `to_remove` may be empty, nothing will be changed in that case.
+    ///
+    /// ## Errors
+    /// - Returns an `EnvError` if any variable or value cannot be edited
     pub fn remove_from_environments(&mut self, to_remove: Vec<Vec<String>>) -> Result<()> {
         if to_remove.is_empty() {
             return Ok(());
@@ -209,18 +218,19 @@ impl EnvironmentContainer {
     ///
     /// Depending on `edit_mode` it will:
     /// - `EditMode::Append`:
-    ///   Collect all existing variables and add all values in `to_edit` to the list of possible values.
+    ///   Add all values in `to_edit` to the list of possible values.
     /// - `EditMode::Remove`:
-    ///   Collect all existing variables and remove all values from `to_edit` from the list of possible values.
+    ///   Remove all values in `to_edit` from the list of possible values.
     ///   Variables with empty value lists will then also be removed.
     ///
     /// Then calls on `try_assemble_all` to generate a "list of files" so to say, which
     /// contains all possible combinations of all values.
+    /// This list will replace the current `self.environment_list`.
     ///
     /// Duplicate values will be removed before creating this list.
     ///
     /// # Panics
-    /// - panics if a key from `to_edit` cannot be found in `given`
+    /// - panics if a key from `to_edit` cannot be found in `self.environment_list`
     fn try_edit_values(&mut self, to_edit: &EnvVarList, edit_mode: EditMode) -> Result<()> {
         let mut possible_envs: EnvVarList = HashMap::new();
 
@@ -270,12 +280,14 @@ impl EnvironmentContainer {
         Ok(())
     }
 
+    /// Adds the variables from `new_environment` to each Environment in this container.
     pub fn extend_environemnts(&mut self, new_environment: &Environment) {
         self.environment_list
             .iter_mut()
             .for_each(|combo| combo.extend_variables(new_environment));
     }
 
+    /// Number of Environments defined in this EnvironmentContainer.
     pub fn environment_count(&self) -> u64 {
         self.environment_list.len() as u64
     }
