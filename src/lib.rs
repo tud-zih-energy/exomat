@@ -229,7 +229,7 @@ fn execute_exp_repetitions(
     is_trial: bool,
 ) -> Result<()> {
     let length = repetitions.to_string().len();
-    let mut envs =
+    let envs =
         harness::env::fetch_env_files(&exp_source_dir.join(SRC_ENV_DIR)).ok_or_else(|| {
             Error::HarnessRunError {
                 experiment: exp_source_dir.display().to_string(),
@@ -253,31 +253,51 @@ fn execute_exp_repetitions(
 
     info!("Starting experiment runs for {}", exp_source_dir.display());
 
-    envs.shuffle(&mut rand::rng());
-    'outer: for environment in envs {
-        for rep in 0..repetitions {
-            let run_folder =
-                harness::skeleton::build_run_directory(exp_series_dir, &environment, rep, length)?;
+    let running_order: Vec<(&PathBuf, u64)> = shuffle_experiments(&envs, &repetitions);
+    for (environment, rep) in running_order {
+        let run_folder =
+            harness::skeleton::build_run_directory(exp_series_dir, &environment, rep, length)?;
 
-            trace!(
-                "Using envs: {:?}",
-                harness::env::deserialize_envs(&environment)?
-            );
+        trace!(
+            "Using envs: {:?}",
+            harness::env::deserialize_envs(&environment)?
+        );
 
-            harness::run::run_experiment(&file_name_string(exp_source_dir), &run_folder)?;
+        harness::run::run_experiment(&file_name_string(exp_source_dir), &run_folder)?;
 
-            // update progress
-            prog_bar.inc(1);
+        // update progress
+        prog_bar.inc(1);
 
-            // stop after one run if this is a trial
-            if is_trial {
-                break 'outer;
-            }
+        // stop after one run if this is a trial
+        if is_trial {
+            break;
         }
     }
 
     prog_bar.finish();
     Ok(())
+}
+
+/// Compiles a list of all repetition for each environment, then suffles said list.
+///
+/// The shuffled list is then sorted by repetition, so that all n-repetitions run
+/// before all n+1-repetitions.
+fn shuffle_experiments<'a>(
+    environments: &'a Vec<PathBuf>,
+    repetition_count: &'a u64,
+) -> Vec<(&'a PathBuf, u64)> {
+    let mut running_order = vec![];
+
+    for env in environments {
+        for rep in 0..*repetition_count {
+            running_order.push((env, rep));
+        }
+    }
+
+    running_order.shuffle(&mut rand::rng());
+    running_order.sort_by(|a, b| (a.1).cmp(&b.1));
+
+    return running_order;
 }
 
 /// Filters output (files) from every run repetition in the pwd.
