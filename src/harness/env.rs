@@ -15,6 +15,9 @@ use crate::helper::fs_names::SRC_ENV_DIR;
 pub use environment::Environment;
 pub use environment_container::EnvironmentContainer;
 
+/// List of all environment variable names that exomat reserves for internal use
+const RESERVED_ENVS: [&str; 1] = ["SRC_ENV_DIR"];
+
 /// map of all variables with all possible values
 ///
 /// ## Example
@@ -294,6 +297,12 @@ fn check_env_names(env_list: &[Vec<String>]) -> Result<()> {
     }
 }
 
+/// Reads existing variables from all env files in `env_path`, edits them, then
+/// serializes the new variables into `env_path`.
+///
+/// ## Errors and Panics
+/// - Returns an `EnvError` if any Vector contains a reserved variable (see [RESERVED_ENVS])
+/// - Panics if reading/writing of env files failed
 fn generate_environments(
     env_path: PathBuf,
     to_add: Vec<Vec<String>>,
@@ -301,6 +310,21 @@ fn generate_environments(
     to_remove: Vec<Vec<String>>,
 ) -> Result<()> {
     let mut env = EnvironmentContainer::from_files(&env_path)?;
+
+    fn contains_reserved(env_list: &Vec<Vec<String>>) -> bool {
+        env_list.iter().any(|v| {
+            v.get(0)
+                .map_or(false, |name| RESERVED_ENVS.contains(&name.as_str()))
+        })
+    }
+
+    // Check if user tries to edit reserved variable
+    if contains_reserved(&to_add) || contains_reserved(&to_append) || contains_reserved(&to_remove)
+    {
+        return Err(Error::EnvError {
+            reason: format!("Cannot set reserved env: {:?}", RESERVED_ENVS),
+        });
+    }
 
     // edit existing envs
     if !to_add.is_empty() {
@@ -496,6 +520,20 @@ mod tests {
             ("1".to_string(), "a".to_string()),
             ("2".to_string(), "b".to_string()),
         ])));
+    }
+
+    #[test]
+    fn env_cannot_edit_reserved() {
+        let mock_env = TempDir::new().unwrap();
+        let mock_env = mock_env.path().to_path_buf();
+
+        let reserved_env = RESERVED_ENVS[0];
+        let reserved = vec![vec![reserved_env.to_string()]];
+
+        // try using a reserved var in any position
+        assert!(generate_environments(mock_env.clone(), reserved.clone(), vec![], vec![]).is_err());
+        assert!(generate_environments(mock_env.clone(), vec![], reserved.clone(), vec![]).is_err());
+        assert!(generate_environments(mock_env, vec![], vec![], reserved).is_err());
     }
 
     #[test]
