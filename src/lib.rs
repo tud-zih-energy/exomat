@@ -19,6 +19,7 @@ use spdlog::formatter::{pattern, PatternFormatter};
 use spdlog::sink::FileSink;
 use std::{path::Path, path::PathBuf, sync::Arc};
 
+use harness::env::Environment;
 use helper::archivist::find_marker_pwd;
 use helper::errors::{Error, Result};
 use helper::fs_names::*;
