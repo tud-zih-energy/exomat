@@ -10,7 +10,7 @@ use std::{
 };
 
 use crate::duplicate_log_to_file;
-use crate::harness::env::{validate_src_env, Environment, EnvironmentContainer};
+use crate::harness::env::Environment;
 use crate::helper::archivist::{
     copy_harness_dir, copy_harness_file, create_harness_dir, create_harness_file,
 };
@@ -26,7 +26,7 @@ use crate::helper::fs_names::*;
 ///   |-> SRC_TEMPLATE_DIR/
 ///   | \-> SRC_RUN_FILE [content: src/harness/run.sh.template]
 ///   \-> SRC_ENV_DIR/
-///     \-> SRC_ENV_FILE [content: $EXP_SRC_DIR]
+///     \-> SRC_ENV_FILE [EMPTY]
 /// ```
 ///
 /// ## Errors
@@ -65,16 +65,13 @@ use crate::helper::fs_names::*;
 /// let run = std::fs::read_to_string(&run_file).unwrap();
 /// assert_eq!(run, template);
 /// assert!(&run_file.executable());
-///
-/// // env file contains $EXP_SRC_DIR
-/// let env = std::fs::read_to_string(exp_source.join(SRC_ENV_DIR).join(SRC_ENV_FILE)).unwrap();
-/// assert!(env.contains("EXP_SRC_DIR="));
 /// ```
 pub fn create_source_directory(exp_src_dir: &PathBuf) -> Result<()> {
     create_harness_dir(exp_src_dir)?;
     create_harness_file(&exp_src_dir.join(MARKER_SRC))?;
 
     create_harness_dir(&exp_src_dir.join(SRC_ENV_DIR))?;
+    create_harness_file(&exp_src_dir.join(SRC_ENV_DIR).join(SRC_ENV_FILE))?;
     create_harness_dir(&exp_src_dir.join(SRC_TEMPLATE_DIR))?;
 
     let run_file_path = &exp_src_dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE);
@@ -93,18 +90,6 @@ pub fn create_source_directory(exp_src_dir: &PathBuf) -> Result<()> {
     // write default content to run.sh
     let template_runfile_bytes = include_bytes!("run.sh.template");
     run_file.write_all(template_runfile_bytes)?;
-
-    // write content to 0.env
-    let to_serialize =
-        EnvironmentContainer::from_env_list(vec![Environment::from_env_list(vec![(
-            String::from("EXP_SRC_DIR"),
-            exp_src_dir
-                .canonicalize()
-                .expect("Cannot determine experiment source dir")
-                .display()
-                .to_string(),
-        )])]);
-    to_serialize.serialize_envs(&exp_src_dir.join(SRC_ENV_DIR))?;
 
     info!("Experiment harness created under {}", exp_src_dir.display());
     Ok(())
@@ -192,8 +177,7 @@ pub fn build_series_directory(exp_source: &PathBuf, series_dir: &Path) -> Result
 
     duplicate_log_to_file(&exomat_log);
 
-    // copy exp_source/template to src, replace marker, check EXP_SRC_DIR env
-    validate_src_env(&exp_source)?;
+    // copy exp_source/template to src and replace marker
     copy_harness_dir(exp_source, &src)?;
     std::fs::remove_file(src.join(MARKER_SRC))?;
     create_harness_file(&src.join(MARKER_SRC_CP))?;
@@ -223,6 +207,8 @@ pub fn generate_build_series_filepath(exp_source: &Path) -> Result<PathBuf> {
 /// Creates a ready-to-use experiment run folder for **one interation** with **one environment**
 /// of an experiment.
 ///
+/// ### Note: `env_file` is used to deduce the `{env}` part of the new experiment run directory name AND the value of the `EXP_SRC_DIR` environment variable.
+///
 /// The new directory will be created in the given `series_folder` under [SERIES_RUNS_DIR]`/run_[env]_rep[repetition]`.
 /// This will result in the following structure:
 /// ```notest
@@ -250,9 +236,14 @@ pub fn build_run_directory(
 ) -> Result<PathBuf> {
     assert!(it_format_length > 0, "repetition format cannot be 0");
 
+    // unwrap here, because this should never fail and if it does it's your fault
+    let env_name = &env_file.file_stem().unwrap().to_str().unwrap();
+    let canonical_env_file = env_file.canonicalize().unwrap();
+    let src_path = canonical_env_file.parent().unwrap().parent().unwrap();
+
     let run = format!(
         "run_{}_rep{:0length$}",
-        env_file.file_stem().unwrap().to_str().unwrap(),
+        env_name,
         it,
         length = it_format_length,
     );
@@ -280,7 +271,11 @@ pub fn build_run_directory(
     // copy ruh.sh and [env].env to runs_dir
     let run_to_cp = copy_run.join(SRC_RUN_FILE);
     copy_harness_file(&run_to_cp, &run.join(RUN_RUN_FILE))?;
-    copy_harness_file(env_file, &run.join(RUN_ENV_FILE))?;
+
+    // combine user envs with internal envs, write to file
+    let mut full_environment = Environment::from_file(&env_file)?;
+    full_environment.insert_internals(&src_path);
+    full_environment.to_file(&run.join(RUN_ENV_FILE))?;
 
     Ok(run)
 }
@@ -322,19 +317,6 @@ mod tests {
                 reason: _
             })
         ));
-    }
-
-    #[test]
-    fn test_src_path_in_env() {
-        let tmpdir = TempDir::new().unwrap();
-        let tmpdir = tmpdir.path().to_path_buf();
-
-        assert!(create_source_directory(&tmpdir).is_ok());
-
-        let env_file = tmpdir.join(SRC_ENV_DIR).join(SRC_ENV_FILE);
-        let env_content = std::fs::read_to_string(env_file).unwrap();
-
-        assert_eq!(env_content, format!("EXP_SRC_DIR=\"{}\"", tmpdir.display()));
     }
 
     rusty_fork_test! {
@@ -387,6 +369,33 @@ mod tests {
             // it_format_length changes the name of each experiment run directory:
             let run_dir = build_run_directory(&exp_series, &default_env, 1, 3).unwrap();
             assert_eq!(tmpdir.join(&run_dir).file_name().unwrap(), "run_0_rep001");
+        }
+
+        #[test]
+        fn test_internal_envs_in_correct_files(){
+            // set up source/series/run dir
+            let tmpdir = TempDir::new().unwrap();
+            let tmpdir = tmpdir.path();
+            std::env::set_current_dir(&tmpdir).unwrap();
+
+            let exp_source = tmpdir.join("FooSource");
+            let exp_series = tmpdir.join("FooSeries");
+            create_source_directory(&exp_source).unwrap();
+            build_series_directory(&exp_source, &exp_series).unwrap();
+
+            let default_env = exp_source.join(SRC_ENV_DIR).join(SRC_ENV_FILE);
+            std::fs::write(&default_env, "FOO=BAR").unwrap();
+
+            let run_dir = build_run_directory(&exp_series, &default_env, 1, 1).unwrap();
+
+            // check contents of env files
+            let src_env = Environment::from_file(&default_env).unwrap();
+            let run_env = Environment::from_file(&run_dir.join(RUN_ENV_FILE)).unwrap();
+
+            assert!(!src_env.contains_variable("EXP_SRC_DIR"));
+            assert!(run_env.contains_variable("EXP_SRC_DIR"));
+            assert!(src_env.contains_variable("FOO"));
+            assert!(run_env.contains_variable("FOO"));
         }
 
         #[test]
