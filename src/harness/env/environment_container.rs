@@ -281,7 +281,7 @@ impl EnvironmentContainer {
     }
 
     /// Adds the variables from `new_environment` to each Environment in this container.
-    pub fn extend_environemnts(&mut self, new_environment: &Environment) {
+    pub fn extend_environments(&mut self, new_environment: &Environment) {
         self.environment_list
             .iter_mut()
             .for_each(|combo| combo.extend_variables(new_environment));

@@ -164,7 +164,7 @@ fn try_assemble_all(given: &Environment, to_add: &EnvVarList) -> Result<Vec<Envi
     trace!("Adding env combinations: {combinations:?}");
 
     // add existing variables to each list
-    combinations.extend_environemnts(given);
+    combinations.extend_environments(given);
     debug!("Finished assembling environments: {combinations:?}");
 
     Ok(combinations.to_env_list().to_owned())

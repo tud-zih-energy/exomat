@@ -22,7 +22,7 @@ impl Environment {
     }
 
     /// Constructs a new Environment with all variables and values from a file.
-    /// Does not include process environemnt variables. Does not set internal
+    /// Does not include process environment variables. Does not set internal
     /// variables.
     ///
     /// ## Parameters
