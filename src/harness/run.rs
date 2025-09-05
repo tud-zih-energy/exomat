@@ -36,6 +36,8 @@ pub fn run_experiment(exp_name: &str, run_folder: &Path) -> Result<()> {
         "Missing environment.env in experiment run directory"
     );
 
+    // this file also contains internal variables, which will be treated as normal
+    // variables from now on
     let envs = Environment::from_file_with_load(&run_folder.join(RUN_ENV_FILE))?;
 
     let out_log = OpenOptions::new()

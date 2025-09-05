@@ -11,7 +11,6 @@ pub mod environment_container;
 
 use crate::helper::archivist::find_marker_pwd;
 use crate::helper::errors::{Error, Result};
-use crate::helper::fs_names::SRC_ENV_DIR;
 pub use environment::Environment;
 pub use environment_container::EnvironmentContainer;
 
@@ -78,36 +77,6 @@ pub fn fetch_env_files(from: &PathBuf) -> Option<Vec<PathBuf>> {
         true => None,
         false => Some(files),
     }
-}
-
-/// Set the $EXP_SRC_DIR env in `src_dir` to the absolute path of`src_dir`
-///
-/// Will overwrite $EXP_SRC_DIR if it is invalid of missing, otherwise does nothing.
-/// Touches all `.env` files if one contains an invalid value.
-pub fn validate_src_env(src_dir: &PathBuf) -> Result<()> {
-    let exp_src_dir = src_dir
-        .canonicalize()
-        .expect("could not determine experiment source dir")
-        .display()
-        .to_string();
-
-    let existing = fetch_env_files(&src_dir.join(SRC_ENV_DIR)).unwrap_or(vec![]);
-
-    // rewrite $EXP_SRC_DIR if it is incorrect in a file
-    for env_file in &existing {
-        let mut env_content = Environment::from_file(env_file)?;
-        let needs_update = match env_content.get_value("EXP_SRC_DIR") {
-            Some(val) if val == &exp_src_dir => false,
-            _ => true,
-        };
-
-        if needs_update {
-            env_content.add_variable("EXP_SRC_DIR".to_string(), exp_src_dir.clone());
-            env_content.to_file(&env_file)?;
-        }
-    }
-
-    Ok(())
 }
 
 /// Check if a condition is true for any iterator `T`.
@@ -676,39 +645,5 @@ mod tests {
                 *all_envs_no_fname.to_env_list(),
                 vec![expected_env_bar, expected_env_baz]);
         }
-    }
-
-    #[test]
-    fn update_exp_src_env() {
-        let tmpdir = TempDir::new().unwrap();
-        let src_dir = tmpdir.path().to_path_buf();
-        let envs_dir = src_dir.join(SRC_ENV_DIR);
-        let src_dir_str = src_dir.canonicalize().unwrap().display().to_string();
-        std::fs::create_dir(&envs_dir).unwrap();
-
-        // Write a .env file with an incorrect EXP_SRC_DIR value
-        let env_file_path = envs_dir.join("test.env");
-        std::fs::write(&env_file_path, "EXP_SRC_DIR=\"/wrong/path\"\nFOO=1").unwrap();
-
-        // Updates EXP_SRC_DIR and leave FOO
-        validate_src_env(&src_dir).unwrap();
-        let envs = Environment::from_file(&env_file_path).unwrap();
-        assert_eq!(envs.get_value("EXP_SRC_DIR"), Some(&src_dir_str));
-        assert_eq!(envs.get_value("FOO"), Some(&"1".to_string()));
-
-        // Doesn't break on valid EXP_SRC_DIR
-        validate_src_env(&src_dir).unwrap();
-        let envs = Environment::from_file(&env_file_path).unwrap();
-        assert_eq!(envs.get_value("EXP_SRC_DIR"), Some(&src_dir_str));
-        assert_eq!(envs.get_value("FOO"), Some(&"1".to_string()));
-
-        // Adds env on missing EXP_SRC_DIR
-        let env_file_path2 = envs_dir.join("test2.env");
-        std::fs::write(&env_file_path2, "FOO=2").unwrap();
-
-        validate_src_env(&src_dir).unwrap();
-        let envs = Environment::from_file(&env_file_path2).unwrap();
-        assert_eq!(envs.get_value("EXP_SRC_DIR"), Some(&src_dir_str));
-        assert_eq!(envs.get_value("FOO"), Some(&"2".to_string()));
     }
 }

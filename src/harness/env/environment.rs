@@ -9,6 +9,7 @@ use crate::helper::errors::{Error, Result};
 #[derive(Debug, Clone, PartialEq)]
 pub struct Environment {
     variables: HashMap<String, String>,
+    internal_variables: HashMap<String, String>,
 }
 
 impl Environment {
@@ -16,11 +17,13 @@ impl Environment {
     pub fn new() -> Self {
         Environment {
             variables: HashMap::new(),
+            internal_variables: HashMap::new(), //TODO: turn into an enum/ struct
         }
     }
 
     /// Constructs a new Environment with all variables and values from a file.
-    /// Does not include process environemnt variables.
+    /// Does not include process environemnt variables. Does not set internal
+    /// variables.
     ///
     /// ## Parameters
     /// `file` needs to be a valid env file, see Errors and Panics
@@ -37,9 +40,7 @@ impl Environment {
             file.display()
         );
 
-        let mut env = Environment {
-            variables: HashMap::new(),
-        };
+        let mut env = Environment::new();
 
         // Not using serde_envfile here, because it converts "VAR" to "var" :(
         for item in dotenvy::from_filename_iter(file)? {
@@ -53,10 +54,12 @@ impl Environment {
         Ok(env)
     }
 
-    /// Returns a new Environment with `list` as it's variables
+    /// Returns a new Environment with `list` as it's variables.
+    /// `internal_variables` will be empty.
     pub fn from_env_list(list: Vec<(String, String)>) -> Self {
         Environment {
             variables: list.into_iter().collect(),
+            internal_variables: HashMap::new(),
         }
     }
 
@@ -65,6 +68,8 @@ impl Environment {
     ///
     /// If a variable set in `env_file` is already loaded, it will be overwritten with
     /// the value given in `env_file`.
+    ///
+    /// Does not set `internal_variables`.
     ///
     /// ## Example
     /// ```
@@ -104,7 +109,10 @@ impl Environment {
     /// ## Errors
     /// - Returns an EnvError if writing failed
     pub fn to_file(&self, file_path: &PathBuf) -> Result<()> {
-        serde_envfile::to_file(file_path, &self.variables).map_err(|e| Error::EnvError {
+        let mut all = self.variables.clone();
+        all.extend(self.internal_variables.clone());
+
+        serde_envfile::to_file(file_path, &all).map_err(|e| Error::EnvError {
             reason: e.to_string(),
         })
     }
@@ -112,6 +120,19 @@ impl Environment {
     /// Returns a map of all environment variables saved in this Environment
     pub fn to_env_list(&self) -> &HashMap<String, String> {
         &self.variables
+    }
+
+    /// Inserts internal variables with their respective values.
+    pub fn insert_internals(&mut self, exp_src_dir: &Path) {
+        self.internal_variables.insert(
+            String::from("EXP_SRC_DIR"),
+            exp_src_dir.canonicalize().unwrap().display().to_string(),
+        );
+    }
+
+    /// Returns a map of all internal environments saved in this Environment
+    pub fn get_internals(&self) -> &HashMap<String, String> {
+        &self.internal_variables
     }
 
     /// Returns `true` if the variable exists in this Environment.
