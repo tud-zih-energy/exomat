@@ -319,6 +319,8 @@ fn generate_environments(
 }
 
 /// print a pretty table of all configured environments in env_path
+///
+/// Fails if a file contains an extra key
 fn print_all_environments(env_path: PathBuf) -> Result<()> {
     let all_envs_by_fname = get_existing_envs_by_fname(&env_path)?;
     let all_envs_with_fname: Vec<(String, Environment)> = all_envs_by_fname
@@ -329,11 +331,14 @@ fn print_all_environments(env_path: PathBuf) -> Result<()> {
     let mut keys: Option<Vec<String>> = None;
     let mut table_builder = tabled::builder::Builder::default();
     info!("{} env files found", all_envs_with_fname.len());
+
     for (fname, env) in all_envs_with_fname {
+        // variables from env file
         let this_env_keys: Vec<String> =
             env.get_variables().iter().map(|s| s.to_string()).collect();
 
         match keys {
+            // on first iteration add "file", then variables from env file (=header)
             None => {
                 table_builder.push_record(
                     std::iter::once("file".to_string())
@@ -341,8 +346,12 @@ fn print_all_environments(env_path: PathBuf) -> Result<()> {
                 );
                 keys = Some(this_env_keys);
             }
+            // on following iterations: check that keys have not changed
             Some(ref old_keys) => {
-                if *old_keys != this_env_keys {
+                // cannot use *old_keys = this_env_keys, because the order of keys may change
+                if old_keys.len() != this_env_keys.len()
+                    || !old_keys.iter().all(|k| this_env_keys.contains(k))
+                {
                     return Err(Error::EnvError {
                         reason: "not all envs have the same keys".to_string(),
                     });
@@ -351,6 +360,7 @@ fn print_all_environments(env_path: PathBuf) -> Result<()> {
         }
 
         let keys = keys.as_ref().expect("keys must be initialized by now");
+
         // reorder values by list of keys
         table_builder.push_record(
             std::iter::once(fname.to_string()).chain(keys.iter().map(|s| {
