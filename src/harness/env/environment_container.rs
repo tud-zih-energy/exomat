@@ -39,10 +39,10 @@ impl EnvironmentContainer {
     pub fn from_files(from: &PathBuf) -> Result<Self> {
         let envs_by_fname = get_existing_envs_by_fname(from)?;
 
+        // create an Environment from each file
         Ok(EnvironmentContainer {
             environment_list: envs_by_fname
                 .into_iter()
-                .sorted_by_key(|(key, _)| key.clone())
                 .map(|(_, value)| value)
                 .collect::<Vec<Environment>>(),
         })
