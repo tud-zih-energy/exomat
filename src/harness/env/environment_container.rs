@@ -334,6 +334,7 @@ fn helper_remove_env_values(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     #[should_panic(expected = "No env variables to add")]
@@ -512,5 +513,34 @@ mod tests {
 
         assert_eq!(env1.get_value("VAR1").unwrap(), &"VAL".to_string());
         assert!(env1.get_value("VAR2").is_none());
+    }
+
+    #[test]
+    fn env_serialize() {
+        // list with Environments that contain content
+        let env = EnvironmentContainer::from_env_list(vec![Environment::from_env_list(vec![(
+            "VAR".to_string(),
+            "VAL".to_string(),
+        )])]);
+
+        // list with a lot of Environments (10)
+        let many_env = EnvironmentContainer::from_env_list(vec![Environment::new(); 11]);
+
+        let tmpdir = TempDir::new().unwrap();
+        let tmpdir = tmpdir.path().to_path_buf();
+
+        // expecting "0.env" with the content VAR="VAL"
+        env.serialize_envs(&tmpdir).unwrap();
+        let content = std::fs::read_to_string(tmpdir.join("0.env")).unwrap();
+        assert!(!tmpdir.join("1.env").is_file());
+        assert_eq!(content, "VAR=\"VAL\"");
+
+        // expecting 10 files, from "00.env" to "10.env" without content
+        many_env.serialize_envs(&tmpdir).unwrap();
+        let content0 = std::fs::read_to_string(tmpdir.join("00.env")).unwrap();
+        let content1 = std::fs::read_to_string(tmpdir.join("10.env")).unwrap();
+        assert!(!tmpdir.join("11.env").is_file());
+        assert!(content0.is_empty());
+        assert!(content1.is_empty());
     }
 }
