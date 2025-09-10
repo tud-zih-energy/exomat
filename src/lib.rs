@@ -229,15 +229,13 @@ fn execute_exp_repetitions(
     is_trial: bool,
 ) -> Result<()> {
     let length = repetitions.to_string().len();
-    let envs =
-        harness::env::fetch_env_files(&exp_source_dir.join(SRC_ENV_DIR)).ok_or_else(|| {
-            Error::HarnessRunError {
-                experiment: exp_source_dir.display().to_string(),
-                err: format!(
-                    "No environments found in {}",
-                    exp_source_dir.join(SRC_ENV_DIR).display()
-                ),
-            }
+    let envs = harness::env::fetch_environment_files(&exp_source_dir.join(SRC_ENV_DIR))
+        .ok_or_else(|| Error::HarnessRunError {
+            experiment: exp_source_dir.display().to_string(),
+            err: format!(
+                "No environments found in {}",
+                exp_source_dir.join(SRC_ENV_DIR).display()
+            ),
         })?;
 
     let prog_bar = ProgressBar::new(repetitions * envs.len() as u64);
