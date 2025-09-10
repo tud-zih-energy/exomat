@@ -11,12 +11,6 @@ use super::{
 };
 use crate::helper::errors::{Error, Result};
 
-/// Used to decide how an env should be edited
-enum EditMode {
-    Append,
-    Remove,
-}
-
 /// List of multiple env files
 #[derive(Debug)]
 pub struct EnvironmentContainer {
@@ -160,7 +154,7 @@ impl EnvironmentContainer {
         }
 
         // combine them, sets self.environment_list
-        self.try_edit_values(&to_append, EditMode::Append)
+        self.try_append_env_vals(&to_append)
     }
 
     /// Remove a variable from all Environments.
@@ -210,27 +204,10 @@ impl EnvironmentContainer {
         }
 
         // combine them, produces list of all env files with content
-        self.try_edit_values(&to_remove, EditMode::Remove)
+        self.try_remove_env_vals(&to_remove)
     }
 
-    /// Edit existing environment variables.
-    ///
-    /// Depending on `edit_mode` it will:
-    /// - `EditMode::Append`:
-    ///   Add all values in `to_edit` to the list of possible values.
-    /// - `EditMode::Remove`:
-    ///   Remove all values in `to_edit` from the list of possible values.
-    ///   Variables with empty value lists will then also be removed.
-    ///
-    /// Then calls on `try_assemble_all` to generate a "list of files" so to say, which
-    /// contains all possible combinations of all values.
-    /// This list will replace the current `self.environment_list`.
-    ///
-    /// Duplicate values will be removed before creating this list.
-    ///
-    /// # Panics
-    /// - panics if a key from `to_edit` cannot be found in `self.environment_list`
-    fn try_edit_values(&mut self, to_edit: &EnvList, edit_mode: EditMode) -> Result<()> {
+    fn possible_envs(&self) -> EnvList {
         let mut possible_envs: EnvList = HashMap::new();
 
         // create a list of all possible values from all given files
@@ -252,26 +229,78 @@ impl EnvironmentContainer {
         }
 
         debug!("All possible environment values: {possible_envs:?}");
+        possible_envs
+    }
 
-        match edit_mode {
-            EditMode::Append => {
-                // add new values to the list, remove duplicates
-                for (var, vals) in to_edit {
-                    let v = possible_envs.get_mut(var).unwrap();
-                    v.extend(vals.clone());
+    /// Add all values in `to_edit` to the list of possible values.
+    ///
+    /// Then calls on `try_assemble_all` to generate a "list of files" so to say, which
+    /// contains all possible combinations of all values.
+    /// This list will replace the current `self.environment_list`.
+    ///
+    /// Duplicate values will be removed before creating this list.
+    ///
+    /// # Panics
+    /// - panics if a key from `to_edit` cannot be found in `self.environment_list`
+    fn try_append_env_vals(&mut self, to_edit: &EnvList) -> Result<()> {
+        let mut possible_envs = self.possible_envs();
 
-                    v.sort();
-                    v.dedup();
-                }
+        // add new values to the list, remove duplicates
+        for (var, vals) in to_edit {
+            let v = possible_envs.get_mut(var).unwrap();
+            v.extend(vals.clone());
+
+            v.sort();
+            v.dedup();
+        }
+
+        // assemble files that need to be created, return
+        self.environment_list = try_assemble_all(&Environment::new(), &possible_envs)?;
+        Ok(())
+    }
+
+    /// Remove all values in `to_edit` from the list of possible values.
+    /// Variables with empty value lists will then also be removed.
+    ///
+    /// Then calls on `try_assemble_all` to generate a "list of files" so to say, which
+    /// contains all possible combinations of all values.
+    /// This list will replace the current `self.environment_list`.
+    ///
+    /// Duplicate values will be removed before creating this list.
+    ///
+    /// # Panics
+    /// - panics if a key from `to_edit` cannot be found in `self.environment_list`
+    fn try_remove_env_vals(&mut self, to_edit: &EnvList) -> Result<()> {
+        let mut possible_envs = self.possible_envs();
+        let mut vars_to_remove = Vec::new();
+
+        // remove vals
+        for (var, vals) in to_edit {
+            let var_to_edit = possible_envs.get_mut(var).ok_or_else(|| Error::EnvError {
+                reason: format!("Cannot remove values from {var}, it does not exist yet."),
+            })?;
+
+            for val in vals {
+                let i = var_to_edit
+                    .iter()
+                    .position(|old_v| old_v == val)
+                    .ok_or_else(|| Error::EnvError {
+                        reason: format!(
+                            "Cannot remove value {val} from {var}, it does not exist yet."
+                        ),
+                    })?;
+                var_to_edit.remove(i);
             }
-            EditMode::Remove => {
-                let vars_to_remove = helper_remove_env_vals(&mut possible_envs, to_edit)?;
 
-                // remove vars that don't have values anymore
-                for var in vars_to_remove {
-                    assert!(possible_envs.remove_entry(&var).is_some());
-                }
+            // variable has no values or should explicitly be removed
+            if var_to_edit.is_empty() || vals.is_empty() {
+                vars_to_remove.push(var.to_owned());
             }
+        }
+
+        // remove vars that don't have values anymore
+        for var in vars_to_remove {
+            assert!(possible_envs.remove_entry(&var).is_some());
         }
 
         // assemble files that need to be created, return
@@ -290,41 +319,6 @@ impl EnvironmentContainer {
     pub fn environment_count(&self) -> u64 {
         self.environment_list.len() as u64
     }
-}
-
-/// Remove any value of a key given in `to_edit` from `possible_envs`.
-///
-/// If a key in `to_edit` has an empty value, it will be returned in a vector. The
-/// same thing happens if the last value of a key is deleted by this function.
-///
-/// ## Errors
-/// - Returns an `EnvError` if a key or a value from `to_edit` is not found in `possible_envs`
-fn helper_remove_env_vals(possible_envs: &mut EnvList, to_edit: &EnvList) -> Result<Vec<String>> {
-    let mut vars_to_remove = Vec::new();
-
-    // remove values from list
-    for (var, vals) in to_edit {
-        let var_to_edit = possible_envs.get_mut(var).ok_or_else(|| Error::EnvError {
-            reason: format!("Cannot remove values from {var}, it does not exist yet."),
-        })?;
-
-        for val in vals {
-            let i = var_to_edit
-                .iter()
-                .position(|old_v| old_v == val)
-                .ok_or_else(|| Error::EnvError {
-                    reason: format!("Cannot remove value {val} from {var}, it does not exist yet."),
-                })?;
-            var_to_edit.remove(i);
-        }
-
-        // variable has no values or should explicitly be removed
-        if var_to_edit.is_empty() || vals.is_empty() {
-            vars_to_remove.push(var.to_owned());
-        }
-    }
-
-    Ok(vars_to_remove)
 }
 
 #[cfg(test)]
