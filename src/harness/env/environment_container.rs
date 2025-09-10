@@ -6,8 +6,7 @@ use std::path::{Path, PathBuf};
 
 use super::environment::Environment;
 use super::{
-    assert_exists, check_env_vars, get_existing_environments_by_fname, to_env_list,
-    try_assemble_all, EnvList,
+    assert_exists, check_env_vars, get_existing_environments_by_fname, try_assemble_all, EnvList,
 };
 use crate::helper::errors::{Error, Result};
 
@@ -82,17 +81,14 @@ impl EnvironmentContainer {
     /// - Panics if an inner vector has <= 1 elemets (variable without value)
     /// - Same Errors and Panics as `check_env_names()`
     /// - Returns an `EnvError` if a variable from `to_add` is already set
-    pub fn add_environments(&mut self, to_add: Vec<Vec<String>>) -> Result<()> {
+    pub fn add_environments(&mut self, to_add: EnvList) -> Result<()> {
         // check to_add
         assert!(!to_add.is_empty(), "No envs to add. Aborting.");
         to_add
             .iter()
-            .for_each(|v| assert!(v.len() > 1, "Found variable without value. Aborting."));
+            .for_each(|v| assert!(!v.1.is_empty(), "Found variable without value. Aborting."));
 
         check_env_vars(&to_add)?;
-
-        // collect all envs to combine
-        let to_add: EnvList = to_env_list(&to_add)?;
 
         // combine them, produces list of all env files with content
         if self.environment_list.is_empty() {
@@ -127,21 +123,16 @@ impl EnvironmentContainer {
     ///
     /// ## Errors
     /// - Returns an `EnvError` if a variable from `to_append` does not exist yet.
-    pub fn append_to_environments(&mut self, to_append: Vec<Vec<String>>) -> Result<()> {
+    pub fn append_to_environments(&mut self, to_append: EnvList) -> Result<()> {
         if to_append.is_empty() {
             return Ok(());
         }
 
         // check to_append, needs to happen before transforming
-        to_append.iter().filter(|v| v.len() <= 1).for_each(|v| {
-            warn!(
-                "Cannot edit variable without value. Skipping {}.",
-                v.first().unwrap()
-            )
-        });
-
-        // collect all existing envs
-        let to_append: EnvList = to_env_list(&to_append)?;
+        to_append
+            .iter()
+            .filter(|v| v.1.is_empty())
+            .for_each(|v| warn!("Cannot edit variable without value. Skipping {}.", v.0));
 
         // env exists?
         for var in to_append.keys() {
@@ -175,13 +166,10 @@ impl EnvironmentContainer {
     ///
     /// ## Errors
     /// - Returns an `EnvError` if any variable or value cannot be edited
-    pub fn remove_from_environments(&mut self, to_remove: Vec<Vec<String>>) -> Result<()> {
+    pub fn remove_from_environments(&mut self, to_remove: EnvList) -> Result<()> {
         if to_remove.is_empty() {
             return Ok(());
         }
-
-        // collect all existing envs
-        let to_remove: EnvList = to_env_list(&to_remove)?;
 
         for (var, vals) in &to_remove {
             // var exists?
@@ -330,7 +318,7 @@ mod tests {
     #[should_panic(expected = "No envs to add")]
     fn env_add_empty() {
         let mut env = EnvironmentContainer::new();
-        let to_add: Vec<Vec<String>> = Vec::new();
+        let to_add: EnvList = HashMap::new();
 
         // should panic, because to_add is empty
         let _ = env.add_environments(to_add);
@@ -340,7 +328,7 @@ mod tests {
     #[should_panic]
     fn env_add_no_val() {
         let mut env = EnvironmentContainer::new();
-        let to_add = vec![vec!["VAR".to_string()]];
+        let to_add = HashMap::from([("VAR".to_string(), vec![])]);
 
         let _ = env.add_environments(to_add);
     }
@@ -348,7 +336,7 @@ mod tests {
     #[test]
     fn env_add_repeat_env() {
         let mut env = EnvironmentContainer::new();
-        let to_add = vec![vec!["VAR".to_string(), "VAL".to_string()]];
+        let to_add = HashMap::from([("VAR".to_string(), vec!["VAL".to_string()])]);
         env.add_environments(to_add).unwrap();
 
         // env was written
@@ -358,11 +346,10 @@ mod tests {
         );
 
         // appending a new value to an existing one should fail
-        let to_add = vec![vec![
+        let to_add = HashMap::from([(
             "VAR".to_string(),
-            "VAL".to_string(),
-            "VAL2".to_string(),
-        ]];
+            vec!["VAL".to_string(), "VAL2".to_string()],
+        )]);
         assert!(env.add_environments(to_add).is_err());
     }
 
@@ -370,10 +357,16 @@ mod tests {
     fn env_add_multiple() {
         // add to empty EnvironmentContainer
         let mut env = EnvironmentContainer::new();
-        let to_add = vec![
-            vec!["VAR1".to_string(), "VAL1".to_string(), "VAL11".to_string()],
-            vec!["VAR2".to_string(), "VAL2".to_string(), "VAL22".to_string()],
-        ];
+        let to_add = HashMap::from([
+            (
+                "VAR1".to_string(),
+                vec!["VAL1".to_string(), "VAL11".to_string()],
+            ),
+            (
+                "VAR2".to_string(),
+                vec!["VAL2".to_string(), "VAL22".to_string()],
+            ),
+        ]);
         env.add_environments(to_add).unwrap();
 
         assert_eq!(env.environment_count(), 4);
@@ -382,11 +375,10 @@ mod tests {
         }));
 
         // add to non-empty EnvironmentContainer
-        let to_add = vec![vec![
+        let to_add = HashMap::from([(
             "VAR3".to_string(),
-            "VAL3".to_string(),
-            "VAL33".to_string(),
-        ]];
+            vec!["VAL3".to_string(), "VAL33".to_string()],
+        )]);
         env.add_environments(to_add).unwrap();
 
         assert_eq!(env.environment_count(), 8);
@@ -403,7 +395,7 @@ mod tests {
         let mut env = EnvironmentContainer::new();
 
         // don't set any variables, try to edit
-        let to_append = vec![vec!["VAR1".to_string(), "VALUE1".to_string()]];
+        let to_append = HashMap::from([("VAR".to_string(), vec!["VAL".to_string()])]);
         env.append_to_environments(to_append).unwrap(); //panic here
     }
 
@@ -417,7 +409,7 @@ mod tests {
             )])]);
 
         // edit "VAR"
-        let to_append = vec![vec!["VAR".to_string(), "ANOTHER".to_string()]];
+        let to_append = HashMap::from([("VAR".to_string(), vec!["ANOTHER".to_string()])]);
         env.append_to_environments(to_append).unwrap();
 
         // check "VAR", has to be set to "VAL" once and to "ANOTHER" once
@@ -448,10 +440,10 @@ mod tests {
         ])]);
 
         // edit "VAR1", but not "VAR2"
-        let to_append = vec![
-            vec!["VAR1".to_string(), "VALUE1".to_string()],
-            vec!["VAR2".to_string()],
-        ];
+        let to_append = HashMap::from([
+            ("VAR1".to_string(), vec!["VALUE1".to_string()]),
+            ("VAR2".to_string(), vec![]),
+        ]);
         env.append_to_environments(to_append).unwrap();
 
         // expected: no error, value of VAR1 changed but VAR2 not touched
@@ -472,7 +464,7 @@ mod tests {
         let mut env = EnvironmentContainer::new();
 
         // don't set any variables, try to edit
-        let to_remove = vec![vec!["VAR1".to_string(), "VALUE1".to_string()]];
+        let to_remove = HashMap::from([("VAR".to_string(), vec!["VAL".to_string()])]);
         env.append_to_environments(to_remove).unwrap(); //panic here
     }
 
@@ -490,10 +482,10 @@ mod tests {
             ]),
         ]);
 
-        let to_remove = vec![
-            vec!["VAR1".to_string(), "VALUE".to_string()], // remove value
-            vec!["VAR2".to_string()],                      // remove variable
-        ];
+        let to_remove = HashMap::from([
+            ("VAR1".to_string(), vec!["VALUE".to_string()]), // remove value
+            ("VAR2".to_string(), vec![]),                    // remove variable
+        ]);
 
         // remove
         env.remove_from_environments(to_remove).unwrap();
