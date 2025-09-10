@@ -8,16 +8,16 @@ use crate::helper::errors::{Error, Result};
 /// Represents one environment file
 #[derive(Debug, Clone, PartialEq)]
 pub struct Environment {
-    variables: HashMap<String, String>,
-    internal_variables: HashMap<String, String>,
+    envs: HashMap<String, String>,
+    internal_envs: HashMap<String, String>,
 }
 
 impl Environment {
     /// Constructs an empty Environment
     pub fn new() -> Self {
         Environment {
-            variables: HashMap::new(),
-            internal_variables: HashMap::new(), //TODO: turn into an enum/ struct
+            envs: HashMap::new(),
+            internal_envs: HashMap::new(), //TODO: turn into an enum/ struct
         }
     }
 
@@ -48,7 +48,7 @@ impl Environment {
                 reason: e.to_string(),
             })?;
 
-            env.variables.insert(var, val);
+            env.envs.insert(var, val);
         }
 
         Ok(env)
@@ -58,8 +58,8 @@ impl Environment {
     /// `internal_variables` will be empty.
     pub fn from_env_list(list: Vec<(String, String)>) -> Self {
         Environment {
-            variables: list.into_iter().collect(),
-            internal_variables: HashMap::new(),
+            envs: list.into_iter().collect(),
+            internal_envs: HashMap::new(),
         }
     }
 
@@ -90,8 +90,8 @@ impl Environment {
     /// assert!(envs.to_env_list().len() > 1);
     ///
     /// // from_file_with_load has created a variable called "TEST" with the value "true"
-    /// assert!(envs.contains_variable("TEST"));
-    /// assert_eq!(envs.get_value("TEST"), Some(&String::from("true")));
+    /// assert!(envs.contains_env_var("TEST"));
+    /// assert_eq!(envs.get_env_val("TEST"), Some(&String::from("true")));
     ///
     /// // and it is actually loaded
     /// assert_eq!(dotenvy::var("TEST").unwrap(), "true");
@@ -109,22 +109,22 @@ impl Environment {
     /// ## Errors
     /// - Returns an EnvError if writing failed
     pub fn to_file(&self, file_path: &PathBuf) -> Result<()> {
-        let mut all = self.variables.clone();
-        all.extend(self.internal_variables.clone());
+        let mut all = self.envs.clone();
+        all.extend(self.internal_envs.clone());
 
         serde_envfile::to_file(file_path, &all).map_err(|e| Error::EnvError {
             reason: e.to_string(),
         })
     }
 
-    /// Returns a map of all environment variables saved in this Environment
+    /// Returns a map of all environments saved in this Environment
     pub fn to_env_list(&self) -> &HashMap<String, String> {
-        &self.variables
+        &self.envs
     }
 
-    /// Inserts internal variables with their respective values.
+    /// Fills internal variables with their respective values.
     pub fn insert_internals(&mut self, exp_src_dir: &Path) {
-        self.internal_variables.insert(
+        self.internal_envs.insert(
             String::from("EXP_SRC_DIR"),
             exp_src_dir.canonicalize().unwrap().display().to_string(),
         );
@@ -132,38 +132,38 @@ impl Environment {
 
     /// Returns a map of all internal environments saved in this Environment
     pub fn get_internals(&self) -> &HashMap<String, String> {
-        &self.internal_variables
+        &self.internal_envs
     }
 
     /// Returns `true` if the variable exists in this Environment.
     ///
     /// Does not check the value associated with the variable. A variable with
     /// empty values also returns `true` here.
-    pub fn contains_variable(&self, var: &str) -> bool {
-        self.variables.contains_key(var)
+    pub fn contains_env_var(&self, var: &str) -> bool {
+        self.envs.contains_key(var)
     }
 
     /// Insert a variable into this Environment.
     ///
     /// If the variable already exists, only the value will be updated.
-    pub fn add_variable(&mut self, var: String, val: String) {
-        self.variables.insert(var, val);
+    pub fn add_env(&mut self, var: String, val: String) {
+        self.envs.insert(var, val);
     }
 
     /// Append all variables from `other_env` onto this Environment.
-    pub fn extend_variables(&mut self, other_env: &Environment) {
-        self.variables.extend(other_env.to_env_list().to_owned());
+    pub fn extend_envs(&mut self, other_env: &Environment) {
+        self.envs.extend(other_env.to_env_list().to_owned());
     }
 
     /// Returns the value associated with `var`.
     ///
     /// Will return `None` if `var` is  not set.
-    pub fn get_value(&self, var: &str) -> Option<&String> {
-        self.variables.get(var)
+    pub fn get_env_val(&self, var: &str) -> Option<&String> {
+        self.envs.get(var)
     }
 
     /// Returns a list of all defined variables without their values.
-    pub fn get_variables(&self) -> Vec<&String> {
-        self.variables.keys().collect()
+    pub fn get_env_vars(&self) -> Vec<&String> {
+        self.envs.keys().collect()
     }
 }

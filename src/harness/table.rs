@@ -101,14 +101,14 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
                     "variable name (prefix out_ alone is not permitted)".to_string(),
                 ));
             }
-            if value_by_var.contains_variable(&var_name) {
+            if value_by_var.contains_env_var(&var_name) {
                 warn!(
                     "in {}: out_{var_name} shadows input environment variable ${var_name}",
                     repetition_dir.display()
                 );
             }
 
-            value_by_var.add_variable(var_name, std::fs::read_to_string(file)?.trim().to_string());
+            value_by_var.add_env(var_name, std::fs::read_to_string(file)?.trim().to_string());
         }
 
         value_by_var_by_dir.insert(repetition_dir.to_path_buf(), value_by_var);
@@ -119,7 +119,7 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
 
     // (2a) collect all var names
     for (dir, value_by_var) in &value_by_var_by_dir {
-        for var in value_by_var.get_variables() {
+        for var in value_by_var.get_env_vars() {
             if !values_by_var.contains_key(var) {
                 trace!("adding key to output from {}: {var}", dir.display());
                 values_by_var.insert(var.clone(), Vec::new());
@@ -130,7 +130,7 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
     // (2b) populate content for each var
     for (dir, value_by_var) in &value_by_var_by_dir {
         for (var, values) in values_by_var.iter_mut() {
-            values.push(match value_by_var.get_value(var) {
+            values.push(match value_by_var.get_env_val(var) {
                 None => {
                     warn!(
                         "experiment in {} misses value for variable: {var}",

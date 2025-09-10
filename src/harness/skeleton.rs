@@ -392,10 +392,10 @@ mod tests {
             let src_env = Environment::from_file(&default_env).unwrap();
             let run_env = Environment::from_file(&run_dir.join(RUN_ENV_FILE)).unwrap();
 
-            assert!(!src_env.contains_variable("EXP_SRC_DIR"));
-            assert!(run_env.contains_variable("EXP_SRC_DIR"));
-            assert!(src_env.contains_variable("FOO"));
-            assert!(run_env.contains_variable("FOO"));
+            assert!(!src_env.contains_env_var("EXP_SRC_DIR"));
+            assert!(run_env.contains_env_var("EXP_SRC_DIR"));
+            assert!(src_env.contains_env_var("FOO"));
+            assert!(run_env.contains_env_var("FOO"));
         }
 
         #[test]

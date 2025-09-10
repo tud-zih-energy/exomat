@@ -15,7 +15,7 @@ pub use environment::Environment;
 pub use environment_container::EnvironmentContainer;
 
 /// List of all environment variable names that exomat reserves for internal use
-const RESERVED_ENVS: [&str; 1] = ["SRC_ENV_DIR"];
+const RESERVED_ENV_VARS: [&str; 1] = ["SRC_ENV_DIR"];
 
 /// map of all variables with all possible values
 ///
@@ -27,14 +27,14 @@ const RESERVED_ENVS: [&str; 1] = ["SRC_ENV_DIR"];
 ///
 /// can be encoded in an EnvVarList like this:
 /// - `["FOO" = ["true", "false"], "BAR" = ["1", "2"]]`
-pub type EnvVarList = HashMap<String, Vec<String>>;
+pub type EnvList = HashMap<String, Vec<String>>;
 
 /// Collects paths of all .env files in `from`. Returns `None` if
 /// no .env files were found.
 ///
 /// ## Example
 /// ```
-/// use exomat::harness::env::fetch_env_files;
+/// use exomat::harness::env::fetch_environment_files;
 /// use tempfile::TempDir;
 ///
 /// let env_dir = TempDir::new().unwrap();
@@ -51,7 +51,7 @@ pub type EnvVarList = HashMap<String, Vec<String>>;
 /// let random_file = tempfile::Builder::new().tempfile_in(&env_dir).unwrap();
 /// let random_file = random_file.path().to_path_buf();
 ///
-/// let found_files = fetch_env_files(&env_dir).unwrap();
+/// let found_files = fetch_environment_files(&env_dir).unwrap();
 ///
 /// // recognized only the .env file
 /// assert_eq!(found_files.len(), 1);
@@ -61,7 +61,7 @@ pub type EnvVarList = HashMap<String, Vec<String>>;
 ///
 /// ## Panics
 /// - Panics if `from` could not be read or is not a directory
-pub fn fetch_env_files(from: &PathBuf) -> Option<Vec<PathBuf>> {
+pub fn fetch_environment_files(from: &PathBuf) -> Option<Vec<PathBuf>> {
     assert!(from.is_dir(), "Given dir is not a directory");
 
     let files = std::fs::read_dir(from)
@@ -142,7 +142,7 @@ where
 ///
 /// # Errors
 /// - Returns `EnvError` if a key from `to_add` is already in `given`
-fn try_assemble_all(given: &Environment, to_add: &EnvVarList) -> Result<Vec<Environment>> {
+fn try_assemble_all(given: &Environment, to_add: &EnvList) -> Result<Vec<Environment>> {
     // combine all values from to_add
     let mut combinations = EnvironmentContainer::from_env_list(
         to_add
@@ -196,14 +196,14 @@ fn try_assemble_all(given: &Environment, to_add: &EnvVarList) -> Result<Vec<Envi
 ///
 /// ## Errors
 /// - Returns an `EnvError` if `old_list` is empty
-fn transform_env_list(old_list: &Vec<Vec<String>>) -> Result<EnvVarList> {
+fn to_env_list(old_list: &Vec<Vec<String>>) -> Result<EnvList> {
     if old_list.is_empty() {
         return Err(Error::EnvError {
             reason: "Cannot transform empty env list.".to_string(),
         });
     }
 
-    let mut transformed: EnvVarList = HashMap::new();
+    let mut transformed: EnvList = HashMap::new();
 
     for occurence in old_list {
         let mut val = occurence.clone();
@@ -220,11 +220,11 @@ fn transform_env_list(old_list: &Vec<Vec<String>>) -> Result<EnvVarList> {
 /// ## Errors and Panics
 /// - Panics if `from` could not be read
 /// - Returns an `EnvError` if something went wrong during the deserialization of envs
-pub fn get_existing_envs_by_fname(from: &PathBuf) -> Result<HashMap<String, Environment>> {
+fn get_existing_environments_by_fname(from: &PathBuf) -> Result<HashMap<String, Environment>> {
     let mut envs: HashMap<String, Environment> = HashMap::new();
 
     // if there are .env files present, read existing vars from them
-    if let Some(env_files) = fetch_env_files(from) {
+    if let Some(env_files) = fetch_environment_files(from) {
         for file in env_files {
             let envs_in_file = Environment::from_file(&file)?;
             envs.insert(
@@ -249,7 +249,7 @@ pub fn get_existing_envs_by_fname(from: &PathBuf) -> Result<HashMap<String, Envi
 /// ## Errors and Panics
 /// - Returns an EnvError on invalid names
 /// - Panics if any Vec<String> is empty (or the first item cannot be extracted)
-fn check_env_names(env_list: &[Vec<String>]) -> Result<()> {
+fn check_env_vars(env_list: &[Vec<String>]) -> Result<()> {
     let re_env_name = Regex::new(r"^[A-Z_][0-9A-Z_]*$").expect("Could not create Regex");
 
     let invalid: Vec<&String> = env_list
@@ -283,7 +283,7 @@ fn generate_environments(
     fn contains_reserved(env_list: &Vec<Vec<String>>) -> bool {
         env_list.iter().any(|v| {
             v.get(0)
-                .map_or(false, |name| RESERVED_ENVS.contains(&name.as_str()))
+                .map_or(false, |name| RESERVED_ENV_VARS.contains(&name.as_str()))
         })
     }
 
@@ -291,7 +291,7 @@ fn generate_environments(
     if contains_reserved(&to_add) || contains_reserved(&to_append) || contains_reserved(&to_remove)
     {
         return Err(Error::EnvError {
-            reason: format!("Cannot set reserved env: {:?}", RESERVED_ENVS),
+            reason: format!("Cannot set reserved env: {:?}", RESERVED_ENV_VARS),
         });
     }
 
@@ -315,14 +315,14 @@ fn generate_environments(
     }
 
     // serialize new env files
-    env.serialize_envs(&env_path)
+    env.serialize_environments(&env_path)
 }
 
 /// print a pretty table of all configured environments in env_path
 ///
 /// Fails if a file contains an extra key
 fn print_all_environments(env_path: PathBuf) -> Result<()> {
-    let all_envs_by_fname = get_existing_envs_by_fname(&env_path)?;
+    let all_envs_by_fname = get_existing_environments_by_fname(&env_path)?;
     let all_envs_with_fname: Vec<(String, Environment)> = all_envs_by_fname
         .into_iter()
         .sorted_by_cached_key(|(k, _)| k.clone())
@@ -334,8 +334,7 @@ fn print_all_environments(env_path: PathBuf) -> Result<()> {
 
     for (fname, env) in all_envs_with_fname {
         // variables from env file
-        let this_env_keys: Vec<String> =
-            env.get_variables().iter().map(|s| s.to_string()).collect();
+        let this_env_keys: Vec<String> = env.get_env_vars().iter().map(|s| s.to_string()).collect();
 
         match keys {
             // on first iteration add "file", then variables from env file (=header)
@@ -364,7 +363,7 @@ fn print_all_environments(env_path: PathBuf) -> Result<()> {
         // reorder values by list of keys
         table_builder.push_record(
             std::iter::once(fname.to_string()).chain(keys.iter().map(|s| {
-                env.get_value(s)
+                env.get_env_val(s)
                     .expect("key precondition check failed")
                     .to_string()
             })),
@@ -420,7 +419,7 @@ mod tests {
         create_harness_file(&mock_envs.join("not_an_env")).unwrap();
         create_harness_dir(&mock_envs.join("not_a_file")).unwrap();
 
-        let envs_found = fetch_env_files(&mock_envs).unwrap();
+        let envs_found = fetch_environment_files(&mock_envs).unwrap();
 
         assert_eq!(envs_found.len(), 2);
         assert!(envs_found.contains(&mock_envs.join("42.env")));
@@ -435,7 +434,7 @@ mod tests {
         let mock_src = TempDir::new().unwrap();
         let mock_src = mock_src.path().to_path_buf();
 
-        assert!(fetch_env_files(&mock_src).is_none());
+        assert!(fetch_environment_files(&mock_src).is_none());
     }
 
     #[test]
@@ -446,7 +445,7 @@ mod tests {
 
         // create empty envs dir
         create_harness_dir(&mock_src.join(SRC_ENV_DIR)).unwrap();
-        assert!(fetch_env_files(&mock_src.join(SRC_ENV_DIR)).is_none());
+        assert!(fetch_environment_files(&mock_src.join(SRC_ENV_DIR)).is_none());
     }
 
     #[test]
@@ -506,7 +505,7 @@ mod tests {
         let mock_env = TempDir::new().unwrap();
         let mock_env = mock_env.path().to_path_buf();
 
-        let reserved_env = RESERVED_ENVS[0];
+        let reserved_env = RESERVED_ENV_VARS[0];
         let reserved = vec![vec![reserved_env.to_string()]];
 
         // try using a reserved var in any position
@@ -523,30 +522,30 @@ mod tests {
             vec![String::from("ALSO_VALID123_4"), String::from("val")],
             vec![String::from("_FOO_"), String::from("val")],
         ];
-        assert!(check_env_names(&valid_list).is_ok());
+        assert!(check_env_vars(&valid_list).is_ok());
 
         // starts with number
         let invalid_number: Vec<Vec<String>> = vec![vec![String::from("1"), String::from("val")]];
-        assert!(check_env_names(&invalid_number).is_err());
+        assert!(check_env_vars(&invalid_number).is_err());
 
         // includes lowercase
         let invalid_lowercase: Vec<Vec<String>> =
             vec![vec![String::from("INvALID"), String::from("val")]];
-        assert!(check_env_names(&invalid_lowercase).is_err());
+        assert!(check_env_vars(&invalid_lowercase).is_err());
 
         // includes forbidden characters
         let invalid_characters: Vec<Vec<String>> =
             vec![vec![String::from("FOO,.-!§$&()?#~'<"), String::from("val")]];
-        assert!(check_env_names(&invalid_characters).is_err());
+        assert!(check_env_vars(&invalid_characters).is_err());
 
         // more invalid characters (only whitespace)
         let invalid_whitespace: Vec<Vec<String>> =
             vec![vec![String::from(" "), String::from("val")]];
-        assert!(check_env_names(&invalid_whitespace).is_err());
+        assert!(check_env_vars(&invalid_whitespace).is_err());
 
         // empty string
         let invalid_empty: Vec<Vec<String>> = vec![vec![String::from(""), String::from("val")]];
-        assert!(check_env_names(&invalid_empty).is_err());
+        assert!(check_env_vars(&invalid_empty).is_err());
     }
 
     #[test]
@@ -598,7 +597,7 @@ mod tests {
             ],
         ];
 
-        let new_map = transform_env_list(&list).unwrap();
+        let new_map = to_env_list(&list).unwrap();
 
         assert_eq!(new_map.len(), 2);
         assert_eq!(
@@ -643,7 +642,7 @@ mod tests {
             let expected_env_bar = Environment::from_env_list(vec![("FOO".to_string(), "bar".to_string())]);
             let expected_env_baz = Environment::from_env_list(vec![("FOO".to_string(), "baz".to_string())]);
 
-            let all_envs_with_fname = get_existing_envs_by_fname(&PathBuf::from(".")).unwrap();
+            let all_envs_with_fname = get_existing_environments_by_fname(&PathBuf::from(".")).unwrap();
             assert_eq!(
                 all_envs_with_fname,
                 HashMap::from([

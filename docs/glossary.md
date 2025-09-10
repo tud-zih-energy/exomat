@@ -44,3 +44,14 @@
        |-> stderr.log
        \-> exomat.log
 ```
+
+## Environments
+If a function contains one of the following words, this is what you can expect:
+name                    | meaning                                         | possible use
+------------------------|-------------------------------------------------|---------------------
+`env`                   | A single `NAME=value` pair                      |
+`env_var`               | The `NAME` of an env                            |
+`env_val`               | The `value` of an env                           |
+`env_list`              | A list of all possible `values` for each `NAME` |
+`environment`           | A list of `NAME=value` pairs                    | content of an .env file
+`environment_container` | A list of environments                          | directory of .env files
