@@ -29,6 +29,9 @@ const RESERVED_ENV_VARS: [&str; 1] = ["SRC_ENV_DIR"];
 /// - `["FOO" = ["true", "false"], "BAR" = ["1", "2"]]`
 pub type EnvList = HashMap<String, Vec<String>>;
 
+/// Mapping of file paths to Environments
+pub type EnvironmentLocationList = HashMap<PathBuf, Environment>;
+
 /// Collects paths of all .env files in `from`. Returns `None` if
 /// no .env files were found.
 ///
@@ -220,19 +223,20 @@ fn to_env_list(old_list: &Vec<Vec<String>>) -> Result<EnvList> {
 /// ## Errors and Panics
 /// - Panics if `from` could not be read
 /// - Returns an `EnvError` if something went wrong during the deserialization of envs
-fn get_existing_environments_by_fname(from: &PathBuf) -> Result<HashMap<String, Environment>> {
-    let mut envs: HashMap<String, Environment> = HashMap::new();
+fn get_existing_environments_by_fname(from: &PathBuf) -> Result<EnvironmentLocationList> {
+    let mut envs: EnvironmentLocationList = HashMap::new();
 
     // if there are .env files present, read existing vars from them
     if let Some(env_files) = fetch_environment_files(from) {
         for file in env_files {
             let envs_in_file = Environment::from_file(&file)?;
             envs.insert(
-                file.file_name()
-                    .expect("file name must not be empty")
-                    .to_str()
-                    .expect("file name must be utf8")
-                    .to_string(),
+                PathBuf::from(
+                    file.file_name()
+                        .expect("file name must not be empty")
+                        .to_str()
+                        .expect("file name must be utf8"),
+                ),
                 envs_in_file,
             );
         }
@@ -249,12 +253,12 @@ fn get_existing_environments_by_fname(from: &PathBuf) -> Result<HashMap<String, 
 /// ## Errors and Panics
 /// - Returns an EnvError on invalid names
 /// - Panics if any Vec<String> is empty (or the first item cannot be extracted)
-fn check_env_vars(env_list: &[Vec<String>]) -> Result<()> {
+fn check_env_vars(env_list: &EnvList) -> Result<()> {
     let re_env_name = Regex::new(r"^[A-Z_][0-9A-Z_]*$").expect("Could not create Regex");
 
     let invalid: Vec<&String> = env_list
         .iter()
-        .map(|env_vec| env_vec.first().expect("Could not get env var name")) // get first item in Vector
+        .map(|env_vec| env_vec.0) // get env name
         .filter(|env_name| re_env_name.captures(env_name).is_none()) // collect names that do not match regex
         .collect();
 
@@ -274,17 +278,16 @@ fn check_env_vars(env_list: &[Vec<String>]) -> Result<()> {
 /// - Panics if reading/writing of env files failed
 fn generate_environments(
     env_path: PathBuf,
-    to_add: Vec<Vec<String>>,
-    to_append: Vec<Vec<String>>,
-    to_remove: Vec<Vec<String>>,
+    to_add: EnvList,
+    to_append: EnvList,
+    to_remove: EnvList,
 ) -> Result<()> {
     let mut env = EnvironmentContainer::from_files(&env_path)?;
 
-    fn contains_reserved(env_list: &Vec<Vec<String>>) -> bool {
-        env_list.iter().any(|v| {
-            v.get(0)
-                .map_or(false, |name| RESERVED_ENV_VARS.contains(&name.as_str()))
-        })
+    fn contains_reserved(env_list: &EnvList) -> bool {
+        env_list
+            .keys()
+            .any(|k| RESERVED_ENV_VARS.contains(&k.as_str()))
     }
 
     // Check if user tries to edit reserved variable
@@ -323,7 +326,7 @@ fn generate_environments(
 /// Fails if a file contains an extra key
 fn print_all_environments(env_path: PathBuf) -> Result<()> {
     let all_envs_by_fname = get_existing_environments_by_fname(&env_path)?;
-    let all_envs_with_fname: Vec<(String, Environment)> = all_envs_by_fname
+    let all_envs_with_fname: Vec<(PathBuf, Environment)> = all_envs_by_fname
         .into_iter()
         .sorted_by_cached_key(|(k, _)| k.clone())
         .collect();
@@ -361,13 +364,13 @@ fn print_all_environments(env_path: PathBuf) -> Result<()> {
         let keys = keys.as_ref().expect("keys must be initialized by now");
 
         // reorder values by list of keys
-        table_builder.push_record(
-            std::iter::once(fname.to_string()).chain(keys.iter().map(|s| {
+        table_builder.push_record(std::iter::once(fname.display().to_string()).chain(
+            keys.iter().map(|s| {
                 env.get_env_val(s)
                     .expect("key precondition check failed")
                     .to_string()
-            })),
-        );
+            }),
+        ));
     }
 
     let mut table = table_builder.build();
@@ -390,6 +393,10 @@ pub fn main(
 ) -> Result<()> {
     let exp_source = find_marker_pwd(crate::MARKER_SRC)?;
     let env_path = exp_source.join(crate::SRC_ENV_DIR);
+
+    let to_add = to_env_list(&to_add)?;
+    let to_append = to_env_list(&to_append)?;
+    let to_remove = to_env_list(&to_remove)?;
 
     match to_add.is_empty() && to_append.is_empty() && to_remove.is_empty() {
         true => print_all_environments(env_path),
@@ -506,45 +513,55 @@ mod tests {
         let mock_env = mock_env.path().to_path_buf();
 
         let reserved_env = RESERVED_ENV_VARS[0];
-        let reserved = vec![vec![reserved_env.to_string()]];
+        let reserved = HashMap::from([(reserved_env.to_string(), vec![])]);
 
         // try using a reserved var in any position
-        assert!(generate_environments(mock_env.clone(), reserved.clone(), vec![], vec![]).is_err());
-        assert!(generate_environments(mock_env.clone(), vec![], reserved.clone(), vec![]).is_err());
-        assert!(generate_environments(mock_env, vec![], vec![], reserved).is_err());
+        assert!(generate_environments(
+            mock_env.clone(),
+            reserved.clone(),
+            HashMap::new(),
+            HashMap::new()
+        )
+        .is_err());
+        assert!(generate_environments(
+            mock_env.clone(),
+            HashMap::new(),
+            reserved.clone(),
+            HashMap::new()
+        )
+        .is_err());
+        assert!(generate_environments(mock_env, HashMap::new(), HashMap::new(), reserved).is_err());
     }
 
     #[test]
     fn env_validate_names() {
         // correct names
-        let valid_list: Vec<Vec<String>> = vec![
-            vec![String::from("VALID"), String::from("val")],
-            vec![String::from("ALSO_VALID123_4"), String::from("val")],
-            vec![String::from("_FOO_"), String::from("val")],
-        ];
+        let valid_list = HashMap::from([
+            (String::from("VALID"), vec![String::from("val")]),
+            (String::from("ALSO_VALID123_4"), vec![String::from("val")]),
+            (String::from("_FOO_"), vec![String::from("val")]),
+        ]);
         assert!(check_env_vars(&valid_list).is_ok());
 
         // starts with number
-        let invalid_number: Vec<Vec<String>> = vec![vec![String::from("1"), String::from("val")]];
+        let invalid_number = HashMap::from([(String::from("1"), vec![String::from("val")])]);
         assert!(check_env_vars(&invalid_number).is_err());
 
         // includes lowercase
-        let invalid_lowercase: Vec<Vec<String>> =
-            vec![vec![String::from("INvALID"), String::from("val")]];
+        let invalid_lowercase = HashMap::from([(String::from("NoPE"), vec![String::from("val")])]);
         assert!(check_env_vars(&invalid_lowercase).is_err());
 
         // includes forbidden characters
-        let invalid_characters: Vec<Vec<String>> =
-            vec![vec![String::from("FOO,.-!§$&()?#~'<"), String::from("val")]];
+        let invalid_characters =
+            HashMap::from([(String::from("FOO,.-!§$&()?#~'<"), vec![String::from("val")])]);
         assert!(check_env_vars(&invalid_characters).is_err());
 
         // more invalid characters (only whitespace)
-        let invalid_whitespace: Vec<Vec<String>> =
-            vec![vec![String::from(" "), String::from("val")]];
+        let invalid_whitespace = HashMap::from([(String::from(" "), vec![String::from("val")])]);
         assert!(check_env_vars(&invalid_whitespace).is_err());
 
         // empty string
-        let invalid_empty: Vec<Vec<String>> = vec![vec![String::from(""), String::from("val")]];
+        let invalid_empty = HashMap::from([(String::new(), vec![String::from("val")])]);
         assert!(check_env_vars(&invalid_empty).is_err());
     }
 
@@ -646,8 +663,8 @@ mod tests {
             assert_eq!(
                 all_envs_with_fname,
                 HashMap::from([
-                    ("01.env".to_string(), expected_env_bar.clone()),
-                    ("two.env".to_string(), expected_env_baz.clone())]));
+                    (PathBuf::from("01.env"), expected_env_bar.clone()),
+                    (PathBuf::from("two.env"), expected_env_baz.clone())]));
 
             let all_envs_no_fname = EnvironmentContainer::from_files(&PathBuf::from(".")).unwrap();
             assert!(all_envs_no_fname.to_env_list().contains(&expected_env_baz));
