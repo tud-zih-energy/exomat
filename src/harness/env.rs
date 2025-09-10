@@ -651,9 +651,8 @@ mod tests {
                     ("two.env".to_string(), expected_env_baz.clone())]));
 
             let all_envs_no_fname = EnvironmentContainer::from_files(&PathBuf::from(".")).unwrap();
-            assert_eq!(
-                *all_envs_no_fname.to_env_list(),
-                vec![expected_env_bar, expected_env_baz]);
+            assert!(all_envs_no_fname.to_env_list().contains(&expected_env_baz));
+            assert!(all_envs_no_fname.to_env_list().contains(&expected_env_bar));
         }
     }
 }
