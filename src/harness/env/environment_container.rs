@@ -201,7 +201,7 @@ impl EnvironmentContainer {
         // create a list of all possible values from all given files
         // collect values with the same key in one Vec
         for env_file_content in &self.environment_list {
-            for (var, val) in env_file_content.to_env_list() {
+            for (var, val) in env_file_content.to_env_map() {
                 // push to value of entry "var"
                 possible_envs
                     .entry(var.clone())

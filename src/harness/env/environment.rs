@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use crate::helper::errors::{Error, Result};
 
 /// Represents one environment file
+///
+/// Contains a list for envs from an environment file, and a list for exomat-internal envs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Environment {
     envs: HashMap<String, String>,
@@ -30,8 +32,9 @@ impl Environment {
     ///
     ///  ## Errors and Panics
     /// - Panics if `file` does not end in ".env"
-    /// - Returns an `EnvError` if `file` isn't a valid .env file or if an
-    ///   error occured during parsing.
+    /// - Returns an `EnvError` if `file` isn't a valid .env file (defined by
+    ///   the `dotenvy` crate)
+    /// - Returns an `EnvError` if an error occured during parsing
     pub fn from_file(file: &Path) -> Result<Self> {
         // check for .env extension
         assert!(
@@ -55,7 +58,7 @@ impl Environment {
     }
 
     /// Returns a new Environment with `list` as it's variables.
-    /// `internal_variables` will be empty.
+    /// `internal_envs` will be empty.
     pub fn from_env_list(list: Vec<(String, String)>) -> Self {
         Environment {
             envs: list.into_iter().collect(),
@@ -69,7 +72,7 @@ impl Environment {
     /// If a variable set in `env_file` is already loaded, it will be overwritten with
     /// the value given in `env_file`.
     ///
-    /// Does not set `internal_variables`.
+    /// Does not set `internal_envs`.
     ///
     /// ## Example
     /// ```
@@ -87,7 +90,7 @@ impl Environment {
     ///
     /// // from_file_with_load returns **all** currently loaded envs, so there will be more than
     /// // just the one we set
-    /// assert!(envs.to_env_list().len() > 1);
+    /// assert!(envs.to_env_map().len() > 1);
     ///
     /// // from_file_with_load has created a variable called "TEST" with the value "true"
     /// assert!(envs.contains_env_var("TEST"));
@@ -107,7 +110,7 @@ impl Environment {
     /// This will fail if any parent directories of `file_path` do not exist.
     ///
     /// ## Errors
-    /// - Returns an EnvError if writing failed
+    /// - Returns an `EnvError` if writing failed
     pub fn to_file(&self, file_path: &PathBuf) -> Result<()> {
         let mut all = self.envs.clone();
         all.extend(self.internal_envs.clone());
@@ -117,13 +120,21 @@ impl Environment {
         })
     }
 
-    /// Returns a map of all environments saved in this Environment
-    pub fn to_env_list(&self) -> &HashMap<String, String> {
+    /// Returns a map of all envs saved in this Environment.
+    /// Does not include `internal_envs`
+    pub fn to_env_map(&self) -> &HashMap<String, String> {
         &self.envs
     }
 
     /// Fills internal variables with their respective values.
+    ///
+    /// Overwrites `internal_envs` with the given values
+    ///
+    /// ## Parameters
+    /// - `exp_src_dir` -> value of `$EXP_SRC_DIR`
     pub fn insert_internals(&mut self, exp_src_dir: &Path) {
+        self.internal_envs.clear();
+
         self.internal_envs.insert(
             String::from("EXP_SRC_DIR"),
             exp_src_dir.canonicalize().unwrap().display().to_string(),
@@ -135,7 +146,8 @@ impl Environment {
         &self.internal_envs
     }
 
-    /// Returns `true` if the variable exists in this Environment.
+    /// Returns `true` if the variable exists in this Environment. Internal envs
+    /// are not checked.
     ///
     /// Does not check the value associated with the variable. A variable with
     /// empty values also returns `true` here.
@@ -151,8 +163,10 @@ impl Environment {
     }
 
     /// Append all variables from `other_env` onto this Environment.
+    ///
+    /// Internal envs will not be changed
     pub fn extend_envs(&mut self, other_env: &Environment) {
-        self.envs.extend(other_env.to_env_list().to_owned());
+        self.envs.extend(other_env.to_env_map().to_owned());
     }
 
     /// Returns the value associated with `var`.
