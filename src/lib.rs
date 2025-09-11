@@ -19,6 +19,7 @@ use spdlog::formatter::{pattern, PatternFormatter};
 use spdlog::sink::FileSink;
 use std::{path::Path, path::PathBuf, sync::Arc};
 
+use crate::harness::env::exomat_environment;
 use helper::archivist::find_marker_pwd;
 use helper::errors::{Error, Result};
 use helper::fs_names::*;
@@ -260,7 +261,10 @@ fn execute_exp_repetitions(
             harness::env::Environment::from_file(&environment)?
         );
 
-        harness::run::run_experiment(&file_name_string(exp_source_dir), &run_folder)?;
+        let exomat_envs = exomat_environment(&exp_source_dir.to_path_buf());
+        trace!("exomat envs are: {:?}", exomat_envs.to_env_map());
+
+        harness::run::run_experiment(&file_name_string(exp_source_dir), &run_folder, &exomat_envs)?;
 
         // update progress
         prog_bar.inc(1);
