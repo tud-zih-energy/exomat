@@ -15,7 +15,25 @@ pub use environment::Environment;
 pub use environment_container::EnvironmentContainer;
 
 /// List of all environment variable names that exomat reserves for internal use
-const RESERVED_ENV_VARS: [&str; 1] = ["SRC_ENV_DIR"];
+const RESERVED_ENV_VARS: [&str; 1] = ["EXP_SRC_DIR"];
+
+/// Returns an Environment with all [RESERVED_ENV_VARS] set. This means it contains:
+///
+/// - "EXP_SRC_DIR" = `exp_src_dir` (absolute path)
+pub fn exomat_environment(exp_src_dir: &PathBuf) -> Environment {
+    let mut env = Environment::new();
+
+    env.add_env(
+        String::from("EXP_SRC_DIR"),
+        exp_src_dir.canonicalize().unwrap().display().to_string(),
+    );
+
+    // this check is here, so that if you extend one list you also need to extend the other
+    // (and to prevent typos)
+    assert_eq!(env.get_env_vars(), RESERVED_ENV_VARS);
+
+    env
+}
 
 /// map of all variables with all possible values
 ///

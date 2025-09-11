@@ -10,7 +10,6 @@ use std::{
 };
 
 use crate::duplicate_log_to_file;
-use crate::harness::env::Environment;
 use crate::helper::archivist::{
     copy_harness_dir, copy_harness_file, create_harness_dir, create_harness_file,
 };
@@ -207,7 +206,7 @@ pub fn generate_build_series_filepath(exp_source: &Path) -> Result<PathBuf> {
 /// Creates a ready-to-use experiment run folder for **one interation** with **one environment**
 /// of an experiment.
 ///
-/// ### Note: `env_file` is used to deduce the `{env}` part of the new experiment run directory name AND the value of the `EXP_SRC_DIR` environment variable.
+/// ### Note: `env_file` is used to deduce the `{env}` part of the new experiment run directory name.
 ///
 /// The new directory will be created in the given `series_folder` under [SERIES_RUNS_DIR]`/run_[env]_rep[repetition]`.
 /// This will result in the following structure:
@@ -238,8 +237,6 @@ pub fn build_run_directory(
 
     // unwrap here, because this should never fail and if it does it's your fault
     let env_name = &env_file.file_stem().unwrap().to_str().unwrap();
-    let canonical_env_file = env_file.canonicalize().unwrap();
-    let src_path = canonical_env_file.parent().unwrap().parent().unwrap();
 
     let run = format!(
         "run_{}_rep{:0length$}",
@@ -271,11 +268,7 @@ pub fn build_run_directory(
     // copy ruh.sh and [env].env to runs_dir
     let run_to_cp = copy_run.join(SRC_RUN_FILE);
     copy_harness_file(&run_to_cp, &run.join(RUN_RUN_FILE))?;
-
-    // combine user envs with internal envs, write to file
-    let mut full_environment = Environment::from_file(&env_file)?;
-    full_environment.insert_internals(&src_path);
-    full_environment.to_file(&run.join(RUN_ENV_FILE))?;
+    copy_harness_file(&env_file, &run.join(RUN_ENV_FILE))?;
 
     Ok(run)
 }
@@ -303,6 +296,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+    use crate::harness::env::Environment;
 
     #[test]
     fn test_create_source_multiple_times() {
@@ -372,7 +366,7 @@ mod tests {
         }
 
         #[test]
-        fn test_internal_envs_in_correct_files(){
+        fn test_internal_envs_not_in_files(){
             // set up source/series/run dir
             let tmpdir = TempDir::new().unwrap();
             let tmpdir = tmpdir.path();
@@ -393,7 +387,7 @@ mod tests {
             let run_env = Environment::from_file(&run_dir.join(RUN_ENV_FILE)).unwrap();
 
             assert!(!src_env.contains_env_var("EXP_SRC_DIR"));
-            assert!(run_env.contains_env_var("EXP_SRC_DIR"));
+            assert!(!run_env.contains_env_var("EXP_SRC_DIR"));
             assert!(src_env.contains_env_var("FOO"));
             assert!(run_env.contains_env_var("FOO"));
         }

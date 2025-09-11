@@ -6,12 +6,9 @@ use std::path::{Path, PathBuf};
 use crate::helper::errors::{Error, Result};
 
 /// Represents one environment file
-///
-/// Contains a list for envs from an environment file, and a list for exomat-internal envs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Environment {
     envs: HashMap<String, String>,
-    internal_envs: HashMap<String, String>,
 }
 
 impl Environment {
@@ -19,13 +16,11 @@ impl Environment {
     pub fn new() -> Self {
         Environment {
             envs: HashMap::new(),
-            internal_envs: HashMap::new(), //TODO: turn into an enum/ struct
         }
     }
 
     /// Constructs a new Environment with all variables and values from a file.
-    /// Does not include process environment variables. Does not set internal
-    /// variables.
+    /// Does not include process environment variables.
     ///
     /// ## Parameters
     /// `file` needs to be a valid env file, see Errors and Panics
@@ -58,11 +53,9 @@ impl Environment {
     }
 
     /// Returns a new Environment with `list` as it's variables.
-    /// `internal_envs` will be empty.
     pub fn from_env_list(list: Vec<(String, String)>) -> Self {
         Environment {
             envs: list.into_iter().collect(),
-            internal_envs: HashMap::new(),
         }
     }
 
@@ -71,8 +64,6 @@ impl Environment {
     ///
     /// If a variable set in `env_file` is already loaded, it will be overwritten with
     /// the value given in `env_file`.
-    ///
-    /// Does not set `internal_envs`.
     ///
     /// ## Example
     /// ```
@@ -112,42 +103,17 @@ impl Environment {
     /// ## Errors
     /// - Returns an `EnvError` if writing failed
     pub fn to_file(&self, file_path: &PathBuf) -> Result<()> {
-        let mut all = self.envs.clone();
-        all.extend(self.internal_envs.clone());
-
-        serde_envfile::to_file(file_path, &all).map_err(|e| Error::EnvError {
+        serde_envfile::to_file(file_path, &self.envs).map_err(|e| Error::EnvError {
             reason: e.to_string(),
         })
     }
 
     /// Returns a map of all envs saved in this Environment.
-    /// Does not include `internal_envs`
     pub fn to_env_map(&self) -> &HashMap<String, String> {
         &self.envs
     }
 
-    /// Fills internal variables with their respective values.
-    ///
-    /// Overwrites `internal_envs` with the given values
-    ///
-    /// ## Parameters
-    /// - `exp_src_dir` -> value of `$EXP_SRC_DIR`
-    pub fn insert_internals(&mut self, exp_src_dir: &Path) {
-        self.internal_envs.clear();
-
-        self.internal_envs.insert(
-            String::from("EXP_SRC_DIR"),
-            exp_src_dir.canonicalize().unwrap().display().to_string(),
-        );
-    }
-
-    /// Returns a map of all internal environments saved in this Environment
-    pub fn get_internals(&self) -> &HashMap<String, String> {
-        &self.internal_envs
-    }
-
-    /// Returns `true` if the variable exists in this Environment. Internal envs
-    /// are not checked.
+    /// Returns `true` if the variable exists in this Environment.
     ///
     /// Does not check the value associated with the variable. A variable with
     /// empty values also returns `true` here.
@@ -163,8 +129,6 @@ impl Environment {
     }
 
     /// Append all variables from `other_env` onto this Environment.
-    ///
-    /// Internal envs will not be changed
     pub fn extend_envs(&mut self, other_env: &Environment) {
         self.envs.extend(other_env.to_env_map().to_owned());
     }

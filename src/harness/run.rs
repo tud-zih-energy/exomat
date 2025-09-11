@@ -25,7 +25,7 @@ use crate::helper::fs_names::*;
 /// - Returns a `HarnessRunrror` if [RUN_RUN_FILE] could not be executed
 /// - panics if there is no [RUN_RUN_FILE] in `run_folder`
 /// - panics if there is no [RUN_ENV_FILE] in `run_folder`
-pub fn run_experiment(exp_name: &str, run_folder: &Path) -> Result<()> {
+pub fn run_experiment(exp_name: &str, run_folder: &Path, exomat_envs: &Environment) -> Result<()> {
     assert!(
         run_folder.join(RUN_RUN_FILE).is_file(),
         "Missing run.sh in experiment run directory"
@@ -36,9 +36,11 @@ pub fn run_experiment(exp_name: &str, run_folder: &Path) -> Result<()> {
         "Missing environment.env in experiment run directory"
     );
 
-    // this file also contains internal variables, which will be treated as normal
-    // variables from now on
-    let envs = Environment::from_file_with_load(&run_folder.join(RUN_ENV_FILE))?;
+    // This loads all existing process environment variables, plus the variables
+    // found in `run_folder/RUN_ENV_FILE`.
+    // Then adds the reserved exomat variables, without persisting them in a file.
+    let mut envs = Environment::from_file_with_load(&run_folder.join(RUN_ENV_FILE))?;
+    envs.extend_envs(exomat_envs);
 
     let out_log = OpenOptions::new()
         .append(true)
@@ -196,6 +198,7 @@ mod tests {
         build_run_directory, build_series_directory, create_source_directory,
     };
     use super::*;
+    use crate::harness::env::exomat_environment;
 
     rusty_fork_test! {
         #[test]
@@ -216,10 +219,12 @@ mod tests {
                 .open(exp_source.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE))
                 .unwrap();
 
-            writeln!(runsh, "echo Hello!").unwrap();
+            writeln!(runsh, "echo $EXP_SRC_DIR").unwrap();
 
             let series = series_dir_handle.path();
             build_series_directory(&exp_source, series).unwrap();
+
+            let exomat_envs = exomat_environment(&exp_source);
             let default_env = series
                 .join(SERIES_SRC_DIR)
                 .join(SRC_ENV_DIR)
@@ -227,12 +232,12 @@ mod tests {
 
             // create run dir and run experiment
             let run = build_run_directory(series, &default_env, 1, 1).unwrap();
-            run_experiment(&file_name_string(&exp_source), &run).unwrap();
+            run_experiment(&file_name_string(&exp_source), &run, &exomat_envs).unwrap();
 
             let out_log = std::fs::read_to_string(series.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG)).unwrap();
             let err_log = std::fs::read_to_string(series.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG)).unwrap();
 
-            assert!(out_log.contains("Hello!"));
+            assert!(out_log.contains(&exp_source.canonicalize().unwrap().display().to_string()));
             assert!(err_log.is_empty());
         }
     }
