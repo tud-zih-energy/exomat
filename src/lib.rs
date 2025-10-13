@@ -261,7 +261,7 @@ fn execute_exp_repetitions(
             harness::env::Environment::from_file(&environment)?
         );
 
-        let exomat_envs = exomat_environment(&exp_source_dir.to_path_buf());
+        let exomat_envs = exomat_environment(&exp_source_dir.to_path_buf(), &rep);
         trace!("exomat envs are: {:?}", exomat_envs.to_env_map());
 
         harness::run::run_experiment(&file_name_string(exp_source_dir), &run_folder, &exomat_envs)?;
