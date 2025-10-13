@@ -333,6 +333,8 @@ mod tests {
         #[test]
         fn build_run_directory_simple() {
             use crate::helper::fs_names::*;
+            use crate::harness::env::Environment;
+            use crate::harness::env;
 
             use faccess::PathExt;
 
@@ -349,6 +351,8 @@ mod tests {
 
             // extract an env file to create run directory with
             let default_env = exp_source.join(SRC_ENV_DIR).join(SRC_ENV_FILE);
+            let env = env::exomat_environment(&exp_source.to_path_buf(), &0);
+            env.to_file(&exp_source.join(SRC_ENV_DIR).join(SRC_ENV_FILE)).unwrap();
 
             // create run dir (based on exp_series, environment from default_env,
             // one repetition, formatrepetitionn without leading zeros)
@@ -361,8 +365,8 @@ mod tests {
             assert!(run_dir.join(RUN_RUN_FILE).executable());
 
             // check that repetition number is an env
-            let envs = crate::harness::env::deserialize_envs(&run_dir.join(RUN_ENV_FILE)).unwrap();
-            assert_eq!(envs.get("REP"), Some(&String::from("1")));
+            let envs = Environment::from_file(&run_dir.join(RUN_ENV_FILE)).unwrap();
+            assert_eq!(envs.get_env_val("REPETITION"), Some(&String::from("0")));
 
             // it_format_length changes the name of each experiment run directory:
             let run_dir = build_run_directory(&exp_series, &default_env, 1, 3).unwrap();

@@ -224,7 +224,7 @@ mod tests {
             let series = series_dir_handle.path();
             build_series_directory(&exp_source, series).unwrap();
 
-            let exomat_envs = exomat_environment(&exp_source);
+            let exomat_envs = exomat_environment(&exp_source, &0);
             let default_env = series
                 .join(SERIES_SRC_DIR)
                 .join(SRC_ENV_DIR)
