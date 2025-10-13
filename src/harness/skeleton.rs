@@ -10,7 +10,7 @@ use std::{
 };
 
 use crate::duplicate_log_to_file;
-use crate::harness::env::ExomatEnvironment;
+use crate::harness::env::{exomat_environment::append_exomat_envs, ExomatEnvironment};
 use crate::helper::archivist::{
     copy_harness_dir, copy_harness_file, create_harness_dir, create_harness_file,
 };
@@ -273,7 +273,7 @@ pub fn build_run_directory(
     copy_harness_file(&env_file, &run.join(RUN_ENV_FILE))?;
 
     // write any exomat variables to file that need to be written
-    crate::harness::env::append_exomat_envs(&run.join(RUN_ENV_FILE), exomat_environment)?;
+    append_exomat_envs(&run.join(RUN_ENV_FILE), exomat_environment)?;
 
     Ok(run)
 }
@@ -301,7 +301,9 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::harness::env::{append_exomat_envs, Environment, ExomatEnvironment};
+    use crate::harness::env::{
+        exomat_environment::append_exomat_envs, Environment, ExomatEnvironment,
+    };
 
     #[test]
     fn test_create_source_multiple_times() {

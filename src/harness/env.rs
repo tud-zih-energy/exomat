@@ -8,58 +8,13 @@ use std::path::PathBuf;
 
 pub mod environment;
 pub mod environment_container;
+pub mod exomat_environment;
 
 use crate::helper::archivist::find_marker_pwd;
 use crate::helper::errors::{Error, Result};
 pub use environment::Environment;
 pub use environment_container::EnvironmentContainer;
-
-pub struct ExomatEnvironment {
-    pub exp_src_dir: PathBuf,
-    pub repetition: u64,
-}
-
-impl ExomatEnvironment {
-    pub fn new(exp_src_dir: &PathBuf, repetition: u64) -> Self {
-        ExomatEnvironment {
-            exp_src_dir: exp_src_dir.to_owned(),
-            repetition: repetition,
-        }
-    }
-
-    /// Returns an Environment with all variables of the `ExomatEnvironment`. This means it contains:
-    ///
-    /// - "EXP_SRC_DIR" (absolute path)
-    /// - "REPETITION"
-    pub fn to_environment_full(&self) -> Environment {
-        let mut env = self.to_environment_serializable();
-
-        env.extend_envs(&Environment::from_env_list(Vec::from([(
-            String::from("EXP_SRC_DIR"),
-            self.exp_src_dir
-                .canonicalize()
-                .unwrap()
-                .display()
-                .to_string(),
-        )])));
-
-        env
-    }
-
-    /// Returns an Environment with all environment variables that are allowed to
-    /// be serialized. This means it contains:
-    ///
-    /// - "REPETITION"
-    pub fn to_environment_serializable(&self) -> Environment {
-        Environment::from_env_list(Vec::from([(
-            String::from("REPETITION"),
-            self.repetition.to_string(),
-        )]))
-    }
-
-    /// List of all environment variable names that exomat reserves for internal use
-    const RESERVED_ENV_VARS: [&str; 2] = ["EXP_SRC_DIR", "REPETITION"];
-}
+pub use exomat_environment::ExomatEnvironment;
 
 /// map of all variables with all possible values
 ///
@@ -366,22 +321,6 @@ fn generate_environments(
 
     // serialize new env files
     env.serialize_environments(&env_path)
-}
-
-/// Adds serializable exomat envs to an env file
-///
-/// 1. Reads the environment from `env_path`
-/// 2. adds all envs from `exomat_environment.to_environment_serializable()`
-/// 3. serializes this back into `env_path`
-pub fn append_exomat_envs(
-    env_path: &PathBuf,
-    exomat_environment: &ExomatEnvironment,
-) -> Result<()> {
-    let mut old_env = Environment::from_file(&env_path)?;
-    let to_add = exomat_environment.to_environment_serializable();
-
-    old_env.extend_envs(&to_add);
-    old_env.to_file(&env_path)
 }
 
 /// print a pretty table of all configured environments in env_path
