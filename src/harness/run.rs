@@ -15,11 +15,14 @@ use crate::helper::fs_names::*;
 
 /// Executes [RUN_RUN_FILE] script found in `run_folder`.
 ///
-/// Appends any stderr/stdout output into their respective log file in the
-/// parent series directory of `run_folder`.
-///
-/// Exomat output will **not** automatically be duplicated to the log file
-/// by calling this function.
+/// 1. read envs from `run_folder/RUN_ENV_FILE`
+/// 2. add `exomat_envs` (overwrites envs with the same name)
+/// 3. run `run_folder/RUN_RUN_FILE` with these envs
+/// 4. log run results
+///     - Appends any stderr/stdout output into their respective log file in the
+///       parent series directory of `run_folder`.
+///     - Exomat output will **not** automatically be duplicated to the log file
+///       by calling this function.
 ///
 /// ## Errors and Panics
 /// - Returns a `HarnessRunrror` if [RUN_RUN_FILE] could not be executed
