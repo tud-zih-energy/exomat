@@ -272,7 +272,7 @@ pub fn build_run_directory(
     copy_harness_file(&run_to_cp, &run.join(RUN_RUN_FILE))?;
     copy_harness_file(&env_file, &run.join(RUN_ENV_FILE))?;
 
-    // write any exomat variables to file, that need to be written
+    // write any exomat variables to file that need to be written
     crate::harness::env::append_exomat_envs(&run.join(RUN_ENV_FILE), exomat_environment)?;
 
     Ok(run)
