@@ -270,13 +270,6 @@ pub fn build_run_directory(
     copy_harness_file(&run_to_cp, &run.join(RUN_RUN_FILE))?;
     copy_harness_file(&env_file, &run.join(RUN_ENV_FILE))?;
 
-    // add repetition number to env file
-    let mut env_file = OpenOptions::new()
-        .append(true)
-        .open(&run.join(RUN_ENV_FILE))
-        .unwrap();
-    env_file.write(format!("REP={it}").as_bytes()).unwrap();
-
     Ok(run)
 }
 
