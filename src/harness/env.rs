@@ -15,12 +15,13 @@ pub use environment::Environment;
 pub use environment_container::EnvironmentContainer;
 
 /// List of all environment variable names that exomat reserves for internal use
-const RESERVED_ENV_VARS: [&str; 1] = ["EXP_SRC_DIR"];
+const RESERVED_ENV_VARS: [&str; 2] = ["EXP_SRC_DIR", "REPETITION"];
 
 /// Returns an Environment with all [RESERVED_ENV_VARS] set. This means it contains:
 ///
 /// - "EXP_SRC_DIR" = `exp_src_dir` (absolute path)
-pub fn exomat_environment(exp_src_dir: &PathBuf) -> Environment {
+/// - "REPETITION" = `repetition`
+pub fn exomat_environment(exp_src_dir: &PathBuf, repetition: &u64) -> Environment {
     let mut env = Environment::new();
 
     env.add_env(
@@ -28,9 +29,14 @@ pub fn exomat_environment(exp_src_dir: &PathBuf) -> Environment {
         exp_src_dir.canonicalize().unwrap().display().to_string(),
     );
 
+    env.add_env(String::from("REPETITION"), repetition.to_string());
+
     // this check is here, so that if you extend one list you also need to extend the other
     // (and to prevent typos)
-    assert_eq!(env.get_env_vars(), RESERVED_ENV_VARS);
+    assert!(env
+        .get_env_vars()
+        .iter()
+        .all(|var| RESERVED_ENV_VARS.contains(&var.as_str())));
 
     env
 }
