@@ -19,7 +19,7 @@ use spdlog::formatter::{pattern, PatternFormatter};
 use spdlog::sink::FileSink;
 use std::{path::Path, path::PathBuf, sync::Arc};
 
-use crate::harness::env::exomat_environment;
+use crate::harness::env::ExomatEnvironment;
 use helper::archivist::find_marker_pwd;
 use helper::errors::{Error, Result};
 use helper::fs_names::*;
@@ -254,17 +254,25 @@ fn execute_exp_repetitions(
 
     let running_order: Vec<(&PathBuf, u64)> = shuffle_experiments(&envs, &repetitions);
     for (environment, rep) in running_order {
-        let run_folder =
-            harness::skeleton::build_run_directory(exp_series_dir, &environment, rep, length)?;
+        let exomat_envs = ExomatEnvironment::new(&exp_source_dir.to_path_buf(), rep);
+        trace!("exomat envs are: {:?}", exomat_envs.to_environment_full());
+
+        let run_folder = harness::skeleton::build_run_directory(
+            exp_series_dir,
+            &environment,
+            &exomat_envs,
+            length,
+        )?;
         trace!(
             "Using envs: {:?}",
             harness::env::Environment::from_file(&environment)?
         );
 
-        let exomat_envs = exomat_environment(&exp_source_dir.to_path_buf(), &rep);
-        trace!("exomat envs are: {:?}", exomat_envs.to_env_map());
-
-        harness::run::run_experiment(&file_name_string(exp_source_dir), &run_folder, &exomat_envs)?;
+        harness::run::run_experiment(
+            &file_name_string(exp_source_dir),
+            &run_folder,
+            &exomat_envs.to_environment_full(),
+        )?;
 
         // update progress
         prog_bar.inc(1);

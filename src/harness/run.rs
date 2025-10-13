@@ -198,7 +198,7 @@ mod tests {
         build_run_directory, build_series_directory, create_source_directory,
     };
     use super::*;
-    use crate::harness::env::exomat_environment;
+    use crate::harness::env::ExomatEnvironment;
 
     rusty_fork_test! {
         #[test]
@@ -224,15 +224,15 @@ mod tests {
             let series = series_dir_handle.path();
             build_series_directory(&exp_source, series).unwrap();
 
-            let exomat_envs = exomat_environment(&exp_source, &0);
+            let exomat_envs = ExomatEnvironment::new(&exp_source, 0);
             let default_env = series
                 .join(SERIES_SRC_DIR)
                 .join(SRC_ENV_DIR)
                 .join(SRC_ENV_FILE);
 
             // create run dir and run experiment
-            let run = build_run_directory(series, &default_env, 1, 1).unwrap();
-            run_experiment(&file_name_string(&exp_source), &run, &exomat_envs).unwrap();
+            let run = build_run_directory(series, &default_env, &exomat_envs, 1).unwrap();
+            run_experiment(&file_name_string(&exp_source), &run, &exomat_envs.to_environment_full()).unwrap();
 
             let out_log = std::fs::read_to_string(series.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG)).unwrap();
             let err_log = std::fs::read_to_string(series.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG)).unwrap();

@@ -14,31 +14,51 @@ use crate::helper::errors::{Error, Result};
 pub use environment::Environment;
 pub use environment_container::EnvironmentContainer;
 
-/// List of all environment variable names that exomat reserves for internal use
-const RESERVED_ENV_VARS: [&str; 2] = ["EXP_SRC_DIR", "REPETITION"];
+pub struct ExomatEnvironment {
+    pub exp_src_dir: PathBuf,
+    pub repetition: u64,
+}
 
-/// Returns an Environment with all [RESERVED_ENV_VARS] set. This means it contains:
-///
-/// - "EXP_SRC_DIR" = `exp_src_dir` (absolute path)
-/// - "REPETITION" = `repetition`
-pub fn exomat_environment(exp_src_dir: &PathBuf, repetition: &u64) -> Environment {
-    let mut env = Environment::new();
+impl ExomatEnvironment {
+    pub fn new(exp_src_dir: &PathBuf, repetition: u64) -> Self {
+        ExomatEnvironment {
+            exp_src_dir: exp_src_dir.to_owned(),
+            repetition: repetition,
+        }
+    }
 
-    env.add_env(
-        String::from("EXP_SRC_DIR"),
-        exp_src_dir.canonicalize().unwrap().display().to_string(),
-    );
+    /// Returns an Environment with all variables of the `ExomatEnvironment`. This means it contains:
+    ///
+    /// - "EXP_SRC_DIR" (absolute path)
+    /// - "REPETITION"
+    pub fn to_environment_full(&self) -> Environment {
+        let mut env = self.to_environment_serializable();
 
-    env.add_env(String::from("REPETITION"), repetition.to_string());
+        env.extend_envs(&Environment::from_env_list(Vec::from([(
+            String::from("EXP_SRC_DIR"),
+            self.exp_src_dir
+                .canonicalize()
+                .unwrap()
+                .display()
+                .to_string(),
+        )])));
 
-    // this check is here, so that if you extend one list you also need to extend the other
-    // (and to prevent typos)
-    assert!(env
-        .get_env_vars()
-        .iter()
-        .all(|var| RESERVED_ENV_VARS.contains(&var.as_str())));
+        env
+    }
 
-    env
+    /// Returns an Environment with all environment variables that are allowed to
+    /// be serialized. This means it contains:
+    ///
+    /// - "REPETITION"
+    pub fn to_environment_serializable(&self) -> Environment {
+        Environment::from_env_list(Vec::from([(
+            String::from("REPETITION"),
+            self.repetition.to_string(),
+        )]))
+    }
+
+    /// List of all environment variable names that exomat reserves for internal use
+    const RESERVED_ENV_VARS: [&str; 2] = ["EXP_SRC_DIR", "REPETITION"];
 }
 
 /// map of all variables with all possible values
@@ -311,14 +331,17 @@ fn generate_environments(
     fn contains_reserved(env_list: &EnvList) -> bool {
         env_list
             .keys()
-            .any(|k| RESERVED_ENV_VARS.contains(&k.as_str()))
+            .any(|k| ExomatEnvironment::RESERVED_ENV_VARS.contains(&k.as_str()))
     }
 
     // Check if user tries to edit reserved variable
     if contains_reserved(&to_add) || contains_reserved(&to_append) || contains_reserved(&to_remove)
     {
         return Err(Error::EnvError {
-            reason: format!("Cannot set reserved env: {:?}", RESERVED_ENV_VARS),
+            reason: format!(
+                "Cannot set reserved env: {:?}",
+                ExomatEnvironment::RESERVED_ENV_VARS
+            ),
         });
     }
 
@@ -343,6 +366,22 @@ fn generate_environments(
 
     // serialize new env files
     env.serialize_environments(&env_path)
+}
+
+/// Adds serializable exomat envs to an env file
+///
+/// 1. Reads the environment from `env_path`
+/// 2. adds all envs from `exomat_environment.to_environment_serializable()`
+/// 3. serializes this back into `env_path`
+pub fn append_exomat_envs(
+    env_path: &PathBuf,
+    exomat_environment: &ExomatEnvironment,
+) -> Result<()> {
+    let mut old_env = Environment::from_file(&env_path)?;
+    let to_add = exomat_environment.to_environment_serializable();
+
+    old_env.extend_envs(&to_add);
+    old_env.to_file(&env_path)
 }
 
 /// print a pretty table of all configured environments in env_path
@@ -536,7 +575,7 @@ mod tests {
         let mock_env = TempDir::new().unwrap();
         let mock_env = mock_env.path().to_path_buf();
 
-        let reserved_env = RESERVED_ENV_VARS[0];
+        let reserved_env = ExomatEnvironment::RESERVED_ENV_VARS[0];
         let reserved = HashMap::from([(reserved_env.to_string(), vec![])]);
 
         // try using a reserved var in any position

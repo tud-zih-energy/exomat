@@ -10,6 +10,7 @@ use std::{
 };
 
 use crate::duplicate_log_to_file;
+use crate::harness::env::ExomatEnvironment;
 use crate::helper::archivist::{
     copy_harness_dir, copy_harness_file, create_harness_dir, create_harness_file,
 };
@@ -207,6 +208,7 @@ pub fn generate_build_series_filepath(exp_source: &Path) -> Result<PathBuf> {
 /// of an experiment.
 ///
 /// ### Note: `env_file` is used to deduce the `{env}` part of the new experiment run directory name.
+/// ###       `exomat_environment` is used to get the `{it}` part.
 ///
 /// The new directory will be created in the given `series_folder` under [SERIES_RUNS_DIR]`/run_[env]_rep[repetition]`.
 /// This will result in the following structure:
@@ -230,7 +232,7 @@ pub fn generate_build_series_filepath(exp_source: &Path) -> Result<PathBuf> {
 pub fn build_run_directory(
     series_folder: &Path,
     env_file: &PathBuf,
-    it: u64,
+    exomat_environment: &ExomatEnvironment,
     it_format_length: usize,
 ) -> Result<PathBuf> {
     assert!(it_format_length > 0, "repetition format cannot be 0");
@@ -241,7 +243,7 @@ pub fn build_run_directory(
     let run = format!(
         "run_{}_rep{:0length$}",
         env_name,
-        it,
+        exomat_environment.repetition,
         length = it_format_length,
     );
 
@@ -270,6 +272,9 @@ pub fn build_run_directory(
     copy_harness_file(&run_to_cp, &run.join(RUN_RUN_FILE))?;
     copy_harness_file(&env_file, &run.join(RUN_ENV_FILE))?;
 
+    // write any exomat variables to file, that need to be written
+    crate::harness::env::append_exomat_envs(&run.join(RUN_ENV_FILE), exomat_environment)?;
+
     Ok(run)
 }
 
@@ -296,7 +301,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::harness::env::Environment;
+    use crate::harness::env::{append_exomat_envs, Environment, ExomatEnvironment};
 
     #[test]
     fn test_create_source_multiple_times() {
@@ -333,8 +338,6 @@ mod tests {
         #[test]
         fn build_run_directory_simple() {
             use crate::helper::fs_names::*;
-            use crate::harness::env::Environment;
-            use crate::harness::env;
 
             use faccess::PathExt;
 
@@ -349,14 +352,14 @@ mod tests {
             create_source_directory(&exp_source).unwrap();
             build_series_directory(&exp_source, &exp_series).unwrap();
 
-            // extract an env file to create run directory with
+            // extract an env file to create run directory with and add exomat envs
             let default_env = exp_source.join(SRC_ENV_DIR).join(SRC_ENV_FILE);
-            let env = env::exomat_environment(&exp_source.to_path_buf(), &0);
-            env.to_file(&exp_source.join(SRC_ENV_DIR).join(SRC_ENV_FILE)).unwrap();
+            let exomat_env = ExomatEnvironment::new(&exp_source.to_path_buf(), 1);
+            append_exomat_envs(&exp_source.join(SRC_ENV_DIR).join(SRC_ENV_FILE), &exomat_env).unwrap();
 
             // create run dir (based on exp_series, environment from default_env,
             // one repetition, formatrepetitionn without leading zeros)
-            let run_dir = build_run_directory(&exp_series, &default_env, 1, 1).unwrap();
+            let run_dir = build_run_directory(&exp_series, &default_env, &exomat_env, 1).unwrap();
             assert_eq!(tmpdir.join(&run_dir).file_name().unwrap(), "run_0_rep1");
 
             assert!(tmpdir.join(&run_dir).is_dir());
@@ -366,10 +369,10 @@ mod tests {
 
             // check that repetition number is an env
             let envs = Environment::from_file(&run_dir.join(RUN_ENV_FILE)).unwrap();
-            assert_eq!(envs.get_env_val("REPETITION"), Some(&String::from("0")));
+            assert_eq!(envs.get_env_val("REPETITION"), Some(&String::from("1")));
 
             // it_format_length changes the name of each experiment run directory:
-            let run_dir = build_run_directory(&exp_series, &default_env, 1, 3).unwrap();
+            let run_dir = build_run_directory(&exp_series, &default_env, &exomat_env, 3).unwrap();
             assert_eq!(tmpdir.join(&run_dir).file_name().unwrap(), "run_0_rep001");
         }
 
@@ -386,16 +389,27 @@ mod tests {
             build_series_directory(&exp_source, &exp_series).unwrap();
 
             let default_env = exp_source.join(SRC_ENV_DIR).join(SRC_ENV_FILE);
-            std::fs::write(&default_env, "FOO=BAR").unwrap();
+            let mut env = Environment::from_file(&default_env).unwrap();
+            env.add_env(String::from("FOO"), String::from("BAR"));
+            env.to_file(&default_env).unwrap();
 
-            let run_dir = build_run_directory(&exp_series, &default_env, 1, 1).unwrap();
+            let exomat_envs = ExomatEnvironment::new(&PathBuf::from("/"), 42); // content does not matter
+
+            let run_dir = build_run_directory(&exp_series, &default_env, &exomat_envs, 1).unwrap();
 
             // check contents of env files
             let src_env = Environment::from_file(&default_env).unwrap();
             let run_env = Environment::from_file(&run_dir.join(RUN_ENV_FILE)).unwrap();
 
+            // exomat variable, never serialized
             assert!(!src_env.contains_env_var("EXP_SRC_DIR"));
             assert!(!run_env.contains_env_var("EXP_SRC_DIR"));
+
+            // exomat variable, serialized
+            assert!(!src_env.contains_env_var("REPETITION"));
+            assert!(run_env.contains_env_var("REPETITION"));
+
+            // user variable, always serialized
             assert!(src_env.contains_env_var("FOO"));
             assert!(run_env.contains_env_var("FOO"));
         }
