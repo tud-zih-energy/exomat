@@ -446,4 +446,108 @@ mod tests {
 
         assert!(collect_output(&series_dir).is_err());
     }
+
+    #[test]
+    fn table_collect_multiline() {
+        // create (repetition) dir
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+        let run_rep_dir = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
+        std::fs::create_dir_all(&run_rep_dir).unwrap();
+
+        // add out files
+        let multi = run_rep_dir.join("out_multi");
+        std::fs::File::create(&multi).unwrap();
+
+        let single = run_rep_dir.join("out_single");
+        std::fs::File::create(&single).unwrap();
+
+        let trailing = run_rep_dir.join("out_trailing");
+        std::fs::File::create(&trailing).unwrap();
+
+        // write content to files
+        std::fs::write(multi, "11\n20").unwrap();
+        std::fs::write(trailing, "11\n20\n").unwrap();
+        std::fs::write(single, "foo").unwrap();
+
+        // check content, order is important
+        let res = collect_output(&series_dir).unwrap();
+        assert!(res.get("multi").is_some());
+        assert_eq!(
+            res.get("multi").unwrap(),
+            &vec!["11".to_string(), "20".to_string()]
+        );
+
+        // same as multi
+        assert!(res.get("trailing").is_some());
+        assert_eq!(
+            res.get("trailing").unwrap(),
+            &vec!["11".to_string(), "20".to_string()]
+        );
+
+        assert!(res.get("single").is_some());
+        assert_eq!(
+            res.get("single").unwrap(),
+            &vec!["foo".to_string(), "foo".to_string()]
+        );
+    }
+
+    #[test]
+    fn table_collect_multiline_empty() {
+        // create (repetition) dir
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+        let run_rep_dir = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
+        std::fs::create_dir_all(&run_rep_dir).unwrap();
+
+        // add out files
+        let multi = run_rep_dir.join("out_multi");
+        std::fs::File::create(&multi).unwrap();
+
+        let single = run_rep_dir.join("out_empty");
+        std::fs::File::create(&single).unwrap();
+
+        // write content to files
+        std::fs::write(multi, "foo\nbar").unwrap();
+
+        // check content
+        let res = collect_output(&series_dir).unwrap();
+        assert!(res.get("multi").is_some());
+        assert_eq!(
+            res.get("multi").unwrap(),
+            &vec!["foo".to_string(), "bar".to_string()]
+        );
+
+        assert!(res.get("empty").is_some());
+        assert_eq!(
+            res.get("empty").unwrap(),
+            &vec![String::new(), String::new()]
+        );
+    }
+
+    #[test]
+    fn table_collect_multiline_missmatch() {
+        // create (repetition) dir
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+        let run_rep_dir1 = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
+        std::fs::create_dir_all(&run_rep_dir1).unwrap();
+
+        let run_rep_dir2 = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep1");
+        std::fs::create_dir_all(&run_rep_dir2).unwrap();
+
+        // add out files in both run reps
+        let multi1 = run_rep_dir1.join("out_multi");
+        std::fs::File::create(&multi1).unwrap();
+
+        let multi2 = run_rep_dir2.join("out_multi");
+        std::fs::File::create(&multi2).unwrap();
+
+        // write content to files
+        std::fs::write(multi1, "11\n20").unwrap(); // two lines
+        std::fs::write(multi2, "6\n48\n15").unwrap(); // three lines
+
+        // check content
+        assert!(collect_output(&series_dir).is_err());
+    }
 }
