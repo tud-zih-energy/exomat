@@ -115,6 +115,70 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
         value_by_var_by_dir.insert(repetition_dir.to_path_buf(), value_by_var.to_env_list());
     }
 
+    // (2) transform to correct output type
+    split_and_balance_multiline(&mut value_by_var_by_dir)?;
+    let mut values_by_var: HashMap<String, Vec<String>> = HashMap::new();
+
+    // (2a) collect all var names
+    for (dir, value_by_var) in &value_by_var_by_dir {
+        for var in value_by_var.keys() {
+            if !values_by_var.contains_key(var) {
+                trace!("adding key to output from {}: {var}", dir.display());
+                values_by_var.insert(var.clone(), Vec::new());
+            }
+        }
+    }
+
+    // (2b) populate content for each var
+    for (dir, value_by_var) in &value_by_var_by_dir {
+        for (var, values) in values_by_var.iter_mut() {
+            values.extend(match value_by_var.get(var) {
+                None => {
+                    warn!(
+                        "experiment in {} misses value for variable: {var}",
+                        dir.display()
+                    );
+                    vec!["NA".to_string(); values.len() + 1]
+                }
+                Some(x) => x.clone(),
+            });
+        }
+    }
+
+    Ok(values_by_var)
+}
+
+/// Adds each line as a separate value, while keeping the number of values even
+/// across all dirs.
+///
+/// ## Example
+/// ```notest
+/// value_by_var_by_dir = rep1: [
+///                             "var1" = ["foo", "bar\nbaz"],
+///                             "var2" = ["12"],
+///                             "var3" = ["a", "b"]
+///                             ],
+///                       rep2: [
+///                             "var1" = ["FOO", "BAR\nBAZ"],
+///                             "var2" = ["22"],
+///                             "var3" = ["b", "a"]
+///                             ]
+/// ```
+///
+/// turns into
+/// ```notest
+/// value_by_var_by_dir = rep1: [
+///                             "var1" = ["foo", "bar", "baz"],
+///                             "var2" = ["12", "12", "12"],
+///                             "var3" = ["a", "b", "b"]
+///                             ],
+///                       rep2: [
+///                             "var1" = ["FOO", "BAR", "BAZ"],
+///                             "var2" = ["22", "22", "22"],
+///                             "var3" = ["b", "a", "a"]
+///                             ]
+/// ```
+fn split_and_balance_multiline(value_by_var_by_dir: &mut HashMap<PathBuf, EnvList>) -> Result<()> {
     // check for correct amount of values
     // Find the maximum number of values for each variable across all repetitions
     let mut max_values_by_var: HashMap<String, usize> = HashMap::new();
@@ -190,36 +254,7 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
         }
     }
 
-    // (2) transform to correct output type
-    let mut values_by_var: HashMap<String, Vec<String>> = HashMap::new();
-
-    // (2a) collect all var names
-    for (dir, value_by_var) in &value_by_var_by_dir {
-        for var in value_by_var.keys() {
-            if !values_by_var.contains_key(var) {
-                trace!("adding key to output from {}: {var}", dir.display());
-                values_by_var.insert(var.clone(), Vec::new());
-            }
-        }
-    }
-
-    // (2b) populate content for each var
-    for (dir, value_by_var) in &value_by_var_by_dir {
-        for (var, values) in values_by_var.iter_mut() {
-            values.extend(match value_by_var.get(var) {
-                None => {
-                    warn!(
-                        "experiment in {} misses value for variable: {var}",
-                        dir.display()
-                    );
-                    vec!["NA".to_string(); values.len() + 1]
-                }
-                Some(x) => x.clone(),
-            });
-        }
-    }
-
-    Ok(values_by_var)
+    Ok(())
 }
 
 /// Builds and returns a vector of all readable files in the given directory.
