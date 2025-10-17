@@ -138,7 +138,7 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
                         "experiment in {} misses value for variable: {var}",
                         dir.display()
                     );
-                    vec!["NA".to_string(); values.len() + 1]
+                    vec!["NA".to_string()]
                 }
                 Some(x) => x.clone(),
             });
