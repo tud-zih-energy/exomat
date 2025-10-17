@@ -178,52 +178,63 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
 ///                             "var3" = ["b", "a", "a"]
 ///                             ]
 /// ```
+///
+/// ## Errors and Panics
+/// - Returns an `EnvError` if the same variable across multiple dirs has a varying amount of newlines
+/// - Panics if the maximum amount of values cannot be determined for a variable
 fn split_and_balance_multiline(value_by_var_by_dir: &mut HashMap<PathBuf, EnvList>) -> Result<()> {
-    // check for correct amount of values
-    // Find the maximum number of values for each variable across all repetitions
-    let mut max_values_by_var: HashMap<String, usize> = HashMap::new();
+    // (1) find the longest list of values (with newlines considered)
+    let mut max_length_by_var: HashMap<String, usize> = HashMap::new();
     for value_by_var in value_by_var_by_dir.values() {
         for (var, val) in value_by_var {
             let count = (val.iter().map(|value| value.split("\n").count()))
                 .max()
-                .unwrap();
+                .expect(&format!(
+                    "Could not determine the maximum length of values for {var}"
+                ));
 
-            max_values_by_var
+            max_length_by_var
                 .entry(var.clone())
                 .and_modify(|e| *e = (*e).max(count))
                 .or_insert(count);
         }
     }
-    let max_length: &usize = max_values_by_var
+    let max_length: &usize = max_length_by_var
         .iter()
         .max_by(|this, other| this.1.cmp(other.1))
         .unwrap_or((&String::new(), &0))
         .1;
 
-    debug!("value count: {max_values_by_var:?} -> max: {max_length}\n");
+    debug!("value count: {max_length_by_var:?} -> max: {max_length}\n");
 
-    // Now, for each repetition, expand variables to match the max count
+    // (2) for each repetition ...
     for value_by_var in value_by_var_by_dir.values_mut() {
-        for (var, _) in &max_values_by_var {
+        // check each variable ...
+        for (var, _) in &max_length_by_var {
             let val = value_by_var.get(var);
             let values: Vec<String> = match val {
+                // if it has values ...
                 Some(v) => {
                     let mut split: Vec<String> = vec![];
 
+                    // check each value...
                     for single_value in v {
+                        // and split it on newline, if it contains any ...
                         split = single_value.split('\n').map(|s| s.to_string()).collect();
                         let to_extend = *max_length - split.len();
 
+                        // No newline here, but some other variable has some
                         if split.len() == 1 && *max_length > 1 {
-                            // Repeat the single value to match max_count
                             split.extend(vec![split[0].clone(); to_extend]);
+
+                        // There are newlines, but some other variable has more
                         } else if split.len() < *max_length {
-                            // Repeat the last value to fill up
                             let mut filled = split.clone();
                             if let Some(last) = filled.last().cloned() {
                                 filled.extend(std::iter::repeat(last).take(to_extend));
                             }
                             split.extend(filled);
+                        // No newlines anywhere
                         } else {
                             continue;
                         }
@@ -231,12 +242,16 @@ fn split_and_balance_multiline(value_by_var_by_dir: &mut HashMap<PathBuf, EnvLis
 
                     split
                 }
+                // if the value is empty, add "NA"
                 None => vec!["NA".to_string(); *max_length],
             };
+
+            // insert the balanced list for each repetition
             value_by_var.insert(var.clone(), values);
         }
     }
 
+    // (3) assert equal length
     let mut length_by_var: HashMap<String, Vec<usize>> = HashMap::new();
     for value_by_var in value_by_var_by_dir.values() {
         for (var, vals) in value_by_var.iter() {
