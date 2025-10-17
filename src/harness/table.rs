@@ -6,7 +6,7 @@ use log::{debug, error, trace, warn};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::harness::env::Environment;
+use crate::harness::env::{EnvList, Environment};
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
 
@@ -69,7 +69,7 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
     let run_repetitions = find_all_run_repetitions(&runs_dir);
 
     // (1) fetch vars from all experiment run directories
-    let mut value_by_var_by_dir: HashMap<PathBuf, Environment> = HashMap::new();
+    let mut value_by_var_by_dir: HashMap<PathBuf, EnvList> = HashMap::new();
     for repetition_dir in &run_repetitions {
         debug!("fetching vars from: {}", repetition_dir.display());
 
@@ -108,10 +108,86 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
                 );
             }
 
+            // may contain line breaks, is handled later
             value_by_var.add_env(var_name, std::fs::read_to_string(file)?.trim().to_string());
         }
 
-        value_by_var_by_dir.insert(repetition_dir.to_path_buf(), value_by_var);
+        value_by_var_by_dir.insert(repetition_dir.to_path_buf(), value_by_var.to_env_list());
+    }
+
+    // check for correct amount of values
+    // Find the maximum number of values for each variable across all repetitions
+    let mut max_values_by_var: HashMap<String, usize> = HashMap::new();
+    for value_by_var in value_by_var_by_dir.values() {
+        for (var, val) in value_by_var {
+            let count = (val.iter().map(|value| value.split("\n").count()))
+                .max()
+                .unwrap();
+
+            max_values_by_var
+                .entry(var.clone())
+                .and_modify(|e| *e = (*e).max(count))
+                .or_insert(count);
+        }
+    }
+    let max_length: &usize = max_values_by_var
+        .iter()
+        .max_by(|this, other| this.1.cmp(other.1))
+        .unwrap_or((&String::new(), &0))
+        .1;
+
+    debug!("value count: {max_values_by_var:?} -> max: {max_length}\n");
+
+    // Now, for each repetition, expand variables to match the max count
+    for value_by_var in value_by_var_by_dir.values_mut() {
+        for (var, _) in &max_values_by_var {
+            let val = value_by_var.get(var);
+            let values: Vec<String> = match val {
+                Some(v) => {
+                    let mut split: Vec<String> = vec![];
+
+                    for single_value in v {
+                        split = single_value.split('\n').map(|s| s.to_string()).collect();
+                        let to_extend = *max_length - split.len();
+
+                        if split.len() == 1 && *max_length > 1 {
+                            // Repeat the single value to match max_count
+                            split.extend(vec![split[0].clone(); to_extend]);
+                        } else if split.len() < *max_length {
+                            // Repeat the last value to fill up
+                            let mut filled = split.clone();
+                            if let Some(last) = filled.last().cloned() {
+                                filled.extend(std::iter::repeat(last).take(to_extend));
+                            }
+                            split.extend(filled);
+                        } else {
+                            continue;
+                        }
+                    }
+
+                    split
+                }
+                None => vec!["NA".to_string(); *max_length],
+            };
+            value_by_var.insert(var.clone(), values);
+        }
+    }
+
+    let mut length_by_var: HashMap<String, Vec<usize>> = HashMap::new();
+    for value_by_var in value_by_var_by_dir.values() {
+        for (var, vals) in value_by_var.iter() {
+            length_by_var
+                .entry(var.clone())
+                .or_insert_with(Vec::new)
+                .push(vals.len());
+        }
+    }
+    for (var, vals) in length_by_var.iter() {
+        if !vals.iter().all_equal() {
+            return Err(Error::EnvError {
+                reason: format!("Missmatched number of values for {var}",),
+            });
+        }
     }
 
     // (2) transform to correct output type
@@ -119,7 +195,7 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
 
     // (2a) collect all var names
     for (dir, value_by_var) in &value_by_var_by_dir {
-        for var in value_by_var.get_env_vars() {
+        for var in value_by_var.keys() {
             if !values_by_var.contains_key(var) {
                 trace!("adding key to output from {}: {var}", dir.display());
                 values_by_var.insert(var.clone(), Vec::new());
@@ -130,13 +206,13 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
     // (2b) populate content for each var
     for (dir, value_by_var) in &value_by_var_by_dir {
         for (var, values) in values_by_var.iter_mut() {
-            values.push(match value_by_var.get_env_val(var) {
+            values.extend(match value_by_var.get(var) {
                 None => {
                     warn!(
                         "experiment in {} misses value for variable: {var}",
                         dir.display()
                     );
-                    "NA".to_string()
+                    vec!["NA".to_string(); values.len() + 1]
                 }
                 Some(x) => x.clone(),
             });
@@ -224,7 +300,7 @@ pub fn serialize_csv(file: &PathBuf, content: &HashMap<String, Vec<String>>) -> 
     // assert all values have the same number of elements
     assert!(
         content.values().map(|v| v.len()).all_equal(),
-        "Content has unequal amount of values"
+        "Content has unequal amount of values: {content:?}"
     );
 
     let mut wtr = Writer::from_path(file).map_err(|e| Error::CsvError {
