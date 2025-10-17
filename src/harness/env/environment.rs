@@ -113,6 +113,14 @@ impl Environment {
         &self.envs
     }
 
+    /// Returns a map with the env values in a vector
+    pub fn to_env_list(&self) -> HashMap<String, Vec<String>> {
+        self.envs
+            .iter()
+            .map(|(k, v)| (k.clone(), vec![v.clone()]))
+            .collect()
+    }
+
     /// Returns `true` if the variable exists in this Environment.
     ///
     /// Does not check the value associated with the variable. A variable with
