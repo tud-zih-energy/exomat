@@ -6,7 +6,7 @@ use log::{debug, error, trace, warn};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::harness::env::Environment;
+use crate::harness::env::{EnvList, Environment};
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
 
@@ -69,7 +69,7 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
     let run_repetitions = find_all_run_repetitions(&runs_dir);
 
     // (1) fetch vars from all experiment run directories
-    let mut value_by_var_by_dir: HashMap<PathBuf, Environment> = HashMap::new();
+    let mut value_by_var_by_dir: HashMap<PathBuf, EnvList> = HashMap::new();
     for repetition_dir in &run_repetitions {
         debug!("fetching vars from: {}", repetition_dir.display());
 
@@ -108,18 +108,20 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
                 );
             }
 
+            // may contain line breaks, is handled later
             value_by_var.add_env(var_name, std::fs::read_to_string(file)?.trim().to_string());
         }
 
-        value_by_var_by_dir.insert(repetition_dir.to_path_buf(), value_by_var);
+        value_by_var_by_dir.insert(repetition_dir.to_path_buf(), value_by_var.to_env_list());
     }
 
     // (2) transform to correct output type
+    split_and_balance_multiline(&mut value_by_var_by_dir)?;
     let mut values_by_var: HashMap<String, Vec<String>> = HashMap::new();
 
     // (2a) collect all var names
     for (dir, value_by_var) in &value_by_var_by_dir {
-        for var in value_by_var.get_env_vars() {
+        for var in value_by_var.keys() {
             if !values_by_var.contains_key(var) {
                 trace!("adding key to output from {}: {var}", dir.display());
                 values_by_var.insert(var.clone(), Vec::new());
@@ -130,13 +132,13 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
     // (2b) populate content for each var
     for (dir, value_by_var) in &value_by_var_by_dir {
         for (var, values) in values_by_var.iter_mut() {
-            values.push(match value_by_var.get_env_val(var) {
+            values.extend(match value_by_var.get(var) {
                 None => {
                     warn!(
                         "experiment in {} misses value for variable: {var}",
                         dir.display()
                     );
-                    "NA".to_string()
+                    vec!["NA".to_string()]
                 }
                 Some(x) => x.clone(),
             });
@@ -144,6 +146,130 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
     }
 
     Ok(values_by_var)
+}
+
+/// Adds each line as a separate value, while keeping the number of values even
+/// across all dirs.
+///
+/// ## Example
+/// ```notest
+/// value_by_var_by_dir = rep1: [
+///                             "var1" = ["foo", "bar\nbaz"],
+///                             "var2" = ["12"],
+///                             "var3" = ["a", "b"]
+///                             ],
+///                       rep2: [
+///                             "var1" = ["FOO", "BAR\nBAZ"],
+///                             "var2" = ["22"],
+///                             "var3" = ["b", "a"]
+///                             ]
+/// ```
+///
+/// turns into
+/// ```notest
+/// value_by_var_by_dir = rep1: [
+///                             "var1" = ["foo", "bar", "baz"],
+///                             "var2" = ["12", "12", "12"],
+///                             "var3" = ["a", "b", "b"]
+///                             ],
+///                       rep2: [
+///                             "var1" = ["FOO", "BAR", "BAZ"],
+///                             "var2" = ["22", "22", "22"],
+///                             "var3" = ["b", "a", "a"]
+///                             ]
+/// ```
+///
+/// ## Errors and Panics
+/// - Returns an `EnvError` if the same variable across multiple dirs has a varying amount of newlines
+/// - Panics if the maximum amount of values cannot be determined for a variable
+fn split_and_balance_multiline(value_by_var_by_dir: &mut HashMap<PathBuf, EnvList>) -> Result<()> {
+    // (1) find the longest list of values (with newlines considered)
+    let mut max_length_by_var: HashMap<String, usize> = HashMap::new();
+    for value_by_var in value_by_var_by_dir.values() {
+        for (var, val) in value_by_var {
+            let count = (val.iter().map(|value| value.split("\n").count()))
+                .max()
+                .expect(&format!(
+                    "Could not determine the maximum length of values for {var}"
+                ));
+
+            max_length_by_var
+                .entry(var.clone())
+                .and_modify(|e| *e = (*e).max(count))
+                .or_insert(count);
+        }
+    }
+    let max_length: &usize = max_length_by_var
+        .iter()
+        .max_by(|this, other| this.1.cmp(other.1))
+        .unwrap_or((&String::new(), &0))
+        .1;
+
+    debug!("value count: {max_length_by_var:?} -> max: {max_length}\n");
+
+    // (2) for each repetition ...
+    for value_by_var in value_by_var_by_dir.values_mut() {
+        // check each variable ...
+        for (var, _) in &max_length_by_var {
+            let val = value_by_var.get(var);
+            let values: Vec<String> = match val {
+                // if it has values ...
+                Some(v) => {
+                    let mut split: Vec<String> = vec![];
+
+                    // check each value...
+                    for single_value in v {
+                        // and split it on newline, if it contains any ...
+                        split = single_value.split('\n').map(|s| s.to_string()).collect();
+                        let to_extend = *max_length - split.len();
+
+                        // No newline here, but some other variable has some
+                        if split.len() == 1 && *max_length > 1 {
+                            split.extend(vec![split[0].clone(); to_extend]);
+
+                        // There are newlines, but some other variable has more
+                        } else if split.len() < *max_length {
+                            let mut filled = split.clone();
+                            if let Some(last) = filled.last().cloned() {
+                                filled.extend(std::iter::repeat(last).take(to_extend));
+                            }
+                            split.extend(filled);
+                        // No newlines anywhere
+                        } else {
+                            continue;
+                        }
+                    }
+
+                    split
+                }
+                // if the value is empty, add "NA"
+                None => vec!["NA".to_string(); *max_length],
+            };
+
+            // insert the balanced list for each repetition
+            value_by_var.insert(var.clone(), values);
+        }
+    }
+
+    // (3) assert equal length
+    let mut length_by_var: HashMap<String, Vec<usize>> = HashMap::new();
+    for value_by_var in value_by_var_by_dir.values() {
+        for (var, vals) in value_by_var.iter() {
+            length_by_var
+                .entry(var.clone())
+                .or_insert_with(Vec::new)
+                .push(vals.len());
+        }
+    }
+    for (var, vals) in length_by_var.iter() {
+        if !vals.iter().all_equal() {
+            return Err(Error::EnvError {
+                reason: format!("Missmatched number of values for {var}",),
+            });
+        }
+    }
+
+    Ok(())
 }
 
 /// Builds and returns a vector of all readable files in the given directory.
@@ -224,7 +350,7 @@ pub fn serialize_csv(file: &PathBuf, content: &HashMap<String, Vec<String>>) -> 
     // assert all values have the same number of elements
     assert!(
         content.values().map(|v| v.len()).all_equal(),
-        "Content has unequal amount of values"
+        "Content has unequal amount of values: {content:?}"
     );
 
     let mut wtr = Writer::from_path(file).map_err(|e| Error::CsvError {
@@ -444,6 +570,110 @@ mod tests {
         // add out file without name
         std::fs::File::create(run_rep_dir.join("out_")).unwrap();
 
+        assert!(collect_output(&series_dir).is_err());
+    }
+
+    #[test]
+    fn table_collect_multiline() {
+        // create (repetition) dir
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+        let run_rep_dir = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
+        std::fs::create_dir_all(&run_rep_dir).unwrap();
+
+        // add out files
+        let multi = run_rep_dir.join("out_multi");
+        std::fs::File::create(&multi).unwrap();
+
+        let single = run_rep_dir.join("out_single");
+        std::fs::File::create(&single).unwrap();
+
+        let trailing = run_rep_dir.join("out_trailing");
+        std::fs::File::create(&trailing).unwrap();
+
+        // write content to files
+        std::fs::write(multi, "11\n20").unwrap();
+        std::fs::write(trailing, "11\n20\n").unwrap();
+        std::fs::write(single, "foo").unwrap();
+
+        // check content, order is important
+        let res = collect_output(&series_dir).unwrap();
+        assert!(res.get("multi").is_some());
+        assert_eq!(
+            res.get("multi").unwrap(),
+            &vec!["11".to_string(), "20".to_string()]
+        );
+
+        // same as multi
+        assert!(res.get("trailing").is_some());
+        assert_eq!(
+            res.get("trailing").unwrap(),
+            &vec!["11".to_string(), "20".to_string()]
+        );
+
+        assert!(res.get("single").is_some());
+        assert_eq!(
+            res.get("single").unwrap(),
+            &vec!["foo".to_string(), "foo".to_string()]
+        );
+    }
+
+    #[test]
+    fn table_collect_multiline_empty() {
+        // create (repetition) dir
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+        let run_rep_dir = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
+        std::fs::create_dir_all(&run_rep_dir).unwrap();
+
+        // add out files
+        let multi = run_rep_dir.join("out_multi");
+        std::fs::File::create(&multi).unwrap();
+
+        let single = run_rep_dir.join("out_empty");
+        std::fs::File::create(&single).unwrap();
+
+        // write content to files
+        std::fs::write(multi, "foo\nbar").unwrap();
+
+        // check content
+        let res = collect_output(&series_dir).unwrap();
+        assert!(res.get("multi").is_some());
+        assert_eq!(
+            res.get("multi").unwrap(),
+            &vec!["foo".to_string(), "bar".to_string()]
+        );
+
+        assert!(res.get("empty").is_some());
+        assert_eq!(
+            res.get("empty").unwrap(),
+            &vec![String::new(), String::new()]
+        );
+    }
+
+    #[test]
+    fn table_collect_multiline_missmatch() {
+        // create (repetition) dir
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+        let run_rep_dir1 = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
+        std::fs::create_dir_all(&run_rep_dir1).unwrap();
+
+        let run_rep_dir2 = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep1");
+        std::fs::create_dir_all(&run_rep_dir2).unwrap();
+
+        // add out files in both run reps
+        let multi1 = run_rep_dir1.join("out_multi");
+        std::fs::File::create(&multi1).unwrap();
+
+        let multi2 = run_rep_dir2.join("out_multi");
+        std::fs::File::create(&multi2).unwrap();
+
+        // write content to files
+        std::fs::write(multi1, "11\n20").unwrap(); // two lines
+        std::fs::write(multi2, "6\n48\n15").unwrap(); // three lines
+
+        // check content
         assert!(collect_output(&series_dir).is_err());
     }
 }
