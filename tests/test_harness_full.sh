@@ -148,13 +148,18 @@ cd $DIR/One_Out1
     test "$(cat $DIR/One_Out1/One_Out1.csv)" != "" # contains envs
 
     # create mock output
-    echo 0 > $DIR/One_Out1/runs/run_0_rep0/out_foo
-    echo a > $DIR/One_Out1/runs/run_0_rep0/out_bar
-    echo 1 > $DIR/One_Out1/runs/run_1_rep0/out_foo
-    echo b > $DIR/One_Out1/runs/run_1_rep0/out_bar
+    echo sentinel_0 > $DIR/One_Out1/runs/run_0_rep0/out_foo
+    echo sentinel_a > $DIR/One_Out1/runs/run_0_rep0/out_bar
+    echo sentinel_1 > $DIR/One_Out1/runs/run_1_rep0/out_foo
+    echo sentinel_b > $DIR/One_Out1/runs/run_1_rep0/out_bar
 
     # should work
     "$EXOMAT_BIN"  make-table
     test -f $DIR/One_Out1/One_Out1.csv
-    test "$(cat $DIR/One_Out1/One_Out1.csv)" != "" # contains envs and output™
+
+    # strings must be contained (otherwise grep fails)
+    grep sentinel_0 $DIR/One_Out1/One_Out1.csv > /dev/null
+    grep sentinel_1 $DIR/One_Out1/One_Out1.csv > /dev/null
+    grep sentinel_a $DIR/One_Out1/One_Out1.csv > /dev/null
+    grep sentinel_b $DIR/One_Out1/One_Out1.csv > /dev/null
 cd $DIR
