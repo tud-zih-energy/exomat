@@ -138,14 +138,14 @@ It is initialized as follows:
 
 Handles (as of now: **generates**) env files _in the current directory_ according to the template.
 
-- `--add VAR VAL1,VAL2,...`:
+- `--add VAR VAL1 VAL2 ...`:
   Adds a variable VAR.
   Can be specified multiple times.
   Aborts if `VAR` is already defined.
 
 ### Example
 
-`exomat harness env --add FOO BAR,BAZ --add X A,B` generates 4 env files:
+`exomat harness env --add FOO BAR BAZ --add X A B` generates 4 env files:
 
 ```
 # 0.env

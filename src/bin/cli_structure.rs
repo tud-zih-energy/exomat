@@ -60,7 +60,7 @@ pub enum Commands {
         /// given values.
         ///
         /// For example, if `0.env` contains `FOO=bar` and `1.env`
-        /// contains `FOO=foo` before you execute `exomat harness env --add BAZ 42,69`,
+        /// contains `FOO=foo` before you execute `exomat harness env --add BAZ 42 69`,
         /// the following files will be present after execution:
         /// - 0.env with `FOO=bar`, `BAZ=42`
         /// - 1.env with `FOO=foo`, `BAZ=42`
@@ -69,7 +69,7 @@ pub enum Commands {
         /// > The order of files created does not necessarily represent reality
         ///
         /// Aborts if the variable is already defined.
-        #[arg(short = 'a', long, num_args = 2.., value_delimiter = ',')]
+        #[arg(short = 'a', long, num_args = 2..)]
         add: Vec<Vec<String>>,
 
         /// Edits a variable (first arg) by changing it's values (remaining args) in every .env
@@ -89,7 +89,7 @@ pub enum Commands {
         /// - 2.env with `FOO=bar`, `BAZ=69`
         /// - 3.env with `FOO=foo`, `BAZ=69`
         /// > The order of files created does not necessarily represent reality
-        #[arg(short = 'A', long, num_args = 2.., value_delimiter = ',')]
+        #[arg(short = 'A', long, num_args = 2..)]
         append: Vec<Vec<String>>,
 
         /// Edits a variable (first arg) by removing it's values (remaining args)
@@ -106,7 +106,7 @@ pub enum Commands {
         /// - 0.env with `FOO=bar`
         /// - 1.env with `FOO=foo`
         /// > The order of these files does not necessarily represent reality
-        #[arg(short = 'r', long, num_args = 1.., value_delimiter = ',')]
+        #[arg(short = 'r', long, num_args = 1..)]
         remove: Vec<Vec<String>>,
     },
 
