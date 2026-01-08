@@ -57,7 +57,7 @@ cd $DIR/One
     # should work
     "$EXOMAT_BIN" env
 
-    "$EXOMAT_BIN" env --add ONE foo,bar
+    "$EXOMAT_BIN" env --add ONE foo bar
     test -f $DIR/One/envs/0.env
     test -f $DIR/One/envs/1.env
     test '!' -f $DIR/One/envs/2.env
@@ -79,7 +79,7 @@ cd $DIR/One
     test '!' -f $DIR/One/envs/2.env
 
     # setup for run
-    "$EXOMAT_BIN" env --add ONE foo,bar
+    "$EXOMAT_BIN" env --add ONE foo bar
 cd $DIR
 
 #
