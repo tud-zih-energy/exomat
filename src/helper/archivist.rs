@@ -125,7 +125,8 @@ pub fn find_marker(location: &Path, marker_name: &str) -> Result<PathBuf> {
     match location.parent() {
         Some(parent) => find_marker(parent, marker_name),
         None => Err(Error::FindMarkerError(
-            "traversed up to fs root, no marker found; maybe go somewhere else using cd?".to_string(),
+            "traversed up to fs root, no marker found; maybe go somewhere else using cd?"
+                .to_string(),
         )),
     }
 }

@@ -180,92 +180,59 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
 /// ```
 ///
 /// ## Errors and Panics
-/// - Returns an `EnvError` if the same variable across multiple dirs has a varying amount of newlines
-/// - Panics if the maximum amount of values cannot be determined for a variable
+/// - Returns an `EnvError` if  the var=value pairs put in dont have a single item (we split it
+/// here).
+/// - Returns an `EnvError` if there are two values in the same dir with different numbers of rows.
+/// - Panics if the maximum amount of values cannot be determined for a variable.
 fn split_and_balance_multiline(value_by_var_by_dir: &mut HashMap<PathBuf, EnvList>) -> Result<()> {
-    // (1) find the longest list of values (with newlines considered)
-    let mut max_length_by_var: HashMap<String, usize> = HashMap::new();
-    for value_by_var in value_by_var_by_dir.values() {
-        for (var, val) in value_by_var {
+    // (1) Get the maximum per-dir length of a value
+    let mut max_length_by_dir: HashMap<PathBuf, usize> = HashMap::new();
+    for (dir, values) in value_by_var_by_dir.iter() {
+        for (var, val) in values {
             let count = (val.iter().map(|value| value.split("\n").count()))
                 .max()
                 .expect(&format!(
                     "Could not determine the maximum length of values for {var}"
                 ));
 
-            max_length_by_var
-                .entry(var.clone())
+            max_length_by_dir
+                .entry(dir.clone())
                 .and_modify(|e| *e = (*e).max(count))
                 .or_insert(count);
         }
     }
-    let max_length: &usize = max_length_by_var
-        .iter()
-        .max_by(|this, other| this.1.cmp(other.1))
-        .unwrap_or((&String::new(), &0))
-        .1;
 
-    debug!("value count: {max_length_by_var:?} -> max: {max_length}\n");
+    // (2) For every directory
+    for (dir, max_length) in max_length_by_dir {
+        let value_by_var = value_by_var_by_dir.get(&dir).unwrap().clone();
+        for (var, vals) in value_by_var {
+            if vals.len() != 1 {
+                return Err(Error::EnvError { reason: format!("Input to split_and_balance_multiline must be singular value, got {} values for {}!", vals.len(), var)});
+            } else {
+                let value = vals.get(0).unwrap();
 
-    // (2) for each repetition ...
-    for value_by_var in value_by_var_by_dir.values_mut() {
-        // check each variable ...
-        for (var, _) in &max_length_by_var {
-            let val = value_by_var.get(var);
-            let values: Vec<String> = match val {
-                // if it has values ...
-                Some(v) => {
-                    let mut split: Vec<String> = vec![];
+                // Split each value on newlines
+                let mut split: Vec<String> = value.split('\n').map(|s| s.to_string()).collect();
 
-                    // check each value...
-                    for single_value in v {
-                        // and split it on newline, if it contains any ...
-                        split = single_value.split('\n').map(|s| s.to_string()).collect();
-                        let to_extend = *max_length - split.len();
+                // Is this a single value? Then copy it max_length times to make all columns the
+                // same length
+                if split.len() == 1 && max_length > 1 {
+                    let to_extend = max_length - split.len();
+                    split.extend(vec![split[0].clone(); to_extend]);
 
-                        // No newline here, but some other variable has some
-                        if split.len() == 1 && *max_length > 1 {
-                            split.extend(vec![split[0].clone(); to_extend]);
-
-                        // There are newlines, but some other variable has more
-                        } else if split.len() < *max_length {
-                            let mut filled = split.clone();
-                            if let Some(last) = filled.last().cloned() {
-                                filled.extend(std::iter::repeat(last).take(to_extend));
-                            }
-                            split.extend(filled);
-                        // No newlines anywhere
-                        } else {
-                            continue;
-                        }
-                    }
-
-                    split
+                // We got multiple values for var, check if it has the same number of rows as the
+                // other columns
+                } else if split.len() != max_length {
+                    return Err(Error::EnvError {
+                                reason: format!("Mismatched number of values for {var} {}, other value in {} has {max_length}", split.len(), dir.display())});
                 }
-                // if the value is empty, add "NA"
-                None => vec!["NA".to_string(); *max_length],
-            };
 
-            // insert the balanced list for each repetition
-            value_by_var.insert(var.clone(), values);
-        }
-    }
-
-    // (3) assert equal length
-    let mut length_by_var: HashMap<String, Vec<usize>> = HashMap::new();
-    for value_by_var in value_by_var_by_dir.values() {
-        for (var, vals) in value_by_var.iter() {
-            length_by_var
-                .entry(var.clone())
-                .or_insert_with(Vec::new)
-                .push(vals.len());
-        }
-    }
-    for (var, vals) in length_by_var.iter() {
-        if !vals.iter().all_equal() {
-            return Err(Error::EnvError {
-                reason: format!("Missmatched number of values for {var}",),
-            });
+                // insert the balanced list for each repetition
+                value_by_var_by_dir
+                    .get_mut(&dir)
+                    .unwrap()
+                    .insert(var.clone(), split);
+            }
         }
     }
 
@@ -651,8 +618,34 @@ mod tests {
         );
     }
 
+    // If there are two values in the same run,
+    // they have to have the same number of rows.
     #[test]
-    fn table_collect_multiline_missmatch() {
+    fn table_collect_multiline_mismatch() {
+        // create (repetition) dir
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+        let run_rep_dir1 = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
+        std::fs::create_dir_all(&run_rep_dir1).unwrap();
+
+        // add out files in both run reps
+        let out_foo = run_rep_dir1.join("out_foo");
+        std::fs::File::create(&out_foo).unwrap();
+
+        let out_bar = run_rep_dir1.join("out_bar");
+        std::fs::File::create(&out_bar).unwrap();
+
+        // write content to files
+        std::fs::write(out_foo, "11\n20").unwrap(); // two lines
+        std::fs::write(out_bar, "6\n48\n15").unwrap(); // three lines
+
+        // check content
+        assert!(collect_output(&series_dir).is_err());
+    }
+    // If there are multiple runs, then the number of rows in a value
+    // can differ between
+    #[test]
+    fn table_collect_multiline_multiple_dirs_diff_length() {
         // create (repetition) dir
         let series_dir = TempDir::new().unwrap();
         let series_dir = series_dir.path().to_path_buf();
@@ -663,10 +656,10 @@ mod tests {
         std::fs::create_dir_all(&run_rep_dir2).unwrap();
 
         // add out files in both run reps
-        let multi1 = run_rep_dir1.join("out_multi");
+        let multi1 = run_rep_dir1.join("out_foo");
         std::fs::File::create(&multi1).unwrap();
 
-        let multi2 = run_rep_dir2.join("out_multi");
+        let multi2 = run_rep_dir2.join("out_foo");
         std::fs::File::create(&multi2).unwrap();
 
         // write content to files
@@ -674,6 +667,6 @@ mod tests {
         std::fs::write(multi2, "6\n48\n15").unwrap(); // three lines
 
         // check content
-        assert!(collect_output(&series_dir).is_err());
+        assert!(collect_output(&series_dir).is_ok());
     }
 }
