@@ -196,31 +196,30 @@ fn split_and_balance_multiline(value_by_var_by_dir: &mut HashMap<PathBuf, EnvLis
             .unwrap_or(1);
 
         // for each variable
-        for (var, vals) in value_by_var.clone() {
+        for (var, vals) in value_by_var.iter_mut() {
             if vals.len() != 1 {
                 return Err(Error::EnvError { reason: format!("Input to split_and_balance_multiline must be singular value, got {} values for {}!", vals.len(), var)});
-            } else {
-                let value = vals.get(0).unwrap();
-
-                // Split each value on newlines
-                let mut split: Vec<String> = value.split('\n').map(|s| s.to_string()).collect();
-
-                // Is this a single value? Then copy it max_length times to make all columns the
-                // same length
-                if split.len() == 1 && max_length > 1 {
-                    let to_extend = max_length - split.len();
-                    split.extend(vec![split[0].clone(); to_extend]);
-
-                // We got multiple values for var, check if it has the same number of rows as the
-                // other columns
-                } else if split.len() != max_length {
-                    return Err(Error::EnvError {
-                                reason: format!("Mismatched number of values for {var} {}, other value in {} has {max_length}", split.len(), dir.display())});
-                }
-
-                // insert the balanced list for each repetition
-                value_by_var.insert(var.clone(), split);
             }
+
+            let value = vals.first().unwrap();
+            let mut split: Vec<String> = value.split('\n').map(|s| s.to_string()).collect();
+
+            // Is this a single value? Then copy it max_length times to make all columns the
+            // same length
+            if split.len() == 1 && max_length > 1 {
+                // Cannot use Vec::repeat() here, because String does not implement the Copy Trait >:(
+                let to_extend = max_length - split.len();
+                split.extend(vec![split.first().unwrap().clone(); to_extend]);
+
+            // We got multiple values for var, check if it has the same number of rows as the
+            // other columns
+            } else if split.len() != max_length {
+                return Err(Error::EnvError {
+                                reason: format!("Mismatched number of values for {var} {}, other value in {} has {max_length}", split.len(), dir.display())});
+            }
+
+            // Update the value list
+            *vals = split;
         }
     }
 
