@@ -188,18 +188,13 @@ fn split_and_balance_multiline(value_by_var_by_dir: &mut HashMap<PathBuf, EnvLis
     // (1) Get the maximum per-dir length of a value
     let mut max_length_by_dir: HashMap<PathBuf, usize> = HashMap::new();
     for (dir, values) in value_by_var_by_dir.iter() {
-        for (var, val) in values {
-            let count = (val.iter().map(|value| value.split("\n").count()))
-                .max()
-                .expect(&format!(
-                    "Could not determine the maximum length of values for {var}"
-                ));
-
-            max_length_by_dir
-                .entry(dir.clone())
-                .and_modify(|e| *e = (*e).max(count))
-                .or_insert(count);
-        }
+        let max_len = values
+            .values()
+            .filter_map(|val| val.get(0))
+            .map(|value| value.lines().count().max(1))
+            .max()
+            .unwrap_or(1);
+        max_length_by_dir.insert(dir.clone(), max_len);
     }
 
     // (2) For every directory
