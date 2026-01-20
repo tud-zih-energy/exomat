@@ -185,22 +185,18 @@ pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>>
 /// - Returns an `EnvError` if there are two values in the same dir with different numbers of rows.
 /// - Panics if the maximum amount of values cannot be determined for a variable.
 fn split_and_balance_multiline(value_by_var_by_dir: &mut HashMap<PathBuf, EnvList>) -> Result<()> {
-    // (1) Get the maximum per-dir length of a value
-    let mut max_length_by_dir: HashMap<PathBuf, usize> = HashMap::new();
-    for (dir, values) in value_by_var_by_dir.iter() {
-        let max_len = values
+    // For every directory
+    for (dir, value_by_var) in value_by_var_by_dir {
+        // Get the maximum per-dir length of a value
+        let max_length = value_by_var
             .values()
             .filter_map(|val| val.get(0))
             .map(|value| value.lines().count().max(1))
             .max()
             .unwrap_or(1);
-        max_length_by_dir.insert(dir.clone(), max_len);
-    }
 
-    // (2) For every directory
-    for (dir, max_length) in max_length_by_dir {
-        let value_by_var = value_by_var_by_dir.get(&dir).unwrap().clone();
-        for (var, vals) in value_by_var {
+        // for each variable
+        for (var, vals) in value_by_var.clone() {
             if vals.len() != 1 {
                 return Err(Error::EnvError { reason: format!("Input to split_and_balance_multiline must be singular value, got {} values for {}!", vals.len(), var)});
             } else {
@@ -223,10 +219,7 @@ fn split_and_balance_multiline(value_by_var_by_dir: &mut HashMap<PathBuf, EnvLis
                 }
 
                 // insert the balanced list for each repetition
-                value_by_var_by_dir
-                    .get_mut(&dir)
-                    .unwrap()
-                    .insert(var.clone(), split);
+                value_by_var.insert(var.clone(), split);
             }
         }
     }
