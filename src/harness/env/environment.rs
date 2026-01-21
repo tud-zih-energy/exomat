@@ -1,12 +1,13 @@
 //! Implementation of the Environment struct
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::helper::errors::{Error, Result};
 
 /// Represents one environment file
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Environment {
     envs: HashMap<String, String>,
 }
