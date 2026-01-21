@@ -17,6 +17,7 @@ clap_complete = "4.5.32"
 chrono =  { version = "0.4" }
 
 serde = { version = "1.0", features = ["derive"] }
+mlua = { version = "0.11", features = ["lua54", "serde"] }
 csv = "1.3.1"
 
 regex = "1.11.1"
