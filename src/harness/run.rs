@@ -11,6 +11,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
+
 use strip_ansi::strip_ansi;
 
 use super::env::{fetch_environment_files, Environment, ExomatEnvironment};
@@ -87,11 +88,46 @@ pub fn trial(experiment: &PathBuf, log_progress_handler: MultiProgress) -> Resul
         std::fs::read_to_string(trial_dir_path.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG))?;
     let exomat =
         std::fs::read_to_string(trial_dir_path.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG))?;
+    let out_files = collect_output(&trial_dir_path)?;
 
-    let eval_res = create_report(&exp_name, &res, &stdout, &stderr, &exomat);
+    let eval_res = create_report(&exp_name, &res, &stdout, &stderr, &out_files, &exomat);
     print!("{eval_res}");
 
     res
+}
+
+/// Filters all "out_$NAME" files from the given experiment series directory. Then creates
+/// a map with each out_$NAME becomming a key and the content of this file becomming the associated value.
+///
+/// Uses `crate::harness::table::collect_output()`, but does not include any environment variables.
+///
+/// ## Errors and Panics
+/// - Panics if there is more than one run/repetition in the series directory
+///
+/// The content of `out_$NAME` files is not validated or checked in any way, if you put
+/// weird content in them, you will get weird output.
+fn collect_output(dir: &PathBuf) -> Result<HashMap<String, String>> {
+    let mut output = HashMap::<String, String>::new();
+    let out_files = crate::harness::table::collect_output(&dir)?; //TODO change
+
+    // there should only be one iteration, since it's a trial
+    assert!(out_files.values().all(|content| content.len() == 1));
+
+    for (name, content) in out_files.iter() {
+        if ExomatEnvironment::RESERVED_ENV_VARS.contains(&name.as_str()) {
+            continue;
+        }
+
+        output.insert(
+            format!("out_{name}"),
+            content
+                .first()
+                .expect("Could not extract out_* content")
+                .to_owned(),
+        );
+    }
+
+    Ok(output)
 }
 
 /// Runs the experiment defined in `exp_source_dir` `repetitions` times for each
@@ -332,7 +368,7 @@ fn log_run_result(
 /// [Foo] returned:
 /// Failed (reason: e)
 /// ```
-pub fn create_report<T>(
+fn create_report<T>(
     exp_name: &str,
     run: &Result<T>,
     stdout: &str,
