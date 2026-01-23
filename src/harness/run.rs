@@ -395,7 +395,7 @@ fn create_report<T>(
 
     // append out file content
     if out_files.is_empty() {
-        eval_str.push_str("[test] created no output files\n")
+        eval_str.push_str("[{exp_name}] created no output files\n")
     } else {
         for (out_file, content) in out_files.iter() {
             eval_str.push_str(&format!("[{exp_name}] {out_file}:\n{content}\n\n"));
