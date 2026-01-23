@@ -4,6 +4,7 @@ use chrono::Local;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{error, info, trace, warn};
 use rand::seq::SliceRandom;
+use std::collections::HashMap;
 use std::{
     fs::OpenOptions,
     io::Read,
@@ -300,6 +301,7 @@ fn log_run_result(
 /// - `run = Ok(_)`
 /// - `stdout = "normal output"`
 /// - `stderr = ""`
+/// - `out_files = {"out_foo": "some content". "out_bar": "42"}`
 /// - `exomat = "[info] ..."`
 ///
 /// ```bash
@@ -310,6 +312,13 @@ fn log_run_result(
 /// normal output
 /// ---
 /// [Foo] stderr:
+///
+/// ---
+/// [Foo] out_foo:
+/// some content
+///
+/// [Foo] out_bar:
+/// 42
 ///
 /// ---
 /// [Foo] returned:
@@ -328,6 +337,7 @@ pub fn create_report<T>(
     run: &Result<T>,
     stdout: &str,
     stderr: &str,
+    out_files: &HashMap<String, String>,
     exomat: &str,
 ) -> String {
     let mut eval_str = String::new();
@@ -346,6 +356,16 @@ pub fn create_report<T>(
     eval_str.push_str(&format!("[{exp_name}] stderr:\n"));
     eval_str.push_str(stderr);
     eval_str.push_str("\n---\n");
+
+    // append out file content
+    if out_files.is_empty() {
+        eval_str.push_str("[test] created no output files\n")
+    } else {
+        for (out_file, content) in out_files.iter() {
+            eval_str.push_str(&format!("[{exp_name}] {out_file}:\n{content}\n\n"));
+        }
+    }
+    eval_str.push_str("---\n");
 
     // append overall success/failure report
     eval_str.push_str(&format!("[{exp_name}] returned:\n"));
