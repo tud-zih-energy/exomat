@@ -122,7 +122,7 @@ pub enum Commands {
         /// Start a trial run of the experiment.
         ///
         /// Executes one run of an experiment with one env combination. The resulting
-        /// experiment series directory will be deleted after completing the run.
+        /// experiment series directory can then be found in `/tmp`.
         ///
         /// The exomat will then report on:
         /// - exit code of `run.sh`
