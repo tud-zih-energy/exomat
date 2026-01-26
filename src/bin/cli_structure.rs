@@ -25,7 +25,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// Initializes a new (and empty) EXPERIMENT folder.
+    /// Initializes a new (and empty) Experiment source folder.
     ///
     /// Uses the following structure:
     ///
@@ -34,15 +34,11 @@ pub enum Commands {
     ///   |    \-> run.sh [EMPTY, EXECUTABLE]
     ///   \-> envs/
     ///        \-> 0.env [EMPTY]
-    ///
-    /// Custom templates can be defined by creating the desired structure in
-    /// `$HOME/.config/exomat/template`. If this folder exists, its contents
-    /// will be copied to `EXPERIMENT/template` instead of using default-generation.
     #[command(verbatim_doc_comment)]
     Skeleton {
         /// Path to the experiment.
         ///
-        /// Will create and populate a directory with this name.
+        /// Will create and populate an experiment source directory with this name.
         /// Automatically creates parent directories.
         #[clap()]
         experiment: PathBuf,
