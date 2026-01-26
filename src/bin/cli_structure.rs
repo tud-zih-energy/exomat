@@ -122,6 +122,7 @@ pub enum Commands {
         ///
         /// The exomat will then report on:
         /// - exit code of `run.sh`
+        /// - content of any out_$NAME files
         /// - content of exomat/stdout/stderr.log
         ///
         /// Custom output directories and repetition counts will be ignored.
