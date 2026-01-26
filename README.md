@@ -101,6 +101,7 @@ experiment `exomat` will silently overwrite them:
 Var             | Content
 ----------------|---------------------------------
 $EXP_SOURCE_DIR | Absolute location of the experiment source directory
+$REPETITION     | The nth repetition of an experiment source (defined per experiment run)
 
 ## Logging
 The amount of log content on your console can be configured using the `-v` or `-q` flag.
