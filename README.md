@@ -86,7 +86,7 @@ $ exomat make-table
 [2025-02-31 13:33:37.420] [info] Collected output for 2 keys
 [2025-02-31 13:33:37.420] [info] Found keys: ["myval", "NCPUS"]
 
-$ cat loadavg-2025-02-31-13-33-37.csv 
+$ cat loadavg-2025-02-31-13-33-37.csv
 myval,NCPUS
 value,2
 value,1
