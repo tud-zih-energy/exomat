@@ -641,4 +641,19 @@ mod tests {
 
         let _this_panics = collect_output(&series_dir);
     }
+
+    #[test]
+    fn collect_out_multiline() {
+        // collect on dir with out_* files containing multiple lines
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+        let run_dir = series_dir.join("runs/run_0_rep0");
+
+        std::fs::create_dir_all(&run_dir).unwrap();
+        std::fs::write(run_dir.join("out_1"), "foo\nbar").unwrap();
+
+        let res = collect_output(&series_dir).unwrap();
+        assert_eq!(res.len(), 1);
+        assert_eq!(res.get("out_1").unwrap(), "foo\nbar");
+    }
 }
