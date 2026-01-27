@@ -108,28 +108,42 @@ pub fn trial(experiment: &PathBuf, log_progress_handler: MultiProgress) -> Resul
 /// weird content in them, you will get weird output.
 fn collect_output(dir: &PathBuf) -> Result<HashMap<String, String>> {
     let mut output = HashMap::<String, String>::new();
-    let out_files = crate::harness::table::collect_output(&dir)?; //TODO change
+    let prefix = "out_";
+    let reps = crate::harness::table::find_all_run_repetitions(&dir.join(SERIES_RUNS_DIR));
 
-    // there should only be one iteration, since it's a trial
-    assert!(out_files.values().all(|content| content.len() == 1));
+    if reps.len() > 1 {
+        return Err(Error::HarnessRunError {
+            experiment: dir.display().to_string(),
+            err: format!("Too many runs executed in a trial."),
+        });
+    }
 
-    for (name, content) in out_files.iter() {
-        if ExomatEnvironment::RESERVED_ENV_VARS.contains(&name.as_str()) {
-            continue;
+    for rep_dir in reps {
+        for entry in rep_dir.read_dir().expect("Could not read dir") {
+            let entry = entry.expect("Entry not readable");
+            if entry
+                .metadata()
+                .expect("Metadata of entry not readable")
+                .is_file()
+            {
+                let file_name = entry
+                    .file_name()
+                    .into_string()
+                    .expect("Could not determine filename of entry");
+
+                if file_name.starts_with(prefix) {
+                    // found an out_* file, so read and add to map
+                    let file_content =
+                        std::fs::read_to_string(entry.path()).expect("Could not read out file");
+
+                    output.insert(file_name, file_content);
+                }
+            }
         }
-
-        output.insert(
-            format!("out_{name}"),
-            content
-                .first()
-                .expect("Could not extract out_* content")
-                .to_owned(),
-        );
     }
 
     Ok(output)
 }
-
 /// Runs the experiment defined in `exp_source_dir` `repetitions` times for each
 /// environment.
 ///
@@ -625,7 +639,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn collect_out_too_many_runs() {
         // collect on dir with out_* files from multiple runs
         let series_dir = TempDir::new().unwrap();
@@ -639,7 +652,7 @@ mod tests {
         std::fs::create_dir_all(&run_dir_2).unwrap();
         std::fs::write(run_dir_2.join("out_1"), "something else").unwrap();
 
-        let _this_panics = collect_output(&series_dir);
+        assert!(collect_output(&series_dir).is_err());
     }
 
     #[test]
