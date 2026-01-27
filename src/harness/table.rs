@@ -2,13 +2,58 @@
 
 use csv::Writer;
 use itertools::Itertools;
-use log::{debug, error, trace, warn};
+use log::{debug, error, info, trace, warn};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::harness::env::{EnvList, Environment};
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
+
+/// Entrypoint for table binary
+///
+/// Filters output (files) from every run repetition in the pwd.
+/// Looks through every `series_dir/runs/run_*` directory and accumulates the content of
+/// every `out_*` file into one csv file.
+///
+/// ## Example
+/// ```bash
+/// exp_series
+/// \-> runs
+///     |-> run_0_rep0
+///     |   |-> out_foo # content: "42"
+///     |   \-> out_bar # content: "true"
+///     \-> run_0_rep1
+///         |-> out_foo # content: "300"
+///         \-> out_bar # content: "false"
+/// ```
+/// results in `exp_series.csv` with:
+/// ```notest
+/// foo,bar
+/// 42, true
+/// 300,false
+/// ```
+pub fn main() -> Result<()> {
+    let series_dir = crate::find_marker_pwd(MARKER_SERIES)?;
+
+    // collect all output from every run in series_dir
+    let out_content = collect_output(&series_dir)?;
+    info!("Collected output for {} keys", out_content.len());
+    info!("Found keys: {:?}", out_content.keys());
+
+    // output file will be "series_dir/[series_dir].csv"
+    let mut out_file = PathBuf::from(
+        series_dir
+            .file_name()
+            .expect("Could not read experiment series name"),
+    );
+    out_file.set_extension("csv");
+
+    // serialize data and write to file
+    serialize_csv(&series_dir.join(out_file), &out_content)?;
+
+    Ok(())
+}
 
 /// Filters all "out_$NAME" files from the given experiment series directory. Then creates
 /// a map with each $NAME becomming a key and the accumulated content of all
@@ -63,7 +108,7 @@ use crate::helper::fs_names::*;
 /// assert!(res_vec.contains(&String::from("foo"))); // "foo" from run_rep_dir_0
 /// assert!(res_vec.contains(&String::from("bar"))); // "bar" from run_rep_dir_1
 /// ```
-pub fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>> {
+fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>> {
     // filter all runs/run_[env]_rep[rep] from a series directory
     let runs_dir = series_dir.join(SERIES_RUNS_DIR);
     let run_repetitions = find_all_run_repetitions(&runs_dir);
@@ -300,7 +345,7 @@ fn find_all_run_repetitions(runs_dir: &Path) -> Vec<PathBuf> {
 /// ## Errors and Panics
 /// - Panics if not all values of `content` have the same number of elements
 /// - Returns a `CsvError` if something went wrong during the csv serialization
-pub fn serialize_csv(file: &PathBuf, content: &HashMap<String, Vec<String>>) -> Result<()> {
+fn serialize_csv(file: &PathBuf, content: &HashMap<String, Vec<String>>) -> Result<()> {
     // assert all values have the same number of elements
     assert!(
         content.values().map(|v| v.len()).all_equal(),
