@@ -255,7 +255,7 @@ fn find_all_files(dir: &Path) -> Result<Vec<PathBuf>> {
 ///
 /// ## Panics
 /// - Panics if directory traversal went wrong
-fn find_all_run_repetitions(runs_dir: &Path) -> Vec<PathBuf> {
+pub fn find_all_run_repetitions(runs_dir: &Path) -> Vec<PathBuf> {
     let mut repetitions = Vec::<PathBuf>::new();
 
     // return the empty vector if runs_dir does not exist
