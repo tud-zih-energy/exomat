@@ -276,7 +276,13 @@ fn execute_exp_repetitions(
             ),
         })?;
 
-    let prog_bar = ProgressBar::new(repetitions * envs.len() as u64);
+    // in a trial, only one repetition will be executed, so show the correct number on the progess bar
+    let prog_bar = ProgressBar::new(if is_trial {
+        1
+    } else {
+        repetitions * envs.len() as u64
+    });
+
     prog_bar.set_style(
         ProgressStyle::with_template("[{elapsed_precise}] [{bar:.green}] {pos}/{len} ({eta})")
             .unwrap()
