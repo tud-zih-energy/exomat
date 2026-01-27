@@ -64,50 +64,6 @@ pub fn main() -> Result<()> {
 ///
 /// The content of `out_$NAME` files is not validated or checked in any way, if you put
 /// weird content in them, you will get weird output.
-///
-/// ## Example
-/// ```
-/// use exomat::harness::table::collect_output;
-/// use exomat::helper::fs_names::*;
-///
-/// use tempfile::TempDir;
-/// use std::fs::{File, create_dir_all};
-/// use std::io::Write;
-///
-/// // create (repetition) dir
-/// let series_dir = TempDir::new().unwrap();
-/// let series_dir = series_dir.path().to_path_buf();
-///
-/// // create multiple repetition dirs
-/// let run_rep_dir_0 = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
-/// create_dir_all(&run_rep_dir_0).unwrap();
-/// let run_rep_dir_1 = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep1");
-/// create_dir_all(&run_rep_dir_1).unwrap();
-///
-/// // add multiple out_ files and some that will not be used
-/// File::create(run_rep_dir_0.join("not_out_file")).unwrap();
-/// File::create(run_rep_dir_0.join("random")).unwrap();
-///
-/// File::create(run_rep_dir_0.join("out_empty.txt")).unwrap();
-/// let mut some_0 = File::create(run_rep_dir_0.join("out_some")).unwrap();
-/// let mut some_1 = File::create(run_rep_dir_1.join("out_some")).unwrap();
-///
-/// // fill out_some
-/// some_0.write_all(b"foo").unwrap();
-/// some_1.write_all(b"bar").unwrap();
-///
-/// let res = collect_output(&series_dir).unwrap();
-///
-/// // check empty
-/// let res_vec = res.get("empty.txt").unwrap();
-/// assert!(res_vec.contains(&String::new()));      // empty string from run_rep_dir_0
-/// assert!(res_vec.contains(&String::from("NA"))); // "NA" from run_rep_dir_1
-///
-/// // check some
-/// let res_vec = res.get("some").unwrap();
-/// assert!(res_vec.contains(&String::from("foo"))); // "foo" from run_rep_dir_0
-/// assert!(res_vec.contains(&String::from("bar"))); // "bar" from run_rep_dir_1
-/// ```
 fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>> {
     // filter all runs/run_[env]_rep[rep] from a series directory
     let runs_dir = series_dir.join(SERIES_RUNS_DIR);
@@ -393,6 +349,8 @@ fn serialize_csv(file: &PathBuf, content: &HashMap<String, Vec<String>>) -> Resu
 
 #[cfg(test)]
 mod tests {
+    use std::fs::{create_dir_all, File};
+    use std::io::Write;
     use tempfile::TempDir;
 
     use super::*;
@@ -700,5 +658,42 @@ mod tests {
 
         // check content
         assert!(collect_output(&series_dir).is_ok());
+    }
+
+    #[test]
+    fn table_collect_output_full() {
+        // create (repetition) dir
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+
+        // create multiple repetition dirs
+        let run_rep_dir_0 = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
+        create_dir_all(&run_rep_dir_0).unwrap();
+        let run_rep_dir_1 = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep1");
+        create_dir_all(&run_rep_dir_1).unwrap();
+
+        // add multiple out_ files and some that will not be used
+        File::create(run_rep_dir_0.join("not_out_file")).unwrap();
+        File::create(run_rep_dir_0.join("random")).unwrap();
+
+        File::create(run_rep_dir_0.join("out_empty.txt")).unwrap();
+        let mut some_0 = File::create(run_rep_dir_0.join("out_some")).unwrap();
+        let mut some_1 = File::create(run_rep_dir_1.join("out_some")).unwrap();
+
+        // fill out_some
+        some_0.write_all(b"foo").unwrap();
+        some_1.write_all(b"bar").unwrap();
+
+        let res = collect_output(&series_dir).unwrap();
+
+        // check empty
+        let res_vec = res.get("empty.txt").unwrap();
+        assert!(res_vec.contains(&String::new())); // empty string from run_rep_dir_0
+        assert!(res_vec.contains(&String::from("NA"))); // "NA" from run_rep_dir_1
+
+        // check some
+        let res_vec = res.get("some").unwrap();
+        assert!(res_vec.contains(&String::from("foo"))); // "foo" from run_rep_dir_0
+        assert!(res_vec.contains(&String::from("bar"))); // "bar" from run_rep_dir_1
     }
 }
