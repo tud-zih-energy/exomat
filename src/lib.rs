@@ -601,7 +601,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn collect_out_too_many_runs() {
         // collect on dir with out_* files from multiple runs
         let series_dir = TempDir::new().unwrap();
@@ -615,6 +614,21 @@ mod tests {
         std::fs::create_dir_all(&run_dir_2).unwrap();
         std::fs::write(run_dir_2.join("out_1"), "something else").unwrap();
 
-        let _this_panics = collect_output(&series_dir);
+        assert!(collect_output(&series_dir).is_err());
+    }
+
+    #[test]
+    fn collect_out_multiline() {
+        // collect on dir with out_* files containing multiple lines
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+        let run_dir = series_dir.join("runs/run_0_rep0");
+
+        std::fs::create_dir_all(&run_dir).unwrap();
+        std::fs::write(run_dir.join("out_1"), "foo\nbar").unwrap();
+
+        let res = collect_output(&series_dir).unwrap();
+        assert_eq!(res.len(), 1);
+        assert_eq!(res.get("out_1").unwrap(), "foo\nbar");
     }
 }
