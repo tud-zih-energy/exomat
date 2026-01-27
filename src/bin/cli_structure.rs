@@ -64,7 +64,7 @@ pub enum Commands {
         /// - 3.env with `FOO=foo`, `BAZ=69`
         /// > The order of files created does not necessarily represent reality
         ///
-        /// Aborts if the variable is already defined.
+        /// Aborts if the variable is already defined or if it's reserved by the exomat (see README).
         #[arg(short = 'a', long, num_args = 2..)]
         add: Vec<Vec<String>>,
 
