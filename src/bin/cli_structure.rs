@@ -25,7 +25,7 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// Initializes a new (and empty) EXPERIMENT folder.
+    /// Initializes a new (and empty) Experiment source folder.
     ///
     /// Uses the following structure:
     ///
@@ -34,15 +34,11 @@ pub enum Commands {
     ///   |    \-> run.sh [EMPTY, EXECUTABLE]
     ///   \-> envs/
     ///        \-> 0.env [EMPTY]
-    ///
-    /// Custom templates can be defined by creating the desired structure in
-    /// `$HOME/.config/exomat/template`. If this folder exists, its contents
-    /// will be copied to `EXPERIMENT/template` instead of using default-generation.
     #[command(verbatim_doc_comment)]
     Skeleton {
         /// Path to the experiment.
         ///
-        /// Will create and populate a directory with this name.
+        /// Will create and populate an experiment source directory with this name.
         /// Automatically creates parent directories.
         #[clap()]
         experiment: PathBuf,
@@ -68,7 +64,7 @@ pub enum Commands {
         /// - 3.env with `FOO=foo`, `BAZ=69`
         /// > The order of files created does not necessarily represent reality
         ///
-        /// Aborts if the variable is already defined.
+        /// Aborts if the variable is already defined or if it's reserved by the exomat (see README).
         #[arg(short = 'a', long, num_args = 2..)]
         add: Vec<Vec<String>>,
 
@@ -122,7 +118,7 @@ pub enum Commands {
         /// Start a trial run of the experiment.
         ///
         /// Executes one run of an experiment with one env combination. The resulting
-        /// experiment series directory will be deleted after completing the run.
+        /// experiment series directory can then be found in `/tmp`.
         ///
         /// The exomat will then report on:
         /// - exit code of `run.sh`

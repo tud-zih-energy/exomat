@@ -86,7 +86,7 @@ $ exomat make-table
 [2025-02-31 13:33:37.420] [info] Collected output for 2 keys
 [2025-02-31 13:33:37.420] [info] Found keys: ["myval", "NCPUS"]
 
-$ cat loadavg-2025-02-31-13-33-37.csv 
+$ cat loadavg-2025-02-31-13-33-37.csv
 myval,NCPUS
 value,2
 value,1
@@ -101,6 +101,7 @@ experiment `exomat` will silently overwrite them:
 Var             | Content
 ----------------|---------------------------------
 $EXP_SOURCE_DIR | Absolute location of the experiment source directory
+$REPETITION     | The nth repetition of an experiment source (defined per experiment run)
 
 ## Logging
 The amount of log content on your console can be configured using the `-v` or `-q` flag.
