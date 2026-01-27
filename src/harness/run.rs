@@ -580,4 +580,65 @@ mod tests {
             trial(&PathBuf::from(exp_name), MultiProgress::new()).unwrap();
         }
     }
+
+    #[test]
+    fn collect_out_no_files() {
+        // collect on dir without out_* files
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+
+        std::fs::create_dir_all(&series_dir).unwrap();
+        std::fs::File::create(series_dir.join("random_file")).unwrap();
+
+        let res = collect_output(&series_dir).unwrap();
+        assert!(res.is_empty());
+    }
+
+    #[test]
+    fn collect_out_empty() {
+        // collect on dir with out_* file, without content
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+        let run_dir = series_dir.join("runs/run_0_rep0");
+
+        std::fs::create_dir_all(&run_dir).unwrap();
+        std::fs::File::create(run_dir.join("out_empty")).unwrap();
+
+        let res = collect_output(&series_dir).unwrap();
+        assert_eq!(res.len(), 1);
+        assert_eq!(res.get("out_empty").unwrap(), "");
+    }
+
+    #[test]
+    fn collect_out_working() {
+        // collect on dir with out_* files, with content
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+        let run_dir = series_dir.join("runs/run_0_rep0");
+
+        std::fs::create_dir_all(&run_dir).unwrap();
+        std::fs::write(run_dir.join("out_full"), "foo bar").unwrap();
+
+        let res = collect_output(&series_dir).unwrap();
+        assert_eq!(res.len(), 1);
+        assert_eq!(res.get("out_full").unwrap(), "foo bar");
+    }
+
+    #[test]
+    #[should_panic]
+    fn collect_out_too_many_runs() {
+        // collect on dir with out_* files from multiple runs
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+        let run_dir_1 = series_dir.join("runs/run_0_rep0");
+        let run_dir_2 = series_dir.join("runs/run_7_rep4");
+
+        std::fs::create_dir_all(&run_dir_1).unwrap();
+        std::fs::write(run_dir_1.join("out_1"), "foo bar").unwrap();
+
+        std::fs::create_dir_all(&run_dir_2).unwrap();
+        std::fs::write(run_dir_2.join("out_1"), "something else").unwrap();
+
+        let _this_panics = collect_output(&series_dir);
+    }
 }
