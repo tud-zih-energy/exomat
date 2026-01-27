@@ -12,13 +12,12 @@ pub mod helper {
 
 use indicatif::MultiProgress;
 use indicatif_log_bridge::LogWrapper;
-use log::info;
 use spdlog::formatter::{pattern, PatternFormatter};
 use spdlog::sink::FileSink;
 use std::{path::PathBuf, sync::Arc};
 
 use helper::archivist::find_marker_pwd;
-use helper::errors::{Error, Result};
+use helper::errors::Error;
 use helper::fs_names::*;
 
 /// Initializes logging for all severity levels from info and up.
@@ -134,51 +133,6 @@ pub fn duplicate_log_to_file(log_file: &PathBuf) {
 
     // update logger
     spdlog::set_default_logger(new_logger);
-}
-
-/// Filters output (files) from every run repetition in the pwd.
-///
-/// Looks through every `series_dir/runs/run_*` directory and accumulates the content of
-/// every `out_*` file into one csv file.
-///
-/// ## Example
-/// ```bash
-/// exp_series
-/// \-> runs
-///     |-> run_0_rep0
-///     |   |-> out_foo # content: "42"
-///     |   \-> out_bar # content: "true"
-///     \-> run_0_rep1
-///         |-> out_foo # content: "300"
-///         \-> out_bar # content: "false"
-/// ```
-/// results in `exp_series.csv` with:
-/// ```notest
-/// foo,bar
-/// 42, true
-/// 300,false
-/// ```
-///
-pub fn make_table() -> Result<()> {
-    let series_dir = find_marker_pwd(MARKER_SERIES)?;
-
-    // collect all output from every run in series_dir
-    let out_content = harness::table::collect_output(&series_dir)?;
-    info!("Collected output for {} keys", out_content.len());
-    info!("Found keys: {:?}", out_content.keys());
-
-    // output file will be "series_dir/[series_dir].csv"
-    let mut out_file = PathBuf::from(
-        series_dir
-            .file_name()
-            .expect("Could not read experiment series name"),
-    );
-    out_file.set_extension("csv");
-
-    // serialize data and write to file
-    harness::table::serialize_csv(&series_dir.join(out_file), &out_content)?;
-
-    Ok(())
 }
 
 #[cfg(test)]
