@@ -29,7 +29,7 @@ fn main() -> ExitCode {
             append,
             remove,
         } => exomat::harness::env::main(add, append, remove),
-        Commands::MakeTable {} => exomat::make_table(),
+        Commands::MakeTable {} => exomat::harness::table::main(),
         Commands::Completion { shell } => bin::completion::main(shell),
     };
 

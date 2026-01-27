@@ -20,12 +20,16 @@ pub fn main(
             };
 
             match output {
-                Ok(output) => {
-                    exomat::run_experiment(&experiment, repetitions, output, log_handler, false)
-                }
+                Ok(output) => exomat::harness::run::experiment(
+                    &experiment,
+                    repetitions,
+                    output,
+                    log_handler,
+                    false,
+                ),
                 Err(err) => Err(err),
             }
         }
-        true => exomat::run_trial(&experiment, log_handler),
+        true => exomat::harness::run::trial(&experiment, log_handler),
     }
 }
