@@ -417,7 +417,9 @@ mod tests {
     use crate::helper::archivist::{create_harness_dir, create_harness_file};
     use crate::helper::fs_names::*;
 
-    use crate::helper::test_fixtures::{env_1a, envlist_1a, envlist_2b};
+    use crate::helper::test_fixtures::{
+        env_1a, envlist_1a, envlist_2b, envlist_ab321, vec_321, vec_ab,
+    };
 
     #[test]
     fn fetch_envs_valid() {
@@ -574,29 +576,17 @@ mod tests {
         assert!(assembled.contains(&env_from_pairs(vec![("1", "a"), ("2", "c"), ("3", "43"),])));
     }
 
-    #[test]
-    fn env_transform_list() {
-        let list = vec![
-            vec!["VAR1".to_string(), "A".to_string(), "B".to_string()],
-            vec![
-                "VAR2".to_string(),
-                "42".to_string(),
-                "24".to_string(),
-                "44".to_string(),
-            ],
-        ];
-
-        let new_map = to_env_list(&list).unwrap();
+    #[rstest]
+    fn env_transform_list(
+        envlist_ab321: Vec<Vec<String>>,
+        vec_ab: Vec<String>,
+        vec_321: Vec<String>,
+    ) {
+        let new_map = to_env_list(&envlist_ab321).unwrap();
 
         assert_eq!(new_map.len(), 2);
-        assert_eq!(
-            *new_map.get("VAR1").unwrap(),
-            vec!["A".to_string(), "B".to_string()]
-        );
-        assert_eq!(
-            *new_map.get("VAR2").unwrap(),
-            vec!["42".to_string(), "24".to_string(), "44".to_string()]
-        );
+        assert_eq!(*new_map.get("VAR1").unwrap(), vec_ab);
+        assert_eq!(*new_map.get("VAR2").unwrap(), vec_321);
     }
 
     rusty_fork_test! {
