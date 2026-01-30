@@ -408,6 +408,7 @@ pub fn main(
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
     use rusty_fork::rusty_fork_test;
     use std::collections::HashMap;
     use tempfile::TempDir;
@@ -415,6 +416,8 @@ mod tests {
     use super::*;
     use crate::helper::archivist::{create_harness_dir, create_harness_file};
     use crate::helper::fs_names::*;
+
+    use crate::helper::test_fixtures::{env_1a, envlist_1a, envlist_2b};
 
     #[test]
     fn fetch_envs_valid() {
@@ -466,41 +469,19 @@ mod tests {
         assert!(try_assemble_all(&given, &to_add).is_ok());
     }
 
-    #[test]
-    fn env_assemble_with_given() {
-        let given = Environment::from_env_list(vec![("1".to_string(), "a".to_string())]);
-        let to_add = HashMap::new();
-
-        let assembled = try_assemble_all(&given, &to_add).unwrap();
-
-        // should only contain the already given vars with nothing changed
+    #[rstest]
+    #[case(env_1a(), HashMap::new())]
+    #[case(Environment::new(), envlist_1a())]
+    fn env_assemble_with_empty(#[case] env: Environment, #[case] to_add: EnvList) {
+        let assembled = try_assemble_all(&env, &to_add).unwrap();
         assert_eq!(assembled.len(), 1);
-        assert!(assembled.contains(&given));
+        assert!(assembled.contains(&env_1a()));
     }
 
-    #[test]
-    fn env_assemble_with_to_add() {
-        let given = Environment::new();
-        let to_add = HashMap::from([("1".to_string(), vec!["a".to_string()])]);
-
-        let assembled = try_assemble_all(&given, &to_add).unwrap();
-
-        // should contain the only possible variant from to_add
-        assert_eq!(assembled.len(), 1);
-        assert!(assembled.contains(&Environment::from_env_list(vec![(
-            "1".to_string(),
-            "a".to_string()
-        )])));
-    }
-
-    #[test]
-    fn env_assemble_with_one() {
+    #[rstest]
+    fn env_assemble_with_one(env_1a: Environment, envlist_2b: EnvList) {
         // Note: assembling with multiple values is tested in doctest
-
-        let given = Environment::from_env_list(vec![("1".to_string(), "a".to_string())]);
-        let to_add = HashMap::from([("2".to_string(), vec!["b".to_string()])]);
-
-        let assembled = try_assemble_all(&given, &to_add).unwrap();
+        let assembled = try_assemble_all(&env_1a, &envlist_2b).unwrap();
 
         assert_eq!(assembled.len(), 1);
         assert!(assembled.contains(&Environment::from_env_list(vec![
@@ -567,41 +548,30 @@ mod tests {
         assert!(check_env_vars(&invalid_empty).is_err());
     }
 
-    #[test]
-    fn env_try_assemble() {
-        let given = Environment::from_env_list(vec![("1".to_string(), "a".to_string())]);
+    #[rstest]
+    fn env_try_assemble(env_1a: Environment) {
+        // helper
+        fn env_from_pairs(v: Vec<(&str, &str)>) -> Environment {
+            Environment::from_env_list(
+                v.into_iter()
+                    .map(|(a, b)| (a.to_string(), b.to_string()))
+                    .collect_vec(),
+            )
+        }
+
         let to_add = HashMap::from([
             ("2".to_string(), vec!["b".to_string(), "c".to_string()]),
             ("3".to_string(), vec!["42".to_string(), "43".to_string()]),
         ]);
 
-        let assembled = try_assemble_all(&given, &to_add).unwrap();
+        let assembled = try_assemble_all(&env_1a, &to_add).unwrap();
         assert_eq!(assembled.len(), 4);
 
         // all possible combinations of values that should be formed
-        assert!(assembled.contains(&Environment::from_env_list(vec![
-            ("1".to_string(), "a".to_string()),
-            ("2".to_string(), "b".to_string()),
-            ("3".to_string(), "42".to_string()),
-        ])));
-
-        assert!(assembled.contains(&Environment::from_env_list(vec![
-            ("1".to_string(), "a".to_string()),
-            ("2".to_string(), "b".to_string()),
-            ("3".to_string(), "43".to_string()),
-        ])));
-
-        assert!(assembled.contains(&Environment::from_env_list(vec![
-            ("1".to_string(), "a".to_string()),
-            ("2".to_string(), "c".to_string()),
-            ("3".to_string(), "42".to_string()),
-        ])));
-
-        assert!(assembled.contains(&Environment::from_env_list(vec![
-            ("1".to_string(), "a".to_string()),
-            ("2".to_string(), "c".to_string()),
-            ("3".to_string(), "43".to_string()),
-        ])));
+        assert!(assembled.contains(&env_from_pairs(vec![("1", "a"), ("2", "b"), ("3", "42"),])));
+        assert!(assembled.contains(&env_from_pairs(vec![("1", "a"), ("2", "b"), ("3", "43"),])));
+        assert!(assembled.contains(&env_from_pairs(vec![("1", "a"), ("2", "c"), ("3", "42"),])));
+        assert!(assembled.contains(&env_from_pairs(vec![("1", "a"), ("2", "c"), ("3", "43"),])));
     }
 
     #[test]
