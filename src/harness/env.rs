@@ -408,6 +408,7 @@ pub fn main(
 
 #[cfg(test)]
 mod tests {
+    use rstest::{fixture, rstest};
     use rusty_fork::rusty_fork_test;
     use std::collections::HashMap;
     use tempfile::TempDir;
@@ -466,41 +467,34 @@ mod tests {
         assert!(try_assemble_all(&given, &to_add).is_ok());
     }
 
-    #[test]
-    fn env_assemble_with_given() {
-        let given = Environment::from_env_list(vec![("1".to_string(), "a".to_string())]);
-        let to_add = HashMap::new();
-
-        let assembled = try_assemble_all(&given, &to_add).unwrap();
-
-        // should only contain the already given vars with nothing changed
-        assert_eq!(assembled.len(), 1);
-        assert!(assembled.contains(&given));
+    #[fixture]
+    fn env_1a() -> Environment {
+        Environment::from_env_list(vec![("1".to_string(), "a".to_string())])
     }
 
-    #[test]
-    fn env_assemble_with_to_add() {
-        let given = Environment::new();
-        let to_add = HashMap::from([("1".to_string(), vec!["a".to_string()])]);
-
-        let assembled = try_assemble_all(&given, &to_add).unwrap();
-
-        // should contain the only possible variant from to_add
-        assert_eq!(assembled.len(), 1);
-        assert!(assembled.contains(&Environment::from_env_list(vec![(
-            "1".to_string(),
-            "a".to_string()
-        )])));
+    #[fixture]
+    fn envlist_1a() -> EnvList {
+        HashMap::from([("1".to_string(), vec!["a".to_string()])])
     }
 
-    #[test]
-    fn env_assemble_with_one() {
+    #[fixture]
+    fn envlist_2b() -> EnvList {
+        HashMap::from([("2".to_string(), vec!["b".to_string()])])
+    }
+
+    #[rstest]
+    #[case(env_1a(), HashMap::new())]
+    #[case(Environment::new(), envlist_1a())]
+    fn env_assemble_with_empty(#[case] env: Environment, #[case] to_add: EnvList) {
+        let assembled = try_assemble_all(&env, &to_add).unwrap();
+        assert_eq!(assembled.len(), 1);
+        assert!(assembled.contains(&env_1a()));
+    }
+
+    #[rstest]
+    fn env_assemble_with_one(env_1a: Environment, envlist_2b: EnvList) {
         // Note: assembling with multiple values is tested in doctest
-
-        let given = Environment::from_env_list(vec![("1".to_string(), "a".to_string())]);
-        let to_add = HashMap::from([("2".to_string(), vec!["b".to_string()])]);
-
-        let assembled = try_assemble_all(&given, &to_add).unwrap();
+        let assembled = try_assemble_all(&env_1a, &envlist_2b).unwrap();
 
         assert_eq!(assembled.len(), 1);
         assert!(assembled.contains(&Environment::from_env_list(vec![
