@@ -408,7 +408,7 @@ pub fn main(
 
 #[cfg(test)]
 mod tests {
-    use rstest::{fixture, rstest};
+    use rstest::rstest;
     use rusty_fork::rusty_fork_test;
     use std::collections::HashMap;
     use tempfile::TempDir;
@@ -416,6 +416,8 @@ mod tests {
     use super::*;
     use crate::helper::archivist::{create_harness_dir, create_harness_file};
     use crate::helper::fs_names::*;
+
+    use crate::helper::test_fixtures::{env_1a, envlist_1a, envlist_2b};
 
     #[test]
     fn fetch_envs_valid() {
@@ -465,21 +467,6 @@ mod tests {
 
         // should not throw (?)
         assert!(try_assemble_all(&given, &to_add).is_ok());
-    }
-
-    #[fixture]
-    fn env_1a() -> Environment {
-        Environment::from_env_list(vec![("1".to_string(), "a".to_string())])
-    }
-
-    #[fixture]
-    fn envlist_1a() -> EnvList {
-        HashMap::from([("1".to_string(), vec!["a".to_string()])])
-    }
-
-    #[fixture]
-    fn envlist_2b() -> EnvList {
-        HashMap::from([("2".to_string(), vec!["b".to_string()])])
     }
 
     #[rstest]
