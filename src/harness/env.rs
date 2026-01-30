@@ -561,41 +561,30 @@ mod tests {
         assert!(check_env_vars(&invalid_empty).is_err());
     }
 
-    #[test]
-    fn env_try_assemble() {
-        let given = Environment::from_env_list(vec![("1".to_string(), "a".to_string())]);
+    #[rstest]
+    fn env_try_assemble(env_1a: Environment) {
+        // helper
+        fn env_from_pairs(v: Vec<(&str, &str)>) -> Environment {
+            Environment::from_env_list(
+                v.into_iter()
+                    .map(|(a, b)| (a.to_string(), b.to_string()))
+                    .collect_vec(),
+            )
+        }
+
         let to_add = HashMap::from([
             ("2".to_string(), vec!["b".to_string(), "c".to_string()]),
             ("3".to_string(), vec!["42".to_string(), "43".to_string()]),
         ]);
 
-        let assembled = try_assemble_all(&given, &to_add).unwrap();
+        let assembled = try_assemble_all(&env_1a, &to_add).unwrap();
         assert_eq!(assembled.len(), 4);
 
         // all possible combinations of values that should be formed
-        assert!(assembled.contains(&Environment::from_env_list(vec![
-            ("1".to_string(), "a".to_string()),
-            ("2".to_string(), "b".to_string()),
-            ("3".to_string(), "42".to_string()),
-        ])));
-
-        assert!(assembled.contains(&Environment::from_env_list(vec![
-            ("1".to_string(), "a".to_string()),
-            ("2".to_string(), "b".to_string()),
-            ("3".to_string(), "43".to_string()),
-        ])));
-
-        assert!(assembled.contains(&Environment::from_env_list(vec![
-            ("1".to_string(), "a".to_string()),
-            ("2".to_string(), "c".to_string()),
-            ("3".to_string(), "42".to_string()),
-        ])));
-
-        assert!(assembled.contains(&Environment::from_env_list(vec![
-            ("1".to_string(), "a".to_string()),
-            ("2".to_string(), "c".to_string()),
-            ("3".to_string(), "43".to_string()),
-        ])));
+        assert!(assembled.contains(&env_from_pairs(vec![("1", "a"), ("2", "b"), ("3", "42"),])));
+        assert!(assembled.contains(&env_from_pairs(vec![("1", "a"), ("2", "b"), ("3", "43"),])));
+        assert!(assembled.contains(&env_from_pairs(vec![("1", "a"), ("2", "c"), ("3", "42"),])));
+        assert!(assembled.contains(&env_from_pairs(vec![("1", "a"), ("2", "c"), ("3", "43"),])));
     }
 
     #[test]
