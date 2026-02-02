@@ -1,7 +1,23 @@
 use rstest::fixture;
 use std::collections::HashMap;
+use tempfile::TempDir;
 
+use super::{archivist::create_harness_dir, fs_names::*};
 use crate::harness::env::{EnvList, Environment};
+
+#[fixture]
+pub fn skeleton_src() -> TempDir {
+    tempfile::tempdir().expect("Could not create tempdir")
+}
+
+#[fixture]
+pub fn skeleton_src_envs() -> TempDir {
+    let dir = tempfile::tempdir().expect("Could not create tempdir");
+    let dir_path = dir.path().to_path_buf();
+    create_harness_dir(&dir_path.join(SRC_ENV_DIR)).unwrap();
+
+    dir
+}
 
 /// generates an Environment with `1: "a"`
 #[fixture]

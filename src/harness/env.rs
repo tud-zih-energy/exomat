@@ -418,15 +418,14 @@ mod tests {
     use crate::helper::fs_names::*;
 
     use crate::helper::test_fixtures::{
-        env_1a, envlist_1a, envlist_2b, envlist_ab321, vec_321, vec_ab,
+        env_1a, envlist_1a, envlist_2b, envlist_ab321, skeleton_src, skeleton_src_envs, vec_321,
+        vec_ab,
     };
 
-    #[test]
-    fn fetch_envs_valid() {
+    #[rstest]
+    fn fetch_envs_valid(skeleton_src_envs: TempDir) {
         // create experiment source dir
-        let mock_src = TempDir::new().unwrap();
-        let mock_src = mock_src.path().to_path_buf();
-        let mock_envs = create_harness_dir(&mock_src.join(SRC_ENV_DIR)).unwrap();
+        let mock_envs = skeleton_src_envs.path().to_path_buf();
 
         create_harness_file(&mock_envs.join("42.env")).unwrap();
         create_harness_file(&mock_envs.join("foo.env")).unwrap();
@@ -442,24 +441,16 @@ mod tests {
         assert!(!envs_found.contains(&mock_envs.join("not_a_file")));
     }
 
-    #[test]
-    fn fetch_envs_no_envs_dir() {
-        // create experiment source dir
-        let mock_src = TempDir::new().unwrap();
-        let mock_src = mock_src.path().to_path_buf();
-
-        assert!(fetch_environment_files(&mock_src).is_none());
+    #[rstest]
+    fn fetch_envs_no_envs_dir(skeleton_src: TempDir) {
+        let empty_src = skeleton_src.path().to_path_buf();
+        assert!(fetch_environment_files(&empty_src).is_none());
     }
 
-    #[test]
-    fn fetch_envs_no_env_files() {
-        // create experiment source dir
-        let mock_src = TempDir::new().unwrap();
-        let mock_src = mock_src.path().to_path_buf();
-
-        // create empty envs dir
-        create_harness_dir(&mock_src.join(SRC_ENV_DIR)).unwrap();
-        assert!(fetch_environment_files(&mock_src.join(SRC_ENV_DIR)).is_none());
+    #[rstest]
+    fn fetch_envs_no_env_files(skeleton_src_envs: TempDir) {
+        let empty_envs = skeleton_src_envs.path().to_path_buf();
+        assert!(fetch_environment_files(&empty_envs).is_none());
     }
 
     #[test]
@@ -492,10 +483,9 @@ mod tests {
         ])));
     }
 
-    #[test]
-    fn env_cannot_edit_reserved() {
-        let mock_env = TempDir::new().unwrap();
-        let mock_env = mock_env.path().to_path_buf();
+    #[rstest]
+    fn env_cannot_edit_reserved(skeleton_src: TempDir) {
+        let mock_env = skeleton_src.path().to_path_buf();
 
         let reserved_env = ExomatEnvironment::RESERVED_ENV_VARS[0];
         let reserved = HashMap::from([(reserved_env.to_string(), vec![])]);
