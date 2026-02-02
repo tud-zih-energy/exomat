@@ -463,13 +463,12 @@ mod tests {
         assert!(env1.get_env_val("VAR2").is_none());
     }
 
-    #[test]
-    fn env_serialize() {
-        // list with Environments that contain content
-        let env = EnvironmentContainer::from_env_list(vec![Environment::from_env_list(vec![(
-            "VAR".to_string(),
-            "VAL".to_string(),
-        )])]);
+    #[rstest]
+    fn env_serialize(container_single: EnvironmentContainer) {
+        // helper
+        fn read_env(env_file: &PathBuf) -> String {
+            std::fs::read_to_string(env_file).unwrap()
+        }
 
         // list with a lot of Environments (10)
         let many_env = EnvironmentContainer::from_env_list(vec![Environment::new(); 11]);
@@ -478,17 +477,14 @@ mod tests {
         let tmpdir = tmpdir.path().to_path_buf();
 
         // expecting "0.env" with the content VAR="VAL"
-        env.serialize_environments(&tmpdir).unwrap();
-        let content = std::fs::read_to_string(tmpdir.join("0.env")).unwrap();
+        container_single.serialize_environments(&tmpdir).unwrap();
         assert!(!tmpdir.join("1.env").is_file());
-        assert_eq!(content, "VAR=\"VAL\"");
+        assert_eq!(read_env(&tmpdir.join("0.env")), "VAR=\"single\"");
 
         // expecting 10 files, from "00.env" to "10.env" without content
         many_env.serialize_environments(&tmpdir).unwrap();
-        let content0 = std::fs::read_to_string(tmpdir.join("00.env")).unwrap();
-        let content1 = std::fs::read_to_string(tmpdir.join("10.env")).unwrap();
         assert!(!tmpdir.join("11.env").is_file());
-        assert!(content0.is_empty());
-        assert!(content1.is_empty());
+        assert!(read_env(&tmpdir.join("00.env")).is_empty());
+        assert!(read_env(&tmpdir.join("10.env")).is_empty());
     }
 }
