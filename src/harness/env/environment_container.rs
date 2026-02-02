@@ -430,19 +430,16 @@ mod tests {
         assert_eq!(env2.get_env_val("VAR2").unwrap(), &"VAL2".to_string());
     }
 
-    #[test]
+    #[rstest]
     #[should_panic(expected = "Item does not exist.")]
-    fn env_remove_no_preexisting() {
-        // list with "VAR"
-        let mut env = EnvironmentContainer::new();
-
+    fn env_remove_no_preexisting(envlist_one_var_one_val: EnvList) {
         // don't set any variables, try to edit
-        let to_remove = HashMap::from([("VAR".to_string(), vec!["VAL".to_string()])]);
-        env.append_to_environments(to_remove).unwrap(); //panic here
+        let mut env = EnvironmentContainer::new();
+        env.append_to_environments(envlist_one_var_one_val).unwrap(); //panic here
     }
 
-    #[test]
-    fn env_remove_valid() {
+    #[rstest]
+    fn env_remove_valid(envlist_mixed: EnvList) {
         // list with "VAR1" and "VAR2"
         let mut env = EnvironmentContainer::from_env_list(vec![
             Environment::from_env_list(vec![
@@ -455,17 +452,13 @@ mod tests {
             ]),
         ]);
 
-        let to_remove = HashMap::from([
-            ("VAR1".to_string(), vec!["VALUE".to_string()]), // remove value
-            ("VAR2".to_string(), vec![]),                    // remove variable
-        ]);
-
-        // remove
-        env.remove_from_environments(to_remove).unwrap();
+        // List with VAR1: [VALUE], VAR2: []`
+        env.remove_from_environments(envlist_mixed).unwrap();
 
         assert_eq!(env.environment_count(), 1);
         let env1 = env.environment_list.first().unwrap();
 
+        // removed "VALUE" of VAR1 and VAR2 completely
         assert_eq!(env1.get_env_val("VAR1").unwrap(), &"VAL".to_string());
         assert!(env1.get_env_val("VAR2").is_none());
     }
