@@ -8,11 +8,13 @@ use super::{
 };
 use crate::harness::env::{EnvList, Environment};
 
+/// generates an empty tempdir, that can be used as an empty Experiment Source Directory
 #[fixture]
 pub fn skeleton_src() -> TempDir {
     tempfile::tempdir().expect("Could not create tempdir")
 }
 
+/// generates a tempdir, containing an empty subdirectory SRC_ENV_DIR
 #[fixture]
 pub fn skeleton_src_envs() -> TempDir {
     let dir = tempfile::tempdir().expect("Could not create tempdir");
@@ -22,6 +24,15 @@ pub fn skeleton_src_envs() -> TempDir {
     dir
 }
 
+/// generates a tempdir with the following structure:
+/// ```notest
+/// tempdir/
+/// \- [SRC_ENV_DIR]/
+///     |- 42.env       [EMPTY]
+///     |- foo.env      [EMPTY]
+///     |- not_an_env   [EMPTY]
+///     \- not_a_file/
+/// ```
 #[fixture]
 pub fn filled_src_envs() -> TempDir {
     let env_dir = skeleton_src_envs();
