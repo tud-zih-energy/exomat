@@ -53,6 +53,51 @@ pub fn envlist_2b() -> EnvList {
     HashMap::from([("2".to_string(), vec!["b".to_string()])])
 }
 
+/// generates an EnvList with `VAR: []`
+#[fixture]
+pub fn envlist_one_var_no_val() -> EnvList {
+    HashMap::from([("VAR".to_string(), vec![])])
+}
+
+/// generates an EnvList with `VAR: ["VAL"]`
+#[fixture]
+pub fn envlist_one_var_one_val() -> EnvList {
+    HashMap::from([("VAR".to_string(), vec!["VAL".to_string()])])
+}
+
+/// generates an EnvList with `VAR: ["VAL", "VAL2"]`
+#[fixture]
+pub fn envlist_one_var_two_val() -> EnvList {
+    HashMap::from([(
+        "VAR".to_string(),
+        vec!["VAL".to_string(), "VAL2".to_string()],
+    )])
+}
+
+/// generates an EnvList with `VAR1: ["VAL1", "VAL11"], VAR2: ["VAL2", "VAL22"]`
+#[fixture]
+pub fn envlist_two_var_two_val() -> EnvList {
+    HashMap::from([
+        (
+            "VAR1".to_string(),
+            vec!["VAL1".to_string(), "VAL11".to_string()],
+        ),
+        (
+            "VAR2".to_string(),
+            vec!["VAL2".to_string(), "VAL22".to_string()],
+        ),
+    ])
+}
+
+/// generates an EnvList with `VAR1: ["VALUE"], VAR2: []`
+#[fixture]
+pub fn envlist_mixed() -> EnvList {
+    HashMap::from([
+        ("VAR1".to_string(), vec!["VALUE".to_string()]),
+        ("VAR2".to_string(), vec![]),
+    ])
+}
+
 /// generates a Vector with `[A, B]`
 #[fixture]
 pub fn vec_ab() -> Vec<String> {
@@ -77,4 +122,24 @@ pub fn envlist_ab321() -> Vec<Vec<String>> {
             "1".to_string(),
         ],
     ]
+}
+
+use crate::harness::env::EnvironmentContainer;
+
+/// generates an Environemnt Container with `VAR: single`
+#[fixture]
+pub fn container_single() -> EnvironmentContainer {
+    EnvironmentContainer::from_env_list(vec![Environment::from_env_list(vec![(
+        "VAR".to_string(),
+        "single".to_string(),
+    )])])
+}
+
+/// generates an Environemnt Container with `VAR1: VAL1, VAR2: VAL2`
+#[fixture]
+pub fn container_multiple() -> EnvironmentContainer {
+    EnvironmentContainer::from_env_list(vec![Environment::from_env_list(vec![
+        ("VAR1".to_string(), "VAL1".to_string()),
+        ("VAR2".to_string(), "VAL2".to_string()),
+    ])])
 }
