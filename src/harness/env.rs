@@ -414,24 +414,17 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::helper::archivist::{create_harness_dir, create_harness_file};
     use crate::helper::fs_names::*;
 
     use crate::helper::test_fixtures::{
-        env_1a, envlist_1a, envlist_2b, envlist_ab321, skeleton_src, skeleton_src_envs, vec_321,
-        vec_ab,
+        env_1a, envlist_1a, envlist_2b, envlist_ab321, filled_src_envs, skeleton_src,
+        skeleton_src_envs, vec_321, vec_ab,
     };
 
     #[rstest]
-    fn fetch_envs_valid(skeleton_src_envs: TempDir) {
+    fn fetch_envs_valid(filled_src_envs: TempDir) {
         // create experiment source dir
-        let mock_envs = skeleton_src_envs.path().to_path_buf();
-
-        create_harness_file(&mock_envs.join("42.env")).unwrap();
-        create_harness_file(&mock_envs.join("foo.env")).unwrap();
-        create_harness_file(&mock_envs.join("not_an_env")).unwrap();
-        create_harness_dir(&mock_envs.join("not_a_file")).unwrap();
-
+        let mock_envs = filled_src_envs.path().to_path_buf();
         let envs_found = fetch_environment_files(&mock_envs).unwrap();
 
         assert_eq!(envs_found.len(), 2);
@@ -442,15 +435,11 @@ mod tests {
     }
 
     #[rstest]
-    fn fetch_envs_no_envs_dir(skeleton_src: TempDir) {
-        let empty_src = skeleton_src.path().to_path_buf();
-        assert!(fetch_environment_files(&empty_src).is_none());
-    }
-
-    #[rstest]
-    fn fetch_envs_no_env_files(skeleton_src_envs: TempDir) {
-        let empty_envs = skeleton_src_envs.path().to_path_buf();
-        assert!(fetch_environment_files(&empty_envs).is_none());
+    #[case(skeleton_src())]
+    #[case(skeleton_src_envs())]
+    fn fetch_envs_incomplete(#[case] skeleton: TempDir) {
+        let empty_dir = skeleton.path().to_path_buf();
+        assert!(fetch_environment_files(&empty_dir).is_none());
     }
 
     #[test]

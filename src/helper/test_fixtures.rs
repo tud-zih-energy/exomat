@@ -2,7 +2,10 @@ use rstest::fixture;
 use std::collections::HashMap;
 use tempfile::TempDir;
 
-use super::{archivist::create_harness_dir, fs_names::*};
+use super::{
+    archivist::{create_harness_dir, create_harness_file},
+    fs_names::*,
+};
 use crate::harness::env::{EnvList, Environment};
 
 #[fixture]
@@ -17,6 +20,19 @@ pub fn skeleton_src_envs() -> TempDir {
     create_harness_dir(&dir_path.join(SRC_ENV_DIR)).unwrap();
 
     dir
+}
+
+#[fixture]
+pub fn filled_src_envs() -> TempDir {
+    let env_dir = skeleton_src_envs();
+    let env_dir_path = env_dir.path().to_path_buf();
+
+    create_harness_file(&env_dir_path.join("42.env")).unwrap();
+    create_harness_file(&env_dir_path.join("foo.env")).unwrap();
+    create_harness_file(&env_dir_path.join("not_an_env")).unwrap();
+    create_harness_dir(&env_dir_path.join("not_a_file")).unwrap();
+
+    env_dir
 }
 
 /// generates an Environment with `1: "a"`
