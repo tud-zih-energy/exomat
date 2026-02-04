@@ -51,6 +51,11 @@ fn evaluate_env_lua() -> LuaResult<Vec<EnvList>> {
     let lua = Lua::new();
     let globals = lua.globals();
 
+    // Register EnvList as a Lua userdata type
+    lua.register_userdata_type::<EnvList>(|metatable| {
+        EnvList::add_methods(metatable);
+    })?;
+
     // (1) creation
     // create a set of values from a list
     let from_list = lua.create_function(|_, (variable, values): (String, Vec<String>)| {
