@@ -414,10 +414,9 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::helper::fs_names::*;
 
     use crate::helper::test_fixtures::{
-        env_1a, envlist_1a, envlist_2b, envlist_ab321, filled_src_envs, skeleton_src,
+        env_1a, envlist_1a, envlist_2b, envlist_ab321, filled_src_envs, skeleton_out, skeleton_src,
         skeleton_src_envs, vec_321, vec_ab,
     };
 
@@ -571,13 +570,9 @@ mod tests {
     rusty_fork_test! {
         #[test]
         fn env_e2e() {
-            // create ouput dir (with empty envs/ dir)
-            let tmpdir = TempDir::new().unwrap();
-            let tmpdir = tmpdir.path().to_path_buf();
-            std::fs::create_dir(tmpdir.join(SRC_ENV_DIR)).unwrap();
-            std::fs::File::create_new(&tmpdir.join(MARKER_SRC)).unwrap();
-
-            std::env::set_current_dir(&tmpdir).unwrap();
+            // ouput dir with empty envs/ dir
+            let out_dir = skeleton_out();
+            std::env::set_current_dir(&out_dir).unwrap();
 
             let to_add = vec![vec!["VAR".to_string(), "VAL".to_string()]];
             let to_append = vec![vec!["VAR".to_string(), "FOO".to_string()]];
@@ -589,27 +584,27 @@ mod tests {
 
         #[test]
         fn deserialize() {
-            let tmpdir = TempDir::new().unwrap();
-            let tmpdir = tmpdir.path().to_path_buf();
+            let tmpdir = skeleton_src();
             std::env::set_current_dir(&tmpdir).unwrap();
 
             // write in non-alphabetic order
             std::fs::write("two.env", "FOO=baz").unwrap();
             std::fs::write("01.env", "FOO=bar").unwrap();
 
-            let expected_env_bar = Environment::from_env_list(vec![("FOO".to_string(), "bar".to_string())]);
-            let expected_env_baz = Environment::from_env_list(vec![("FOO".to_string(), "baz".to_string())]);
+            let expected_bar = Environment::from_env_list(vec![("FOO".to_string(), "bar".to_string())]);
+            let expected_baz = Environment::from_env_list(vec![("FOO".to_string(), "baz".to_string())]);
 
-            let all_envs_with_fname = get_existing_environments_by_fname(&PathBuf::from(".")).unwrap();
+            let envs_no_fname = EnvironmentContainer::from_files(&PathBuf::from(".")).unwrap();
+            assert!(envs_no_fname.to_env_list().contains(&expected_baz));
+            assert!(envs_no_fname.to_env_list().contains(&expected_bar));
+
+            let envs_fname = get_existing_environments_by_fname(&PathBuf::from(".")).unwrap();
             assert_eq!(
-                all_envs_with_fname,
-                HashMap::from([
-                    (PathBuf::from("01.env"), expected_env_bar.clone()),
-                    (PathBuf::from("two.env"), expected_env_baz.clone())]));
-
-            let all_envs_no_fname = EnvironmentContainer::from_files(&PathBuf::from(".")).unwrap();
-            assert!(all_envs_no_fname.to_env_list().contains(&expected_env_baz));
-            assert!(all_envs_no_fname.to_env_list().contains(&expected_env_bar));
+                envs_fname,
+                HashMap::from([(PathBuf::from("01.env"), expected_bar),
+                            (PathBuf::from("two.env"), expected_baz)
+                            ])
+            );
         }
     }
 }

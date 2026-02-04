@@ -27,6 +27,23 @@ pub fn skeleton_src_envs() -> TempDir {
 /// generates a tempdir with the following structure:
 /// ```notest
 /// tempdir/
+/// |- [MARKER_SRC]     [EMPTY]
+/// \- [SRC_ENV_DIR]/
+/// ```
+#[fixture]
+pub fn skeleton_out() -> TempDir {
+    let dir = tempfile::tempdir().expect("Could not create tempdir");
+    let dir_path = dir.path().to_path_buf();
+
+    create_harness_dir(&dir_path.join(SRC_ENV_DIR)).unwrap();
+    create_harness_file(&dir_path.join(MARKER_SRC)).unwrap();
+
+    dir
+}
+
+/// generates a tempdir with the following structure:
+/// ```notest
+/// tempdir/
 /// \- [SRC_ENV_DIR]/
 ///     |- 42.env       [EMPTY]
 ///     |- foo.env      [EMPTY]
