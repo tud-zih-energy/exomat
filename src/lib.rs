@@ -11,6 +11,9 @@ pub mod helper {
 
     #[cfg(test)]
     pub mod test_fixtures;
+
+    #[cfg(test)]
+    pub mod test_helper;
 }
 
 use indicatif::MultiProgress;
