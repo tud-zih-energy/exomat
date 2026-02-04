@@ -359,9 +359,8 @@ pub fn create_report<T>(
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
-
     use rusty_fork::rusty_fork_test;
+    use std::{io::Write, path::PathBuf};
     use tempfile::TempDir;
 
     use super::super::skeleton::{
@@ -369,6 +368,28 @@ mod tests {
     };
     use super::*;
     use crate::harness::env::ExomatEnvironment;
+
+    /// helper to create a `run.sh` file in an experiment source directory.
+    ///
+    /// When executed, it will write the content of `${out_env}` to stdout and in `out_file`
+    fn filled_run_in(exp_src: &PathBuf, out_env: &str) {
+        let run_sh_path = exp_src.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE);
+        let content = format!("echo ${out_env}\necho ${out_env} >> out_file");
+
+        let mut run_sh = OpenOptions::new().append(true).open(&run_sh_path).unwrap();
+        run_sh.write(content.as_bytes()).unwrap();
+    }
+
+    /// helper that reads a file at `[location]/[SERIES_RUNS_DIR]/[log_name]`
+    fn read_log(location: PathBuf, log_name: &str) -> String {
+        std::fs::read_to_string(location.join(SERIES_RUNS_DIR).join(log_name)).unwrap()
+    }
+
+    /// helper to create a file at `location` with content `content`
+    fn create_env_at(location: &PathBuf, content: &str) {
+        let mut env = std::fs::File::create(location).unwrap();
+        env.write_all(content.as_bytes()).unwrap();
+    }
 
     rusty_fork_test! {
         #[test]
@@ -384,12 +405,7 @@ mod tests {
             create_source_directory(&exp_source).unwrap();
 
             // write something in run.sh
-            let mut runsh = OpenOptions::new()
-                .append(true)
-                .open(exp_source.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE))
-                .unwrap();
-
-            writeln!(runsh, "echo $EXP_SRC_DIR").unwrap();
+            filled_run_in(&exp_source,"EXP_SRC_DIR");
 
             let series = series_dir_handle.path();
             build_series_directory(&exp_source, series).unwrap();
@@ -404,8 +420,8 @@ mod tests {
             let run = build_run_directory(series, &default_env, &exomat_envs, 1).unwrap();
             run_experiment(&file_name_string(&exp_source), &run, &exomat_envs.to_environment_full()).unwrap();
 
-            let out_log = std::fs::read_to_string(series.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG)).unwrap();
-            let err_log = std::fs::read_to_string(series.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG)).unwrap();
+            let out_log = read_log(series.to_path_buf(), SERIES_STDOUT_LOG);
+            let err_log = read_log(series.to_path_buf(), SERIES_STDERR_LOG);
 
             assert!(out_log.contains(&exp_source.canonicalize().unwrap().display().to_string()));
             assert!(err_log.is_empty());
@@ -424,28 +440,11 @@ mod tests {
             crate::harness::skeleton::main(&PathBuf::from(exp_name)).unwrap();
 
             // Write something to run.sh that uses env var
-            let mut run_sh = OpenOptions::new()
-                .append(true)
-                .open(
-                    &tmpdir
-                        .join(exp_name)
-                        .join(SRC_TEMPLATE_DIR)
-                        .join(SRC_RUN_FILE),
-                )
-                .unwrap();
-            run_sh
-                .write("echo $FOO\necho $FOO >> out_file".as_bytes()) // write to stdout and in file
-                .unwrap();
+            filled_run_in(&tmpdir.join(exp_name), "FOO");
 
             // make multiple .env files that set $FOO to different values
-            let mut env1 =
-                std::fs::File::create(&tmpdir.join(exp_name).join(SRC_ENV_DIR).join("0.env")).unwrap();
-
-            let mut env2 =
-                std::fs::File::create(&tmpdir.join(exp_name).join(SRC_ENV_DIR).join("m.env")).unwrap();
-
-            env1.write_all("FOO=BAR".as_bytes()).unwrap();
-            env2.write_all("FOO=Z".as_bytes()).unwrap();
+            create_env_at(&tmpdir.join(exp_name).join(SRC_ENV_DIR).join("0.env"), "FOO=BAR");
+            create_env_at(&tmpdir.join(exp_name).join(SRC_ENV_DIR).join("m.env"), "FOO=Z");
 
             // run experiment and check logs
             experiment(
@@ -457,35 +456,17 @@ mod tests {
             )
             .unwrap();
 
-            let stdout_log = std::fs::read_to_string(
-                tmpdir
-                    .join(out_name)
-                    .join(SERIES_RUNS_DIR)
-                    .join(SERIES_STDOUT_LOG),
-            )
-            .unwrap();
-            let stderr_log = std::fs::read_to_string(
-                tmpdir
-                    .join(out_name)
-                    .join(SERIES_RUNS_DIR)
-                    .join(SERIES_STDERR_LOG),
-            )
-            .unwrap();
-
+            let stderr_log = read_log(tmpdir.join(out_name), SERIES_STDERR_LOG);
             assert_eq!(stderr_log.lines().count(), 0);
+
             // two lines for variable (inserted here), two lines for current time (part of run.sh template)
+            let stdout_log = read_log(tmpdir.join(out_name), SERIES_STDOUT_LOG);
             assert_eq!(dbg!(stdout_log.lines()).count(), 4);
             assert!(stdout_log.contains("Z"));
             assert!(stdout_log.contains("BAR"));
 
             // take one out_file and check its content
-            let output = std::fs::read_to_string(
-                tmpdir
-                    .join(out_name)
-                    .join(SERIES_RUNS_DIR)
-                    .join("run_0_rep0/out_file"),
-            )
-            .unwrap();
+            let output = read_log(tmpdir.join(out_name), "run_0_rep0/out_file");
             assert_eq!(output.lines().count(), 1);
             assert!(output.contains("BAR"));
         }
@@ -502,23 +483,11 @@ mod tests {
             crate::harness::skeleton::main(&PathBuf::from(exp_name)).unwrap();
 
             // Write something to run.sh that uses env var
-            let mut run_sh = OpenOptions::new()
-                .append(true)
-                .open(&tmpdir.join(exp_name).join("template").join("run.sh"))
-                .unwrap();
-            run_sh
-                .write("echo $FOO\necho $FOO >> out_file".as_bytes()) // write to stdout and in file
-                .unwrap();
+            filled_run_in(&tmpdir.join(exp_name), "FOO");
 
             // make multiple .env files that set $FOO to different values
-            let mut env1 =
-                std::fs::File::create(&tmpdir.join(exp_name).join("envs").join("0.env")).unwrap();
-
-            let mut env2 =
-                std::fs::File::create(&tmpdir.join(exp_name).join("envs").join("m.env")).unwrap();
-
-            env1.write_all("FOO=BAR".as_bytes()).unwrap();
-            env2.write_all("FOO=Z".as_bytes()).unwrap();
+            create_env_at(&tmpdir.join(exp_name).join("envs").join("0.env"), "FOO=BAR");
+            create_env_at(&tmpdir.join(exp_name).join("envs").join("m.env"), "FOO=Z");
 
             // no error
             trial(&PathBuf::from(exp_name), MultiProgress::new()).unwrap();
