@@ -19,8 +19,23 @@ impl EnvList {
 
 impl FromLua for EnvList {
     fn from_lua(value: Value, _: &Lua) -> Result<Self> {
+        // helper
+        fn envlist_from_lua(tb: LuaTable) -> Result<EnvList> {
+            let mut map = HashMap::new();
+            for pair in tb.pairs::<String, mlua::Table>() {
+                let (key, val_table) = pair?;
+                let vec = val_table
+                    .sequence_values::<String>()
+                    .collect::<Result<Vec<_>>>()?;
+                map.insert(key, vec);
+            }
+
+            Ok(EnvList::from(map))
+        }
+
         match value {
             Value::UserData(ud) => Ok(ud.borrow::<Self>()?.clone()),
+            Value::Table(tb) => envlist_from_lua(tb),
             _ => unreachable!(),
         }
     }
@@ -83,8 +98,21 @@ fn evaluate_env_lua() -> LuaResult<Vec<EnvList>> {
     })?;
     globals.set("cross", cross_prod)?;
 
-    lua.load(std::fs::read_to_string("tests/env_test.lua").expect("no file at this location"))
-        .eval()
+    let chunk_src =
+        std::fs::read_to_string("tests/env_test.lua").expect("no file at this location");
+    let chunk = lua.load(&chunk_src);
+
+    // Try to evaluate as Vec<EnvList>, if value is no table: fallback to EnvList
+    match chunk.eval::<Vec<EnvList>>() {
+        Ok(vec) => Ok(vec),
+        Err(_) => {
+            let chunk = lua.load(&chunk_src);
+            match chunk.eval::<EnvList>() {
+                Ok(single) => Ok(vec![single]),
+                Err(e) => Err(e),
+            }
+        }
+    }
 }
 
 #[cfg(test)]
