@@ -2,6 +2,9 @@ use super::fs_names::*;
 use std::fs::OpenOptions;
 use std::{io::Write, path::PathBuf};
 
+use crate::harness::env::ExomatEnvironment;
+use crate::harness::skeleton::{build_series_directory, create_source_directory};
+
 /// helper to create a `run.sh` file in an experiment source directory.
 ///
 /// When executed, it will write the content of `${out_env}` to stdout and in `out_file`
@@ -22,4 +25,24 @@ pub fn read_log(location: PathBuf, log_name: &str) -> String {
 pub fn create_env_at(location: &PathBuf, content: &str) {
     let mut env = std::fs::File::create(location).unwrap();
     env.write_all(content.as_bytes()).unwrap();
+}
+
+/// generates an experiment source and an experiment series dir in `base`
+///
+/// returns (source_path, series_path, default_env_path, exomat_envs)
+pub fn skeleton_src_series_in(
+    base: &PathBuf,
+    src_name: &str,
+    series_name: &str,
+) -> (PathBuf, PathBuf, PathBuf, ExomatEnvironment) {
+    let source = base.join(src_name);
+    let series = base.join(series_name);
+
+    create_source_directory(&source).unwrap();
+    build_series_directory(&source, &series).unwrap();
+
+    let default_env = source.join(SRC_ENV_DIR).join(SRC_ENV_FILE);
+    let exomat_env = ExomatEnvironment::new(&source, 1);
+
+    (source, series, default_env, exomat_env)
 }
