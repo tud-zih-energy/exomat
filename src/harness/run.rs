@@ -111,15 +111,8 @@ fn collect_output(dir: &PathBuf) -> Result<HashMap<String, String>> {
     let prefix = "out_";
     let reps = crate::harness::table::find_all_run_repetitions(&dir.join(SERIES_RUNS_DIR));
 
-    if reps.len() > 1 {
-        return Err(Error::HarnessRunError {
-            experiment: dir.display().to_string(),
-            err: format!("Too many runs executed in a trial."),
-        });
-    }
-
-    for rep_dir in reps {
-        for entry in rep_dir.read_dir().expect("Could not read dir") {
+    if reps.len() == 1 {
+        for entry in reps[0].read_dir().expect("Could not read dir") {
             let entry = entry.expect("Entry not readable");
             if entry
                 .metadata()
@@ -140,9 +133,16 @@ fn collect_output(dir: &PathBuf) -> Result<HashMap<String, String>> {
                 }
             }
         }
+        Ok(output)
+    } else if reps.len() < 1 {
+        // return empty map
+        Ok(output)
+    } else {
+        Err(Error::HarnessRunError {
+            experiment: dir.display().to_string(),
+            err: format!("Too many runs executed in a trial."),
+        })
     }
-
-    Ok(output)
 }
 /// Runs the experiment defined in `exp_source_dir` `repetitions` times for each
 /// environment.
