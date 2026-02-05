@@ -350,8 +350,6 @@ fn serialize_csv(file: &PathBuf, content: &HashMap<String, Vec<String>>) -> Resu
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
-    use std::fs::{create_dir_all, File};
-    use std::io::Write;
     use tempfile::TempDir;
 
     use super::*;
