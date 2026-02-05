@@ -169,7 +169,12 @@ fn execute_exp_repetitions(
         }
     })?;
 
-    let prog_bar = ProgressBar::new(repetitions * envs.len() as u64);
+    let prog_bar = if is_trial {
+        ProgressBar::new(1)
+    } else {
+        ProgressBar::new(repetitions * envs.len() as u64)
+    };
+
     prog_bar.set_style(
         ProgressStyle::with_template("[{elapsed_precise}] [{bar:.green}] {pos}/{len} ({eta})")
             .unwrap()
