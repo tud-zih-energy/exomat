@@ -51,6 +51,9 @@ pub fn contains_either(string: &String, one: &str, other: &str) -> bool {
     string.contains(one) || string.contains(other)
 }
 
+/// Creates a file called `name` in `series_dir/[SERIES_RUNS_DIR]/rep_name/` with the content `content`
+///
+/// If `rep_name` is `None`, [TEST_RUN_REP_DIR0] is used.
 pub fn create_out_file(series_dir: &PathBuf, rep_name: Option<&str>, name: &str, content: &str) {
     let outfile = series_dir
         .join(SERIES_RUNS_DIR)
