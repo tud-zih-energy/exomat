@@ -45,7 +45,7 @@ pub fn skeleton_out() -> TempDir {
 /// ```notest
 /// tempdir/
 /// \- [SERIES_RUNS_DIR]/
-///     \- run_x_rep0/
+///     \- [TEST_RUN_REP_DIR0]/
 ///         \- out_empty    [EMPTY]
 /// ```
 #[fixture]
@@ -53,7 +53,9 @@ pub fn skeleton_series_run() -> TempDir {
     let series_dir = TempDir::new().unwrap();
     let series_dir_path = series_dir.path().to_path_buf();
 
-    let run_rep_dir = series_dir_path.join(SERIES_RUNS_DIR).join("run_x_rep0");
+    let run_rep_dir = series_dir_path
+        .join(SERIES_RUNS_DIR)
+        .join(TEST_RUN_REP_DIR0);
 
     std::fs::create_dir_all(&run_rep_dir).unwrap();
     std::fs::File::create(run_rep_dir.join("out_empty")).unwrap();
@@ -65,7 +67,7 @@ pub fn skeleton_series_run() -> TempDir {
 /// ```notest
 /// tempdir/
 /// \- [SERIES_RUNS_DIR]/
-///     \- run_x_rep0/
+///     \- [TEST_RUN_REP_DIR0]/
 ///         |- noout_file       [EMPTY]
 ///         \- something.txt    [EMPTY]
 /// ```
@@ -74,7 +76,9 @@ pub fn skeleton_series_run_empty() -> TempDir {
     let series_dir = TempDir::new().unwrap();
     let series_dir_path = series_dir.path().to_path_buf();
 
-    let run_rep_dir = series_dir_path.join(SERIES_RUNS_DIR).join("run_x_rep0");
+    let run_rep_dir = series_dir_path
+        .join(SERIES_RUNS_DIR)
+        .join(TEST_RUN_REP_DIR0);
 
     // create multiple files, but no output file
     std::fs::create_dir_all(&run_rep_dir).unwrap();
@@ -88,9 +92,9 @@ pub fn skeleton_series_run_empty() -> TempDir {
 /// ```notest
 /// tempdir/
 /// \- [SERIES_RUNS_DIR]/
-///     |- run_x_rep0/
+///     |- [TEST_RUN_REP_DIR0]/
 ///     |   \- out_empty    [EMPTY]
-///     \- run_x_rep1/
+///     \- [TEST_RUN_REP_DIR1]/
 /// ```
 #[fixture]
 #[allow(non_snake_case)]
@@ -99,8 +103,12 @@ pub fn filled_series_run_NA() -> TempDir {
     let series_dir_path = series_dir.path().to_path_buf();
 
     // create multiple repetition dirs
-    let run_rep_dir_0 = series_dir_path.join(SERIES_RUNS_DIR).join("run_x_rep0");
-    let run_rep_dir_1 = series_dir_path.join(SERIES_RUNS_DIR).join("run_x_rep1");
+    let run_rep_dir_0 = series_dir_path
+        .join(SERIES_RUNS_DIR)
+        .join(TEST_RUN_REP_DIR0);
+    let run_rep_dir_1 = series_dir_path
+        .join(SERIES_RUNS_DIR)
+        .join(TEST_RUN_REP_DIR1);
     std::fs::create_dir_all(&run_rep_dir_0).unwrap();
     std::fs::create_dir_all(&run_rep_dir_1).unwrap();
 
@@ -113,7 +121,7 @@ pub fn filled_series_run_NA() -> TempDir {
 /// ```notest
 /// tempdir/
 /// \- [SERIES_RUNS_DIR]/
-///     \- run_x_rep0/
+///     \- [TEST_RUN_REP_DIR0]/
 ///         |- out_some       [EMPTY]
 ///         \- out_some.txt    [EMPTY]
 /// ```
@@ -122,7 +130,9 @@ pub fn filled_series_run_duplicate() -> TempDir {
     let series_dir = TempDir::new().unwrap();
     let series_dir_path = series_dir.path().to_path_buf();
 
-    let run_rep_dir = series_dir_path.join(SERIES_RUNS_DIR).join("run_x_rep0");
+    let run_rep_dir = series_dir_path
+        .join(SERIES_RUNS_DIR)
+        .join(TEST_RUN_REP_DIR0);
 
     std::fs::create_dir_all(&run_rep_dir).unwrap();
     std::fs::File::create(run_rep_dir.join("out_some.txt")).unwrap();
@@ -135,7 +145,7 @@ pub fn filled_series_run_duplicate() -> TempDir {
 /// ```notest
 /// tempdir/
 /// \- [SERIES_RUNS_DIR]/
-///     \- run_x_rep0/
+///     \- [TEST_RUN_REP_DIR0]/
 ///         \- out_       [EMPTY]
 /// ```
 #[fixture]
@@ -143,7 +153,9 @@ pub fn filled_series_run_invalid() -> TempDir {
     let series_dir = TempDir::new().unwrap();
     let series_dir_path = series_dir.path().to_path_buf();
 
-    let run_rep_dir = series_dir_path.join(SERIES_RUNS_DIR).join("run_x_rep0");
+    let run_rep_dir = series_dir_path
+        .join(SERIES_RUNS_DIR)
+        .join(TEST_RUN_REP_DIR0);
 
     std::fs::create_dir_all(&run_rep_dir).unwrap();
     std::fs::File::create(run_rep_dir.join("out_")).unwrap();
