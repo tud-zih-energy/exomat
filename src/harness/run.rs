@@ -412,7 +412,22 @@ fn create_report<T>(
         eval_str.push_str("[{exp_name}] created no output files\n")
     } else {
         for (out_file, content) in out_files.iter() {
-            eval_str.push_str(&format!("[{exp_name}] {out_file}:\n{content}\n\n"));
+            let mut lines: Vec<&str> = content.lines().collect();
+
+            if lines.len() > 5 {
+                // truncate after 5 lines
+                let size = lines.len() - 5;
+                lines.truncate(5);
+
+                eval_str.push_str(&format!(
+                    "[{exp_name}] {out_file}:\n{}\n[...{} more lines]\n\n",
+                    lines.join("\n"),
+                    size
+                ));
+            } else {
+                // print entire content if less than 5 lines
+                eval_str.push_str(&format!("[{exp_name}] {out_file}:\n{content}\n"));
+            }
         }
     }
     eval_str.push_str("---\n");
