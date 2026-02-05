@@ -4,12 +4,14 @@ use chrono::Local;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{error, info, trace, warn};
 use rand::seq::SliceRandom;
+use std::collections::HashMap;
 use std::{
     fs::OpenOptions,
     io::Read,
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
+
 use strip_ansi::strip_ansi;
 
 use super::env::{fetch_environment_files, Environment, ExomatEnvironment};
@@ -86,13 +88,62 @@ pub fn trial(experiment: &PathBuf, log_progress_handler: MultiProgress) -> Resul
         std::fs::read_to_string(trial_dir_path.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG))?;
     let exomat =
         std::fs::read_to_string(trial_dir_path.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG))?;
+    let out_files = collect_output(&trial_dir_path)?;
 
-    let eval_res = create_report(&exp_name, &res, &stdout, &stderr, &exomat);
+    let eval_res = create_report(&exp_name, &res, &stdout, &stderr, &out_files, &exomat);
     print!("{eval_res}");
 
     res
 }
 
+/// Filters all "out_$NAME" files from the given experiment series directory. Then creates
+/// a map with each out_$NAME becomming a key and the content of this file becomming the associated value.
+///
+/// Uses `crate::harness::table::collect_output()`, but does not include any environment variables.
+///
+/// ## Errors and Panics
+/// - Panics if there is more than one run/repetition in the series directory
+///
+/// The content of `out_$NAME` files is not validated or checked in any way, if you put
+/// weird content in them, you will get weird output.
+fn collect_output(dir: &PathBuf) -> Result<HashMap<String, String>> {
+    let mut output = HashMap::<String, String>::new();
+    let prefix = "out_";
+    let reps = crate::harness::table::find_all_run_repetitions(&dir.join(SERIES_RUNS_DIR));
+
+    if reps.len() > 1 {
+        return Err(Error::HarnessRunError {
+            experiment: dir.display().to_string(),
+            err: format!("Too many runs executed in a trial."),
+        });
+    }
+
+    for rep_dir in reps {
+        for entry in rep_dir.read_dir().expect("Could not read dir") {
+            let entry = entry.expect("Entry not readable");
+            if entry
+                .metadata()
+                .expect("Metadata of entry not readable")
+                .is_file()
+            {
+                let file_name = entry
+                    .file_name()
+                    .into_string()
+                    .expect("Could not determine filename of entry");
+
+                if file_name.starts_with(prefix) {
+                    // found an out_* file, so read and add to map
+                    let file_content =
+                        std::fs::read_to_string(entry.path()).expect("Could not read out file");
+
+                    output.insert(file_name, file_content);
+                }
+            }
+        }
+    }
+
+    Ok(output)
+}
 /// Runs the experiment defined in `exp_source_dir` `repetitions` times for each
 /// environment.
 ///
@@ -118,7 +169,12 @@ fn execute_exp_repetitions(
         }
     })?;
 
-    let prog_bar = ProgressBar::new(repetitions * envs.len() as u64);
+    let prog_bar = if is_trial {
+        ProgressBar::new(1)
+    } else {
+        ProgressBar::new(repetitions * envs.len() as u64)
+    };
+
     prog_bar.set_style(
         ProgressStyle::with_template("[{elapsed_precise}] [{bar:.green}] {pos}/{len} ({eta})")
             .unwrap()
@@ -300,6 +356,7 @@ fn log_run_result(
 /// - `run = Ok(_)`
 /// - `stdout = "normal output"`
 /// - `stderr = ""`
+/// - `out_files = {"out_foo": "some content". "out_bar": "42"}`
 /// - `exomat = "[info] ..."`
 ///
 /// ```bash
@@ -310,6 +367,13 @@ fn log_run_result(
 /// normal output
 /// ---
 /// [Foo] stderr:
+///
+/// ---
+/// [Foo] out_foo:
+/// some content
+///
+/// [Foo] out_bar:
+/// 42
 ///
 /// ---
 /// [Foo] returned:
@@ -323,11 +387,12 @@ fn log_run_result(
 /// [Foo] returned:
 /// Failed (reason: e)
 /// ```
-pub fn create_report<T>(
+fn create_report<T>(
     exp_name: &str,
     run: &Result<T>,
     stdout: &str,
     stderr: &str,
+    out_files: &HashMap<String, String>,
     exomat: &str,
 ) -> String {
     let mut eval_str = String::new();
@@ -346,6 +411,31 @@ pub fn create_report<T>(
     eval_str.push_str(&format!("[{exp_name}] stderr:\n"));
     eval_str.push_str(stderr);
     eval_str.push_str("\n---\n");
+
+    // append out file content
+    if out_files.is_empty() {
+        eval_str.push_str("[{exp_name}] created no output files\n")
+    } else {
+        for (out_file, content) in out_files.iter() {
+            let mut lines: Vec<&str> = content.lines().collect();
+
+            if lines.len() > 5 {
+                // truncate after 5 lines
+                let size = lines.len() - 5;
+                lines.truncate(5);
+
+                eval_str.push_str(&format!(
+                    "[{exp_name}] {out_file}:\n{}\n[...{} more lines]\n\n",
+                    lines.join("\n"),
+                    size
+                ));
+            } else {
+                // print entire content if less than 5 lines
+                eval_str.push_str(&format!("[{exp_name}] {out_file}:\n{content}\n"));
+            }
+        }
+    }
+    eval_str.push_str("---\n");
 
     // append overall success/failure report
     eval_str.push_str(&format!("[{exp_name}] returned:\n"));
@@ -523,5 +613,80 @@ mod tests {
             // no error
             trial(&PathBuf::from(exp_name), MultiProgress::new()).unwrap();
         }
+    }
+
+    #[test]
+    fn collect_out_no_files() {
+        // collect on dir without out_* files
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+
+        std::fs::create_dir_all(&series_dir).unwrap();
+        std::fs::File::create(series_dir.join("random_file")).unwrap();
+
+        let res = collect_output(&series_dir).unwrap();
+        assert!(res.is_empty());
+    }
+
+    #[test]
+    fn collect_out_empty() {
+        // collect on dir with out_* file, without content
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+        let run_dir = series_dir.join("runs/run_0_rep0");
+
+        std::fs::create_dir_all(&run_dir).unwrap();
+        std::fs::File::create(run_dir.join("out_empty")).unwrap();
+
+        let res = collect_output(&series_dir).unwrap();
+        assert_eq!(res.len(), 1);
+        assert_eq!(res.get("out_empty").unwrap(), "");
+    }
+
+    #[test]
+    fn collect_out_working() {
+        // collect on dir with out_* files, with content
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+        let run_dir = series_dir.join("runs/run_0_rep0");
+
+        std::fs::create_dir_all(&run_dir).unwrap();
+        std::fs::write(run_dir.join("out_full"), "foo bar").unwrap();
+
+        let res = collect_output(&series_dir).unwrap();
+        assert_eq!(res.len(), 1);
+        assert_eq!(res.get("out_full").unwrap(), "foo bar");
+    }
+
+    #[test]
+    fn collect_out_too_many_runs() {
+        // collect on dir with out_* files from multiple runs
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+        let run_dir_1 = series_dir.join("runs/run_0_rep0");
+        let run_dir_2 = series_dir.join("runs/run_7_rep4");
+
+        std::fs::create_dir_all(&run_dir_1).unwrap();
+        std::fs::write(run_dir_1.join("out_1"), "foo bar").unwrap();
+
+        std::fs::create_dir_all(&run_dir_2).unwrap();
+        std::fs::write(run_dir_2.join("out_1"), "something else").unwrap();
+
+        assert!(collect_output(&series_dir).is_err());
+    }
+
+    #[test]
+    fn collect_out_multiline() {
+        // collect on dir with out_* files containing multiple lines
+        let series_dir = TempDir::new().unwrap();
+        let series_dir = series_dir.path().to_path_buf();
+        let run_dir = series_dir.join("runs/run_0_rep0");
+
+        std::fs::create_dir_all(&run_dir).unwrap();
+        std::fs::write(run_dir.join("out_1"), "foo\nbar").unwrap();
+
+        let res = collect_output(&series_dir).unwrap();
+        assert_eq!(res.len(), 1);
+        assert_eq!(res.get("out_1").unwrap(), "foo\nbar");
     }
 }
