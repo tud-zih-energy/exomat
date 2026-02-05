@@ -469,9 +469,9 @@ mod tests {
         let series_dir = skeleton_series_run.path().to_path_buf();
 
         // add out files
-        create_out_file(&series_dir, "out_single", "foo");
-        create_out_file(&series_dir, "out_multi", "11\n20");
-        create_out_file(&series_dir, "out_trailing", "11\n20");
+        create_out_file(&series_dir, None, "out_single", "foo");
+        create_out_file(&series_dir, None, "out_multi", "11\n20");
+        create_out_file(&series_dir, None, "out_trailing", "11\n20");
 
         // check content, order is important
         let res = collect_output(&series_dir).unwrap();
@@ -495,23 +495,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn table_collect_multiline_empty() {
-        // create (repetition) dir
-        let series_dir = TempDir::new().unwrap();
-        let series_dir = series_dir.path().to_path_buf();
-        let run_rep_dir = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
-        std::fs::create_dir_all(&run_rep_dir).unwrap();
+    #[rstest]
+    fn table_collect_multiline_empty(skeleton_series_run: TempDir) {
+        let series_dir = skeleton_series_run.path().to_path_buf();
 
         // add out files
-        let multi = run_rep_dir.join("out_multi");
-        std::fs::File::create(&multi).unwrap();
-
-        let single = run_rep_dir.join("out_empty");
-        std::fs::File::create(&single).unwrap();
-
-        // write content to files
-        std::fs::write(multi, "foo\nbar").unwrap();
+        create_out_file(&series_dir, None, "out_multi", "foo\nbar");
+        create_out_file(&series_dir, None, "out_empty", "");
 
         // check content
         let res = collect_output(&series_dir).unwrap();
@@ -530,79 +520,45 @@ mod tests {
 
     // If there are two values in the same run,
     // they have to have the same number of rows.
-    #[test]
-    fn table_collect_multiline_mismatch() {
-        // create (repetition) dir
-        let series_dir = TempDir::new().unwrap();
-        let series_dir = series_dir.path().to_path_buf();
-        let run_rep_dir1 = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
-        std::fs::create_dir_all(&run_rep_dir1).unwrap();
+    #[rstest]
+    fn table_collect_multiline_mismatch(skeleton_series_run: TempDir) {
+        let series_dir = skeleton_series_run.path().to_path_buf();
 
         // add out files in both run reps
-        let out_foo = run_rep_dir1.join("out_foo");
-        std::fs::File::create(&out_foo).unwrap();
-
-        let out_bar = run_rep_dir1.join("out_bar");
-        std::fs::File::create(&out_bar).unwrap();
-
-        // write content to files
-        std::fs::write(out_foo, "11\n20").unwrap(); // two lines
-        std::fs::write(out_bar, "6\n48\n15").unwrap(); // three lines
+        create_out_file(&series_dir, None, "out_foo", "11\n20"); // two lines
+        create_out_file(&series_dir, None, "out_bar", "6\n48\n15"); // three lines
 
         // check content
         assert!(collect_output(&series_dir).is_err());
     }
+
     // If there are multiple runs, then the number of rows in a value
     // can differ between
-    #[test]
-    fn table_collect_multiline_multiple_dirs_diff_length() {
-        // create (repetition) dir
-        let series_dir = TempDir::new().unwrap();
-        let series_dir = series_dir.path().to_path_buf();
-        let run_rep_dir1 = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
-        std::fs::create_dir_all(&run_rep_dir1).unwrap();
-
-        let run_rep_dir2 = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep1");
-        std::fs::create_dir_all(&run_rep_dir2).unwrap();
+    #[rstest]
+    #[allow(non_snake_case)]
+    fn table_collect_multiline_multiple_dirs_diff_length(filled_series_run_NA: TempDir) {
+        let series_dir = filled_series_run_NA.path().to_path_buf();
 
         // add out files in both run reps
-        let multi1 = run_rep_dir1.join("out_foo");
-        std::fs::File::create(&multi1).unwrap();
-
-        let multi2 = run_rep_dir2.join("out_foo");
-        std::fs::File::create(&multi2).unwrap();
-
-        // write content to files
-        std::fs::write(multi1, "11\n20").unwrap(); // two lines
-        std::fs::write(multi2, "6\n48\n15").unwrap(); // three lines
+        create_out_file(&series_dir, Some(TEST_RUN_REP_DIR0), "out_foo", "11\n20"); // two lines
+        create_out_file(&series_dir, Some(TEST_RUN_REP_DIR1), "out_foo", "6\n48\n15"); // three lines
 
         // check content
         assert!(collect_output(&series_dir).is_ok());
     }
 
-    #[test]
-    fn table_collect_output_full() {
-        // create (repetition) dir
-        let series_dir = TempDir::new().unwrap();
-        let series_dir = series_dir.path().to_path_buf();
-
-        // create multiple repetition dirs
-        let run_rep_dir_0 = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
-        create_dir_all(&run_rep_dir_0).unwrap();
-        let run_rep_dir_1 = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep1");
-        create_dir_all(&run_rep_dir_1).unwrap();
+    #[rstest]
+    #[allow(non_snake_case)]
+    fn table_collect_output_full(filled_series_run_NA: TempDir) {
+        let series_dir = filled_series_run_NA.path().to_path_buf();
 
         // add multiple out_ files and some that will not be used
-        File::create(run_rep_dir_0.join("not_out_file")).unwrap();
-        File::create(run_rep_dir_0.join("random")).unwrap();
+        create_out_file(&series_dir, Some(TEST_RUN_REP_DIR0), "not_out_file", "");
+        create_out_file(&series_dir, Some(TEST_RUN_REP_DIR0), "random", "");
 
-        File::create(run_rep_dir_0.join("out_empty.txt")).unwrap();
-        let mut some_0 = File::create(run_rep_dir_0.join("out_some")).unwrap();
-        let mut some_1 = File::create(run_rep_dir_1.join("out_some")).unwrap();
-
-        // fill out_some
-        some_0.write_all(b"foo").unwrap();
-        some_1.write_all(b"bar").unwrap();
+        create_out_file(&series_dir, Some(TEST_RUN_REP_DIR0), "out_empty.txt", "");
+        create_out_file(&series_dir, Some(TEST_RUN_REP_DIR0), "out_some", "foo");
+        create_out_file(&series_dir, Some(TEST_RUN_REP_DIR1), "out_some", "bar");
 
         let res = collect_output(&series_dir).unwrap();
 

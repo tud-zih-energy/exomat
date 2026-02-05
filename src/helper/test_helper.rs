@@ -51,12 +51,15 @@ pub fn contains_either(string: &String, one: &str, other: &str) -> bool {
     string.contains(one) || string.contains(other)
 }
 
-pub fn create_out_file(series_dir: &PathBuf, name: &str, content: &str) {
+pub fn create_out_file(series_dir: &PathBuf, rep_name: Option<&str>, name: &str, content: &str) {
     let outfile = series_dir
         .join(SERIES_RUNS_DIR)
-        .join(TEST_RUN_REP_DIR0)
+        .join(rep_name.unwrap_or(TEST_RUN_REP_DIR0))
         .join(name);
 
     std::fs::File::create(&outfile).unwrap();
-    std::fs::write(outfile, content).unwrap();
+
+    if !content.is_empty() {
+        std::fs::write(outfile, content).unwrap();
+    }
 }
