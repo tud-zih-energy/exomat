@@ -356,7 +356,9 @@ mod tests {
 
     use super::*;
     use crate::helper::test_fixtures::{
-        envlist_1a, envlist_empty_string, envlist_mixed_weird, envlist_one_var_no_val, skeleton_src,
+        envlist_1a, envlist_empty_string, envlist_mixed_weird, envlist_one_var_no_val,
+        filled_series_run_NA, filled_series_run_duplicate, filled_series_run_invalid,
+        skeleton_series_run, skeleton_series_run_empty, skeleton_src,
     };
     use crate::helper::test_helper::contains_either;
 
@@ -402,12 +404,9 @@ mod tests {
         assert_eq!(std::fs::read_to_string(out_file).unwrap(), expected);
     }
 
-    #[test]
-    fn table_collect_empty() {
-        // create empty (series) dir
-        let series_dir = TempDir::new().unwrap();
+    #[rstest]
+    fn table_collect_empty(#[from(skeleton_src)] series_dir: TempDir) {
         let series_dir = series_dir.path().to_path_buf();
-        std::fs::create_dir_all(&series_dir).unwrap();
 
         // test all collection funcs with empty directory
         let res = collect_output(&series_dir).unwrap();
@@ -420,52 +419,27 @@ mod tests {
         assert!(res.is_empty());
     }
 
-    #[test]
-    fn table_collect_repetition_no_out() {
-        // create (repetition) dir
-        let series_dir = TempDir::new().unwrap();
-        let series_dir = series_dir.path().to_path_buf();
-        let run_rep_dir = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
-        std::fs::create_dir_all(&run_rep_dir).unwrap();
-
-        // add various content, but no out_ file
-        std::fs::File::create(run_rep_dir.join("something.txt")).unwrap();
-        std::fs::File::create(run_rep_dir.join("notout_file")).unwrap();
+    #[rstest]
+    fn table_collect_repetition_no_out(skeleton_series_run_empty: TempDir) {
+        let series_dir = skeleton_series_run_empty.path().to_path_buf();
 
         let res = collect_output(&series_dir).unwrap();
         assert!(res.is_empty());
     }
 
-    #[test]
-    fn table_collect_empty_out() {
-        // create (repetition) dir
-        let series_dir = TempDir::new().unwrap();
-        let series_dir = series_dir.path().to_path_buf();
-        let run_rep_dir = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
-        std::fs::create_dir_all(&run_rep_dir).unwrap();
-
-        // add empty out_ file
-        std::fs::File::create(run_rep_dir.join("out_empty")).unwrap();
+    #[rstest]
+    fn table_collect_empty_out(skeleton_series_run: TempDir) {
+        let series_dir = skeleton_series_run.path().to_path_buf();
 
         // key "empty" should be present, but without values
         let res = collect_output(&series_dir).unwrap();
         assert!(res.get("empty") == Some(&vec![String::new()]));
     }
 
-    #[test]
-    fn table_collect_no_value() {
-        // create (repetition) dir
-        let series_dir = TempDir::new().unwrap();
-        let series_dir = series_dir.path().to_path_buf();
-
-        // create multiple repetition dirs
-        let run_rep_dir_0 = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
-        std::fs::create_dir_all(&run_rep_dir_0).unwrap();
-        let run_rep_dir_1 = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep1");
-        std::fs::create_dir_all(&run_rep_dir_1).unwrap();
-
-        // add empty out_ file in one of them
-        std::fs::File::create(run_rep_dir_0.join("out_empty")).unwrap();
+    #[rstest]
+    #[allow(non_snake_case)]
+    fn table_collect_no_value(filled_series_run_NA: TempDir) {
+        let series_dir = filled_series_run_NA.path().to_path_buf();
 
         let res = collect_output(&series_dir).unwrap();
         let res_vec = res.get("empty").unwrap();
@@ -474,33 +448,18 @@ mod tests {
         assert!(res_vec.contains(&String::from("NA"))); // "NA" from run_rep_dir_1
     }
 
-    #[test]
-    fn table_collect_duplicates() {
-        // create (repetition) dir
-        let series_dir = TempDir::new().unwrap();
-        let series_dir = series_dir.path().to_path_buf();
-        let run_rep_dir = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
-        std::fs::create_dir_all(&run_rep_dir).unwrap();
-
-        // add out files with the same name
-        std::fs::File::create(run_rep_dir.join("out_some.txt")).unwrap();
-        std::fs::File::create(run_rep_dir.join("out_some")).unwrap();
+    #[rstest]
+    fn table_collect_duplicates(filled_series_run_duplicate: TempDir) {
+        let series_dir = filled_series_run_duplicate.path().to_path_buf();
 
         let res = collect_output(&series_dir).unwrap();
         assert!(res.get("some").is_some());
         assert!(res.get("some.txt").is_some());
     }
 
-    #[test]
-    fn table_collect_out_no_name() {
-        // create dir
-        let series_dir = TempDir::new().unwrap();
-        let series_dir = series_dir.path().to_path_buf();
-        let run_rep_dir = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
-        std::fs::create_dir_all(&run_rep_dir).unwrap();
-
-        // add out file without name
-        std::fs::File::create(run_rep_dir.join("out_")).unwrap();
+    #[rstest]
+    fn table_collect_out_no_name(filled_series_run_invalid: TempDir) {
+        let series_dir = filled_series_run_invalid.path().to_path_buf();
 
         assert!(collect_output(&series_dir).is_err());
     }
