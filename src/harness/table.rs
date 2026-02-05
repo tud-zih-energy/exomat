@@ -360,7 +360,7 @@ mod tests {
         filled_series_run_NA, filled_series_run_duplicate, filled_series_run_invalid,
         skeleton_series_run, skeleton_series_run_empty, skeleton_src,
     };
-    use crate::helper::test_helper::contains_either;
+    use crate::helper::test_helper::{contains_either, create_out_file};
 
     #[rstest]
     fn table_serialize_multiline(
@@ -464,28 +464,14 @@ mod tests {
         assert!(collect_output(&series_dir).is_err());
     }
 
-    #[test]
-    fn table_collect_multiline() {
-        // create (repetition) dir
-        let series_dir = TempDir::new().unwrap();
-        let series_dir = series_dir.path().to_path_buf();
-        let run_rep_dir = series_dir.join(SERIES_RUNS_DIR).join("run_x_rep0");
-        std::fs::create_dir_all(&run_rep_dir).unwrap();
+    #[rstest]
+    fn table_collect_multiline(skeleton_series_run: TempDir) {
+        let series_dir = skeleton_series_run.path().to_path_buf();
 
         // add out files
-        let multi = run_rep_dir.join("out_multi");
-        std::fs::File::create(&multi).unwrap();
-
-        let single = run_rep_dir.join("out_single");
-        std::fs::File::create(&single).unwrap();
-
-        let trailing = run_rep_dir.join("out_trailing");
-        std::fs::File::create(&trailing).unwrap();
-
-        // write content to files
-        std::fs::write(multi, "11\n20").unwrap();
-        std::fs::write(trailing, "11\n20\n").unwrap();
-        std::fs::write(single, "foo").unwrap();
+        create_out_file(&series_dir, "out_single", "foo");
+        create_out_file(&series_dir, "out_multi", "11\n20");
+        create_out_file(&series_dir, "out_trailing", "11\n20");
 
         // check content, order is important
         let res = collect_output(&series_dir).unwrap();
