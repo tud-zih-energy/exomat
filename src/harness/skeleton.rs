@@ -297,13 +297,13 @@ pub fn main(exp_src_dir: &PathBuf) -> Result<()> {
 mod tests {
     use std::str::FromStr;
 
+    use faccess::PathExt;
     use rusty_fork::rusty_fork_test;
     use tempfile::TempDir;
 
     use super::*;
-    use crate::harness::env::{
-        exomat_environment::append_exomat_envs, Environment, ExomatEnvironment,
-    };
+    use crate::harness::env::{exomat_environment::append_exomat_envs, Environment};
+    use crate::helper::test_helper::skeleton_src_series_in;
 
     #[test]
     fn test_create_source_multiple_times() {
@@ -339,24 +339,13 @@ mod tests {
 
         #[test]
         fn build_run_directory_simple() {
-            use crate::helper::fs_names::*;
-
-            use faccess::PathExt;
-
             // create base tempdir, to act as parent
             let tmpdir = TempDir::new().unwrap();
             let tmpdir = tmpdir.path();
             std::env::set_current_dir(&tmpdir).unwrap();
 
             // create an experiment source, and an experiment series
-            let exp_source = tmpdir.join("FooSource");
-            let exp_series = tmpdir.join("FooSeries");
-            create_source_directory(&exp_source).unwrap();
-            build_series_directory(&exp_source, &exp_series).unwrap();
-
-            // extract an env file to create run directory with and add exomat envs
-            let default_env = exp_source.join(SRC_ENV_DIR).join(SRC_ENV_FILE);
-            let exomat_env = ExomatEnvironment::new(&exp_source.to_path_buf(), 1);
+            let (exp_source, exp_series, default_env, exomat_env) = skeleton_src_series_in(&tmpdir.to_path_buf(), "FooSource", "FooSeries");
             append_exomat_envs(&exp_source.join(SRC_ENV_DIR).join(SRC_ENV_FILE), &exomat_env).unwrap();
 
             // create run dir (based on exp_series, environment from default_env,
@@ -385,17 +374,11 @@ mod tests {
             let tmpdir = tmpdir.path();
             std::env::set_current_dir(&tmpdir).unwrap();
 
-            let exp_source = tmpdir.join("FooSource");
-            let exp_series = tmpdir.join("FooSeries");
-            create_source_directory(&exp_source).unwrap();
-            build_series_directory(&exp_source, &exp_series).unwrap();
+            let (_, exp_series, default_env, exomat_envs) = skeleton_src_series_in(&tmpdir.to_path_buf(), "FooSource", "FooSeries");
 
-            let default_env = exp_source.join(SRC_ENV_DIR).join(SRC_ENV_FILE);
             let mut env = Environment::from_file(&default_env).unwrap();
             env.add_env(String::from("FOO"), String::from("BAR"));
             env.to_file(&default_env).unwrap();
-
-            let exomat_envs = ExomatEnvironment::new(&PathBuf::from("/"), 42); // content does not matter
 
             let run_dir = build_run_directory(&exp_series, &default_env, &exomat_envs, 1).unwrap();
 

@@ -312,7 +312,13 @@ impl EnvironmentContainer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
     use tempfile::TempDir;
+
+    use crate::helper::test_fixtures::{
+        container_multiple, container_single, envlist_mixed, envlist_one_var_no_val,
+        envlist_one_var_one_val, envlist_one_var_two_val, envlist_two_var_two_val,
+    };
 
     #[test]
     #[should_panic(expected = "No envs to add")]
@@ -324,20 +330,17 @@ mod tests {
         let _ = env.add_environments(to_add);
     }
 
-    #[test]
+    #[rstest]
     #[should_panic]
-    fn env_add_no_val() {
+    fn env_add_no_val(envlist_one_var_no_val: EnvList) {
         let mut env = EnvironmentContainer::new();
-        let to_add = HashMap::from([("VAR".to_string(), vec![])]);
-
-        let _ = env.add_environments(to_add);
+        let _ = env.add_environments(envlist_one_var_no_val);
     }
 
-    #[test]
-    fn env_add_repeat_env() {
+    #[rstest]
+    fn env_add_repeat_env(envlist_one_var_one_val: EnvList, envlist_one_var_two_val: EnvList) {
         let mut env = EnvironmentContainer::new();
-        let to_add = HashMap::from([("VAR".to_string(), vec!["VAL".to_string()])]);
-        env.add_environments(to_add).unwrap();
+        env.add_environments(envlist_one_var_one_val).unwrap();
 
         // env was written
         assert_eq!(
@@ -346,28 +349,14 @@ mod tests {
         );
 
         // appending a new value to an existing one should fail
-        let to_add = HashMap::from([(
-            "VAR".to_string(),
-            vec!["VAL".to_string(), "VAL2".to_string()],
-        )]);
-        assert!(env.add_environments(to_add).is_err());
+        assert!(env.add_environments(envlist_one_var_two_val).is_err());
     }
 
-    #[test]
-    fn env_add_multiple() {
+    #[rstest]
+    fn env_add_multiple(envlist_one_var_two_val: EnvList, envlist_two_var_two_val: EnvList) {
         // add to empty EnvironmentContainer
         let mut env = EnvironmentContainer::new();
-        let to_add = HashMap::from([
-            (
-                "VAR1".to_string(),
-                vec!["VAL1".to_string(), "VAL11".to_string()],
-            ),
-            (
-                "VAR2".to_string(),
-                vec!["VAL2".to_string(), "VAL22".to_string()],
-            ),
-        ]);
-        env.add_environments(to_add).unwrap();
+        env.add_environments(envlist_two_var_two_val).unwrap();
 
         assert_eq!(env.environment_count(), 4);
         assert!(env.environment_list.iter().all(|environment| {
@@ -375,101 +364,82 @@ mod tests {
         }));
 
         // add to non-empty EnvironmentContainer
-        let to_add = HashMap::from([(
-            "VAR3".to_string(),
-            vec!["VAL3".to_string(), "VAL33".to_string()],
-        )]);
-        env.add_environments(to_add).unwrap();
+        env.add_environments(envlist_one_var_two_val).unwrap();
 
         assert_eq!(env.environment_count(), 8);
         assert!(env.environment_list.iter().all(|environment| {
             environment.contains_env_var("VAR1")
                 && environment.contains_env_var("VAR2")
-                && environment.contains_env_var("VAR3")
+                && environment.contains_env_var("VAR")
         }))
     }
 
-    #[test]
+    #[rstest]
     #[should_panic(expected = "Item does not exist.")]
-    fn env_append_no_preexisting() {
-        let mut env = EnvironmentContainer::new();
-
+    fn env_append_no_preexisting(envlist_one_var_one_val: EnvList) {
         // don't set any variables, try to edit
-        let to_append = HashMap::from([("VAR".to_string(), vec!["VAL".to_string()])]);
-        env.append_to_environments(to_append).unwrap(); //panic here
+        let mut env = EnvironmentContainer::new();
+        env.append_to_environments(envlist_one_var_one_val).unwrap(); //panic here
     }
 
-    #[test]
-    fn env_append_valid() {
-        // list with "VAR"
-        let mut env =
-            EnvironmentContainer::from_env_list(vec![Environment::from_env_list(vec![(
-                "VAR".to_string(),
-                "VAL".to_string(),
-            )])]);
+    #[rstest]
+    fn env_append_valid(
+        mut container_single: EnvironmentContainer,
+        envlist_one_var_one_val: EnvList,
+    ) {
+        // helper
+        fn var_at_pos(container: &EnvironmentContainer, pos: usize) -> String {
+            container
+                .environment_list
+                .get(pos)
+                .unwrap()
+                .get_env_val("VAR")
+                .unwrap()
+                .to_string()
+        }
 
         // edit "VAR"
-        let to_append = HashMap::from([("VAR".to_string(), vec!["ANOTHER".to_string()])]);
-        env.append_to_environments(to_append).unwrap();
-
-        // check "VAR", has to be set to "VAL" once and to "ANOTHER" once
-        assert_eq!(env.environment_count(), 2);
-        let res_first = env
-            .environment_list
-            .first()
-            .unwrap()
-            .get_env_val("VAR")
-            .unwrap();
-        let res_last = env
-            .environment_list
-            .last()
-            .unwrap()
-            .get_env_val("VAR")
+        container_single
+            .append_to_environments(envlist_one_var_one_val)
             .unwrap();
 
-        assert_eq!(res_first, &"ANOTHER".to_string());
-        assert_eq!(res_last, &"VAL".to_string());
+        // check "VAR", has to be set to "VAL" once and to "single" once
+        assert_eq!(container_single.environment_count(), 2);
+        let res_first = var_at_pos(&container_single, 0);
+        let res_last = var_at_pos(&container_single, 1);
+
+        assert_eq!(res_first, "VAL".to_string());
+        assert_eq!(res_last, "single".to_string());
     }
 
-    #[test]
-    fn env_append_no_value() {
-        // list with "VAR"
-        let mut env = EnvironmentContainer::from_env_list(vec![Environment::from_env_list(vec![
-            ("VAR1".to_string(), "VAL1".to_string()),
-            ("VAR2".to_string(), "VAL2".to_string()),
-        ])]);
-
+    #[rstest]
+    fn env_append_no_value(mut container_multiple: EnvironmentContainer, envlist_mixed: EnvList) {
         // edit "VAR1", but not "VAR2"
-        let to_append = HashMap::from([
-            ("VAR1".to_string(), vec!["VALUE1".to_string()]),
-            ("VAR2".to_string(), vec![]),
-        ]);
-        env.append_to_environments(to_append).unwrap();
+        container_multiple
+            .append_to_environments(envlist_mixed)
+            .unwrap();
 
         // expected: no error, value of VAR1 changed but VAR2 not touched
-        assert_eq!(env.environment_count(), 2);
-        let env1 = env.environment_list.first().unwrap();
-        let env2 = env.environment_list.last().unwrap();
+        assert_eq!(container_multiple.environment_count(), 2);
+        let env1 = container_multiple.environment_list.first().unwrap();
+        let env2 = container_multiple.environment_list.last().unwrap();
 
         assert_eq!(env1.get_env_val("VAR1").unwrap(), &"VAL1".to_string());
         assert_eq!(env1.get_env_val("VAR2").unwrap(), &"VAL2".to_string());
-        assert_eq!(env2.get_env_val("VAR1").unwrap(), &"VALUE1".to_string());
+        assert_eq!(env2.get_env_val("VAR1").unwrap(), &"VALUE".to_string());
         assert_eq!(env2.get_env_val("VAR2").unwrap(), &"VAL2".to_string());
     }
 
-    #[test]
+    #[rstest]
     #[should_panic(expected = "Item does not exist.")]
-    fn env_remove_no_preexisting() {
-        // list with "VAR"
-        let mut env = EnvironmentContainer::new();
-
+    fn env_remove_no_preexisting(envlist_one_var_one_val: EnvList) {
         // don't set any variables, try to edit
-        let to_remove = HashMap::from([("VAR".to_string(), vec!["VAL".to_string()])]);
-        env.append_to_environments(to_remove).unwrap(); //panic here
+        let mut env = EnvironmentContainer::new();
+        env.append_to_environments(envlist_one_var_one_val).unwrap(); //panic here
     }
 
-    #[test]
-    fn env_remove_valid() {
+    #[rstest]
+    fn env_remove_valid(envlist_mixed: EnvList) {
         // list with "VAR1" and "VAR2"
         let mut env = EnvironmentContainer::from_env_list(vec![
             Environment::from_env_list(vec![
@@ -482,28 +452,23 @@ mod tests {
             ]),
         ]);
 
-        let to_remove = HashMap::from([
-            ("VAR1".to_string(), vec!["VALUE".to_string()]), // remove value
-            ("VAR2".to_string(), vec![]),                    // remove variable
-        ]);
-
-        // remove
-        env.remove_from_environments(to_remove).unwrap();
+        // List with VAR1: [VALUE], VAR2: []`
+        env.remove_from_environments(envlist_mixed).unwrap();
 
         assert_eq!(env.environment_count(), 1);
         let env1 = env.environment_list.first().unwrap();
 
+        // removed "VALUE" of VAR1 and VAR2 completely
         assert_eq!(env1.get_env_val("VAR1").unwrap(), &"VAL".to_string());
         assert!(env1.get_env_val("VAR2").is_none());
     }
 
-    #[test]
-    fn env_serialize() {
-        // list with Environments that contain content
-        let env = EnvironmentContainer::from_env_list(vec![Environment::from_env_list(vec![(
-            "VAR".to_string(),
-            "VAL".to_string(),
-        )])]);
+    #[rstest]
+    fn env_serialize(container_single: EnvironmentContainer) {
+        // helper
+        fn read_env(env_file: &PathBuf) -> String {
+            std::fs::read_to_string(env_file).unwrap()
+        }
 
         // list with a lot of Environments (10)
         let many_env = EnvironmentContainer::from_env_list(vec![Environment::new(); 11]);
@@ -512,17 +477,14 @@ mod tests {
         let tmpdir = tmpdir.path().to_path_buf();
 
         // expecting "0.env" with the content VAR="VAL"
-        env.serialize_environments(&tmpdir).unwrap();
-        let content = std::fs::read_to_string(tmpdir.join("0.env")).unwrap();
+        container_single.serialize_environments(&tmpdir).unwrap();
         assert!(!tmpdir.join("1.env").is_file());
-        assert_eq!(content, "VAR=\"VAL\"");
+        assert_eq!(read_env(&tmpdir.join("0.env")), "VAR=\"single\"");
 
         // expecting 10 files, from "00.env" to "10.env" without content
         many_env.serialize_environments(&tmpdir).unwrap();
-        let content0 = std::fs::read_to_string(tmpdir.join("00.env")).unwrap();
-        let content1 = std::fs::read_to_string(tmpdir.join("10.env")).unwrap();
         assert!(!tmpdir.join("11.env").is_file());
-        assert!(content0.is_empty());
-        assert!(content1.is_empty());
+        assert!(read_env(&tmpdir.join("00.env")).is_empty());
+        assert!(read_env(&tmpdir.join("10.env")).is_empty());
     }
 }

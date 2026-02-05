@@ -408,26 +408,22 @@ pub fn main(
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
     use rusty_fork::rusty_fork_test;
     use std::collections::HashMap;
     use tempfile::TempDir;
 
     use super::*;
-    use crate::helper::archivist::{create_harness_dir, create_harness_file};
-    use crate::helper::fs_names::*;
 
-    #[test]
-    fn fetch_envs_valid() {
+    use crate::helper::test_fixtures::{
+        env_1a, envlist_1a, envlist_2b, envlist_ab321, filled_src_envs, skeleton_out, skeleton_src,
+        skeleton_src_envs, vec_321, vec_ab,
+    };
+
+    #[rstest]
+    fn fetch_envs_valid(filled_src_envs: TempDir) {
         // create experiment source dir
-        let mock_src = TempDir::new().unwrap();
-        let mock_src = mock_src.path().to_path_buf();
-        let mock_envs = create_harness_dir(&mock_src.join(SRC_ENV_DIR)).unwrap();
-
-        create_harness_file(&mock_envs.join("42.env")).unwrap();
-        create_harness_file(&mock_envs.join("foo.env")).unwrap();
-        create_harness_file(&mock_envs.join("not_an_env")).unwrap();
-        create_harness_dir(&mock_envs.join("not_a_file")).unwrap();
-
+        let mock_envs = filled_src_envs.path().to_path_buf();
         let envs_found = fetch_environment_files(&mock_envs).unwrap();
 
         assert_eq!(envs_found.len(), 2);
@@ -437,24 +433,12 @@ mod tests {
         assert!(!envs_found.contains(&mock_envs.join("not_a_file")));
     }
 
-    #[test]
-    fn fetch_envs_no_envs_dir() {
-        // create experiment source dir
-        let mock_src = TempDir::new().unwrap();
-        let mock_src = mock_src.path().to_path_buf();
-
-        assert!(fetch_environment_files(&mock_src).is_none());
-    }
-
-    #[test]
-    fn fetch_envs_no_env_files() {
-        // create experiment source dir
-        let mock_src = TempDir::new().unwrap();
-        let mock_src = mock_src.path().to_path_buf();
-
-        // create empty envs dir
-        create_harness_dir(&mock_src.join(SRC_ENV_DIR)).unwrap();
-        assert!(fetch_environment_files(&mock_src.join(SRC_ENV_DIR)).is_none());
+    #[rstest]
+    #[case(skeleton_src())]
+    #[case(skeleton_src_envs())]
+    fn fetch_envs_incomplete(#[case] skeleton: TempDir) {
+        let empty_dir = skeleton.path().to_path_buf();
+        assert!(fetch_environment_files(&empty_dir).is_none());
     }
 
     #[test]
@@ -466,41 +450,19 @@ mod tests {
         assert!(try_assemble_all(&given, &to_add).is_ok());
     }
 
-    #[test]
-    fn env_assemble_with_given() {
-        let given = Environment::from_env_list(vec![("1".to_string(), "a".to_string())]);
-        let to_add = HashMap::new();
-
-        let assembled = try_assemble_all(&given, &to_add).unwrap();
-
-        // should only contain the already given vars with nothing changed
+    #[rstest]
+    #[case(env_1a(), HashMap::new())]
+    #[case(Environment::new(), envlist_1a())]
+    fn env_assemble_with_empty(#[case] env: Environment, #[case] to_add: EnvList) {
+        let assembled = try_assemble_all(&env, &to_add).unwrap();
         assert_eq!(assembled.len(), 1);
-        assert!(assembled.contains(&given));
+        assert!(assembled.contains(&env_1a()));
     }
 
-    #[test]
-    fn env_assemble_with_to_add() {
-        let given = Environment::new();
-        let to_add = HashMap::from([("1".to_string(), vec!["a".to_string()])]);
-
-        let assembled = try_assemble_all(&given, &to_add).unwrap();
-
-        // should contain the only possible variant from to_add
-        assert_eq!(assembled.len(), 1);
-        assert!(assembled.contains(&Environment::from_env_list(vec![(
-            "1".to_string(),
-            "a".to_string()
-        )])));
-    }
-
-    #[test]
-    fn env_assemble_with_one() {
+    #[rstest]
+    fn env_assemble_with_one(env_1a: Environment, envlist_2b: EnvList) {
         // Note: assembling with multiple values is tested in doctest
-
-        let given = Environment::from_env_list(vec![("1".to_string(), "a".to_string())]);
-        let to_add = HashMap::from([("2".to_string(), vec!["b".to_string()])]);
-
-        let assembled = try_assemble_all(&given, &to_add).unwrap();
+        let assembled = try_assemble_all(&env_1a, &envlist_2b).unwrap();
 
         assert_eq!(assembled.len(), 1);
         assert!(assembled.contains(&Environment::from_env_list(vec![
@@ -509,10 +471,9 @@ mod tests {
         ])));
     }
 
-    #[test]
-    fn env_cannot_edit_reserved() {
-        let mock_env = TempDir::new().unwrap();
-        let mock_env = mock_env.path().to_path_buf();
+    #[rstest]
+    fn env_cannot_edit_reserved(skeleton_src: TempDir) {
+        let mock_env = skeleton_src.path().to_path_buf();
 
         let reserved_env = ExomatEnvironment::RESERVED_ENV_VARS[0];
         let reserved = HashMap::from([(reserved_env.to_string(), vec![])]);
@@ -567,78 +528,51 @@ mod tests {
         assert!(check_env_vars(&invalid_empty).is_err());
     }
 
-    #[test]
-    fn env_try_assemble() {
-        let given = Environment::from_env_list(vec![("1".to_string(), "a".to_string())]);
+    #[rstest]
+    fn env_try_assemble(env_1a: Environment) {
+        // helper
+        fn env_from_pairs(v: Vec<(&str, &str)>) -> Environment {
+            Environment::from_env_list(
+                v.into_iter()
+                    .map(|(a, b)| (a.to_string(), b.to_string()))
+                    .collect_vec(),
+            )
+        }
+
         let to_add = HashMap::from([
             ("2".to_string(), vec!["b".to_string(), "c".to_string()]),
             ("3".to_string(), vec!["42".to_string(), "43".to_string()]),
         ]);
 
-        let assembled = try_assemble_all(&given, &to_add).unwrap();
+        let assembled = try_assemble_all(&env_1a, &to_add).unwrap();
         assert_eq!(assembled.len(), 4);
 
         // all possible combinations of values that should be formed
-        assert!(assembled.contains(&Environment::from_env_list(vec![
-            ("1".to_string(), "a".to_string()),
-            ("2".to_string(), "b".to_string()),
-            ("3".to_string(), "42".to_string()),
-        ])));
-
-        assert!(assembled.contains(&Environment::from_env_list(vec![
-            ("1".to_string(), "a".to_string()),
-            ("2".to_string(), "b".to_string()),
-            ("3".to_string(), "43".to_string()),
-        ])));
-
-        assert!(assembled.contains(&Environment::from_env_list(vec![
-            ("1".to_string(), "a".to_string()),
-            ("2".to_string(), "c".to_string()),
-            ("3".to_string(), "42".to_string()),
-        ])));
-
-        assert!(assembled.contains(&Environment::from_env_list(vec![
-            ("1".to_string(), "a".to_string()),
-            ("2".to_string(), "c".to_string()),
-            ("3".to_string(), "43".to_string()),
-        ])));
+        assert!(assembled.contains(&env_from_pairs(vec![("1", "a"), ("2", "b"), ("3", "42"),])));
+        assert!(assembled.contains(&env_from_pairs(vec![("1", "a"), ("2", "b"), ("3", "43"),])));
+        assert!(assembled.contains(&env_from_pairs(vec![("1", "a"), ("2", "c"), ("3", "42"),])));
+        assert!(assembled.contains(&env_from_pairs(vec![("1", "a"), ("2", "c"), ("3", "43"),])));
     }
 
-    #[test]
-    fn env_transform_list() {
-        let list = vec![
-            vec!["VAR1".to_string(), "A".to_string(), "B".to_string()],
-            vec![
-                "VAR2".to_string(),
-                "42".to_string(),
-                "24".to_string(),
-                "44".to_string(),
-            ],
-        ];
-
-        let new_map = to_env_list(&list).unwrap();
+    #[rstest]
+    fn env_transform_list(
+        envlist_ab321: Vec<Vec<String>>,
+        vec_ab: Vec<String>,
+        vec_321: Vec<String>,
+    ) {
+        let new_map = to_env_list(&envlist_ab321).unwrap();
 
         assert_eq!(new_map.len(), 2);
-        assert_eq!(
-            *new_map.get("VAR1").unwrap(),
-            vec!["A".to_string(), "B".to_string()]
-        );
-        assert_eq!(
-            *new_map.get("VAR2").unwrap(),
-            vec!["42".to_string(), "24".to_string(), "44".to_string()]
-        );
+        assert_eq!(*new_map.get("VAR1").unwrap(), vec_ab);
+        assert_eq!(*new_map.get("VAR2").unwrap(), vec_321);
     }
 
     rusty_fork_test! {
         #[test]
         fn env_e2e() {
-            // create ouput dir (with empty envs/ dir)
-            let tmpdir = TempDir::new().unwrap();
-            let tmpdir = tmpdir.path().to_path_buf();
-            std::fs::create_dir(tmpdir.join(SRC_ENV_DIR)).unwrap();
-            std::fs::File::create_new(&tmpdir.join(MARKER_SRC)).unwrap();
-
-            std::env::set_current_dir(&tmpdir).unwrap();
+            // ouput dir with empty envs/ dir
+            let out_dir = skeleton_out();
+            std::env::set_current_dir(&out_dir).unwrap();
 
             let to_add = vec![vec!["VAR".to_string(), "VAL".to_string()]];
             let to_append = vec![vec!["VAR".to_string(), "FOO".to_string()]];
@@ -650,27 +584,27 @@ mod tests {
 
         #[test]
         fn deserialize() {
-            let tmpdir = TempDir::new().unwrap();
-            let tmpdir = tmpdir.path().to_path_buf();
+            let tmpdir = skeleton_src();
             std::env::set_current_dir(&tmpdir).unwrap();
 
             // write in non-alphabetic order
             std::fs::write("two.env", "FOO=baz").unwrap();
             std::fs::write("01.env", "FOO=bar").unwrap();
 
-            let expected_env_bar = Environment::from_env_list(vec![("FOO".to_string(), "bar".to_string())]);
-            let expected_env_baz = Environment::from_env_list(vec![("FOO".to_string(), "baz".to_string())]);
+            let expected_bar = Environment::from_env_list(vec![("FOO".to_string(), "bar".to_string())]);
+            let expected_baz = Environment::from_env_list(vec![("FOO".to_string(), "baz".to_string())]);
 
-            let all_envs_with_fname = get_existing_environments_by_fname(&PathBuf::from(".")).unwrap();
+            let envs_no_fname = EnvironmentContainer::from_files(&PathBuf::from(".")).unwrap();
+            assert!(envs_no_fname.to_env_list().contains(&expected_baz));
+            assert!(envs_no_fname.to_env_list().contains(&expected_bar));
+
+            let envs_fname = get_existing_environments_by_fname(&PathBuf::from(".")).unwrap();
             assert_eq!(
-                all_envs_with_fname,
-                HashMap::from([
-                    (PathBuf::from("01.env"), expected_env_bar.clone()),
-                    (PathBuf::from("two.env"), expected_env_baz.clone())]));
-
-            let all_envs_no_fname = EnvironmentContainer::from_files(&PathBuf::from(".")).unwrap();
-            assert!(all_envs_no_fname.to_env_list().contains(&expected_env_baz));
-            assert!(all_envs_no_fname.to_env_list().contains(&expected_env_bar));
+                envs_fname,
+                HashMap::from([(PathBuf::from("01.env"), expected_bar),
+                            (PathBuf::from("two.env"), expected_baz)
+                            ])
+            );
         }
     }
 }
