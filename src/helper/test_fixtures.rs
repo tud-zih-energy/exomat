@@ -81,6 +81,12 @@ pub fn envlist_2b() -> EnvList {
     HashMap::from([("2".to_string(), vec!["b".to_string()])])
 }
 
+/// generates an Envlist with `VAR: [""]`
+#[fixture]
+pub fn envlist_empty_string() -> EnvList {
+    HashMap::from([("VAR".to_string(), vec!["".to_string()])])
+}
+
 /// generates an EnvList with `VAR: []`
 #[fixture]
 pub fn envlist_one_var_no_val() -> EnvList {
@@ -123,6 +129,18 @@ pub fn envlist_mixed() -> EnvList {
     HashMap::from([
         ("VAR1".to_string(), vec!["VALUE".to_string()]),
         ("VAR2".to_string(), vec![]),
+    ])
+}
+
+/// generates an EnvList with `VAR1: ["VALUE", "baz"], VAR2: ["", "a,b"]`
+#[fixture]
+pub fn envlist_mixed_weird() -> EnvList {
+    HashMap::from([
+        (
+            "VAR1".to_string(),
+            vec!["VALUE".to_string(), "baz".to_string()],
+        ),
+        ("VAR2".to_string(), vec![String::new(), "a,b".to_string()]),
     ])
 }
 

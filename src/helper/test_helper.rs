@@ -46,3 +46,7 @@ pub fn skeleton_src_series_in(
 
     (source, series, default_env, exomat_env)
 }
+/// Checks if the given string contains either one or the other
+pub fn contains_either(string: &String, one: &str, other: &str) -> bool {
+    string.contains(one) || string.contains(other)
+}

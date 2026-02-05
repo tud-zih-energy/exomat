@@ -349,82 +349,57 @@ fn serialize_csv(file: &PathBuf, content: &HashMap<String, Vec<String>>) -> Resu
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
     use std::fs::{create_dir_all, File};
     use std::io::Write;
     use tempfile::TempDir;
 
     use super::*;
+    use crate::helper::test_fixtures::{
+        envlist_1a, envlist_empty_string, envlist_mixed_weird, envlist_one_var_no_val, skeleton_src,
+    };
+    use crate::helper::test_helper::contains_either;
 
-    #[test]
-    fn table_serialize_correct() {
-        // create output file (empty)
-        let tmpdir = TempDir::new().unwrap();
-        let tmpdir = tmpdir.path().to_path_buf();
-
-        let out_file_0 = tmpdir.join("0.csv");
-        let out_file_1 = tmpdir.join("1.csv");
-        let out_file_2 = tmpdir.join("2.csv");
+    #[rstest]
+    fn table_serialize_multiline(
+        #[from(skeleton_src)] outdir: TempDir,
+        envlist_mixed_weird: EnvList,
+    ) {
+        let outdir = outdir.path().to_path_buf();
+        let out_file = outdir.join("2.csv");
 
         // not created yet
-        assert!(!out_file_0.is_file());
-        assert!(!out_file_1.is_file());
-        assert!(!out_file_2.is_file());
+        assert!(!out_file.is_file());
 
-        // keys but no values
-        let content_0 = HashMap::from([("empty".to_string(), vec!["".to_string()])]);
-
-        // one key, one value
-        let content_1 = HashMap::from([("foo".to_string(), vec!["1".to_string()])]);
-
-        // multiple keys, multiple values
-        let content_2 = HashMap::from([
-            (
-                "bar".to_string(),
-                vec!["42".to_string(), "with,comma".to_string()],
-            ),
-            ("baz".to_string(), vec![String::new(), "a".to_string()]),
-        ]);
-
-        serialize_csv(&out_file_0, &content_0).unwrap();
-        serialize_csv(&out_file_1, &content_1).unwrap();
-        serialize_csv(&out_file_2, &content_2).unwrap();
-
-        assert_eq!(
-            std::fs::read_to_string(out_file_0).unwrap(),
-            String::from("empty\n\"\"\n")
-        );
-        assert_eq!(
-            std::fs::read_to_string(out_file_1).unwrap(),
-            String::from("foo\n1\n")
-        );
+        serialize_csv(&out_file, &envlist_mixed_weird).unwrap();
 
         // with multiple keys and values the order of items after serialization is
         // random, so only check if the correct lines are there
-        let file_2_string = std::fs::read_to_string(out_file_2).unwrap();
-
-        assert!(file_2_string.contains("bar,baz\n") || file_2_string.contains("baz,bar\n"));
-        assert!(file_2_string.contains("42,\n") || file_2_string.contains(",42\n"));
-        assert!(
-            file_2_string.contains("\"with,comma\",a\n")
-                || file_2_string.contains("a,\"with,comma\"\n")
-        );
+        let file_2 = std::fs::read_to_string(out_file).unwrap();
+        assert!(contains_either(&file_2, "VAR1,VAR2\n", "VAR2,VAR1\n"));
+        assert!(contains_either(&file_2, "VALUE,\n", ",VALUE\n"));
+        assert!(contains_either(&file_2, "\"a,b\",baz\n", "baz,\"a,b\"\n"));
     }
 
-    #[test]
-    fn table_serialize_empty() {
-        // create output file (empty)
-        let tmpdir = TempDir::new().unwrap();
-        let tmpdir = tmpdir.path().to_path_buf();
-        let out_file = tmpdir.join("0.csv");
+    #[rstest]
+    #[case(HashMap::new(), "")]
+    #[case(envlist_1a(), "1\na\n")]
+    #[case(envlist_one_var_no_val(), "VAR\n")]
+    #[case(envlist_empty_string(), "VAR\n\"\"\n")]
+    fn table_serialize_single(
+        #[from(skeleton_src)] outdir: TempDir,
+        #[case] envlist: EnvList,
+        #[case] expected: String,
+    ) {
+        let outdir = outdir.path().to_path_buf();
+        let out_file = outdir.join("0.csv");
+
+        // not created yet
         assert!(!out_file.is_file());
 
-        let content: HashMap<String, Vec<String>> = HashMap::new();
+        serialize_csv(&out_file, &envlist).unwrap();
 
-        assert!(serialize_csv(&out_file, &content).is_ok());
-
-        // file should be created, but remain empty
-        assert!(out_file.is_file());
-        assert!(std::fs::read_to_string(out_file).unwrap().is_empty());
+        assert_eq!(std::fs::read_to_string(out_file).unwrap(), expected);
     }
 
     #[test]
