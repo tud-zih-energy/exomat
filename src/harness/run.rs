@@ -106,8 +106,8 @@ pub fn trial(experiment: &PathBuf, log_progress_handler: MultiProgress) -> Resul
 ///
 /// The content of `out_$NAME` files is not validated or checked in any way, if you put
 /// weird content in them, you will get weird output.
-fn collect_output(dir: &PathBuf) -> Result<HashMap<String, String>> {
-    let mut output = HashMap::<String, String>::new();
+fn collect_output(dir: &PathBuf) -> Result<HashMap<String, Vec<String>>> {
+    let mut output = HashMap::<String, Vec<String>>::new();
     let prefix = "out_";
     let reps = crate::harness::table::find_all_run_repetitions(&dir.join(SERIES_RUNS_DIR));
 
@@ -129,7 +129,13 @@ fn collect_output(dir: &PathBuf) -> Result<HashMap<String, String>> {
                     let file_content =
                         std::fs::read_to_string(entry.path()).expect("Could not read out file");
 
-                    output.insert(file_name, file_content);
+                    output.insert(
+                        file_name,
+                        file_content
+                            .split('\n')
+                            .map(|line| line.to_string())
+                            .collect(),
+                    );
                 }
             }
         }
@@ -392,7 +398,7 @@ fn create_report<T>(
     run: &Result<T>,
     stdout: &str,
     stderr: &str,
-    out_files: &HashMap<String, String>,
+    out_files: &HashMap<String, Vec<String>>,
     exomat: &str,
 ) -> String {
     let mut eval_str = String::new();
@@ -417,21 +423,17 @@ fn create_report<T>(
         eval_str.push_str("[{exp_name}] created no output files\n")
     } else {
         for (out_file, content) in out_files.iter() {
-            let mut lines: Vec<&str> = content.lines().collect();
-
-            if lines.len() > 5 {
+            if content.len() > 5 {
                 // truncate after 5 lines
-                let size = lines.len() - 5;
-                lines.truncate(5);
+                let size = content.len() - 5;
+                let (cut_content, _) = content.split_at(5);
 
                 eval_str.push_str(&format!(
-                    "[{exp_name}] {out_file}:\n{}\n[...{} more lines]\n\n",
-                    lines.join("\n"),
-                    size
+                    "[{exp_name}] {out_file}: {cut_content:?} (...{size} more items)\n",
                 ));
             } else {
                 // print entire content if less than 5 lines
-                eval_str.push_str(&format!("[{exp_name}] {out_file}:\n{content}\n"));
+                eval_str.push_str(&format!("[{exp_name}] {out_file}: {content:?}\n"));
             }
         }
     }
@@ -588,7 +590,7 @@ mod tests {
 
         let res = collect_output(&series_dir).unwrap();
         assert_eq!(res.len(), 1);
-        assert_eq!(res.get("out_empty").unwrap(), "");
+        assert_eq!(res.get("out_empty").unwrap(), &vec![String::new()]);
     }
 
     #[test]
@@ -603,7 +605,7 @@ mod tests {
 
         let res = collect_output(&series_dir).unwrap();
         assert_eq!(res.len(), 1);
-        assert_eq!(res.get("out_full").unwrap(), "foo bar");
+        assert_eq!(res.get("out_full").unwrap(), &vec!["foo bar".to_string()]);
     }
 
     #[test]
@@ -635,6 +637,9 @@ mod tests {
 
         let res = collect_output(&series_dir).unwrap();
         assert_eq!(res.len(), 1);
-        assert_eq!(res.get("out_1").unwrap(), "foo\nbar");
+        assert_eq!(
+            res.get("out_1").unwrap(),
+            &vec!["foo".to_string(), "bar".to_string()]
+        );
     }
 }
