@@ -460,7 +460,11 @@ mod tests {
     };
     use super::*;
     use crate::harness::env::ExomatEnvironment;
+    use crate::helper::test_fixtures::{
+        filled_series_run_na, skeleton_series_run, skeleton_series_run_full, skeleton_src,
+    };
     use crate::helper::test_helper::{create_file_at, place_filled_run_in, read_log};
+    use rstest::rstest;
 
     rusty_fork_test! {
         #[test]
@@ -565,81 +569,40 @@ mod tests {
         }
     }
 
-    #[test]
-    fn collect_out_no_files() {
+    #[rstest]
+    fn collect_out_no_files(skeleton_src: TempDir) {
         // collect on dir without out_* files
-        let series_dir = TempDir::new().unwrap();
-        let series_dir = series_dir.path().to_path_buf();
+        std::fs::File::create(skeleton_src.path().join("random_file")).unwrap();
+        std::fs::File::create(skeleton_src.path().join("contains_out_in_middle.txt")).unwrap();
 
-        std::fs::create_dir_all(&series_dir).unwrap();
-        std::fs::File::create(series_dir.join("random_file")).unwrap();
-
-        let res = collect_output(&series_dir).unwrap();
+        let res = collect_output(&skeleton_src.path().to_path_buf()).unwrap();
         assert!(res.is_empty());
     }
 
-    #[test]
-    fn collect_out_empty() {
+    #[rstest]
+    fn collect_out_empty(skeleton_series_run: TempDir) {
         // collect on dir with out_* file, without content
-        let series_dir = TempDir::new().unwrap();
-        let series_dir = series_dir.path().to_path_buf();
-        let run_dir = series_dir.join("runs/run_0_rep0");
-
-        std::fs::create_dir_all(&run_dir).unwrap();
-        std::fs::File::create(run_dir.join("out_empty")).unwrap();
-
-        let res = collect_output(&series_dir).unwrap();
+        let res = collect_output(&skeleton_series_run.path().to_path_buf()).unwrap();
         assert_eq!(res.len(), 1);
         assert_eq!(res.get("out_empty").unwrap(), &vec![String::new()]);
     }
 
-    #[test]
-    fn collect_out_working() {
+    #[rstest]
+    fn collect_out_working(skeleton_series_run_full: TempDir) {
         // collect on dir with out_* files, with content
-        let series_dir = TempDir::new().unwrap();
-        let series_dir = series_dir.path().to_path_buf();
-        let run_dir = series_dir.join("runs/run_0_rep0");
-
-        std::fs::create_dir_all(&run_dir).unwrap();
-        std::fs::write(run_dir.join("out_full"), "foo bar").unwrap();
-
-        let res = collect_output(&series_dir).unwrap();
-        assert_eq!(res.len(), 1);
+        let res = collect_output(&skeleton_series_run_full.path().to_path_buf()).unwrap();
+        assert_eq!(res.len(), 3);
+        assert_eq!(res.get("out_empty").unwrap(), &vec![String::new()]);
         assert_eq!(res.get("out_full").unwrap(), &vec!["foo bar".to_string()]);
-    }
-
-    #[test]
-    fn collect_out_too_many_runs() {
-        // collect on dir with out_* files from multiple runs
-        let series_dir = TempDir::new().unwrap();
-        let series_dir = series_dir.path().to_path_buf();
-        let run_dir_1 = series_dir.join("runs/run_0_rep0");
-        let run_dir_2 = series_dir.join("runs/run_7_rep4");
-
-        std::fs::create_dir_all(&run_dir_1).unwrap();
-        std::fs::write(run_dir_1.join("out_1"), "foo bar").unwrap();
-
-        std::fs::create_dir_all(&run_dir_2).unwrap();
-        std::fs::write(run_dir_2.join("out_1"), "something else").unwrap();
-
-        assert!(collect_output(&series_dir).is_err());
-    }
-
-    #[test]
-    fn collect_out_multiline() {
-        // collect on dir with out_* files containing multiple lines
-        let series_dir = TempDir::new().unwrap();
-        let series_dir = series_dir.path().to_path_buf();
-        let run_dir = series_dir.join("runs/run_0_rep0");
-
-        std::fs::create_dir_all(&run_dir).unwrap();
-        std::fs::write(run_dir.join("out_1"), "foo\nbar").unwrap();
-
-        let res = collect_output(&series_dir).unwrap();
-        assert_eq!(res.len(), 1);
         assert_eq!(
-            res.get("out_1").unwrap(),
+            res.get("out_multi").unwrap(),
             &vec!["foo".to_string(), "bar".to_string()]
         );
+    }
+
+    #[rstest]
+    fn collect_out_too_many_runs(filled_series_run_na: TempDir) {
+        // collect on dir with out_* files from multiple runs
+        assert!(collect_output(&filled_series_run_na.path().to_path_buf()).is_err());
     }
 }

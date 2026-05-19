@@ -68,6 +68,32 @@ pub fn skeleton_series_run() -> TempDir {
 /// tempdir/
 /// \- [SERIES_RUNS_DIR]/
 ///     \- [TEST_RUN_REP_DIR0]/
+///         |- out_empty    [EMPTY]
+///         |- out_full     ["foo bar"]
+///         \- out_multi     ["foo\nbar"]
+/// ```
+#[fixture]
+pub fn skeleton_series_run_full() -> TempDir {
+    let series_dir = TempDir::new().unwrap();
+    let series_dir_path = series_dir.path().to_path_buf();
+
+    let run_rep_dir = series_dir_path
+        .join(SERIES_RUNS_DIR)
+        .join(TEST_RUN_REP_DIR0);
+
+    std::fs::create_dir_all(&run_rep_dir).unwrap();
+    std::fs::File::create(run_rep_dir.join("out_empty")).unwrap();
+    std::fs::write(run_rep_dir.join("out_full"), "foo bar").unwrap();
+    std::fs::write(run_rep_dir.join("out_multi"), "foo\nbar").unwrap();
+
+    series_dir
+}
+
+/// generates a tempdir with the following structure:
+/// ```notest
+/// tempdir/
+/// \- [SERIES_RUNS_DIR]/
+///     \- [TEST_RUN_REP_DIR0]/
 ///         |- noout_file       [EMPTY]
 ///         \- something.txt    [EMPTY]
 /// ```
