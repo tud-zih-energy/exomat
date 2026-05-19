@@ -355,7 +355,7 @@ mod tests {
     use super::*;
     use crate::helper::test_fixtures::{
         envlist_1a, envlist_empty_string, envlist_mixed_weird, envlist_one_var_no_val,
-        filled_series_run_NA, filled_series_run_duplicate, filled_series_run_invalid,
+        filled_series_run_duplicate, filled_series_run_invalid, filled_series_run_na,
         skeleton_series_run, skeleton_series_run_empty, skeleton_src,
     };
     use crate::helper::test_helper::{contains_either, create_out_file};
@@ -435,9 +435,8 @@ mod tests {
     }
 
     #[rstest]
-    #[allow(non_snake_case)]
-    fn table_collect_no_value(filled_series_run_NA: TempDir) {
-        let series_dir = filled_series_run_NA.path().to_path_buf();
+    fn table_collect_no_value(filled_series_run_na: TempDir) {
+        let series_dir = filled_series_run_na.path().to_path_buf();
 
         let res = collect_output(&series_dir).unwrap();
         let res_vec = res.get("empty").unwrap();
@@ -533,9 +532,8 @@ mod tests {
     // If there are multiple runs, then the number of rows in a value
     // can differ between
     #[rstest]
-    #[allow(non_snake_case)]
-    fn table_collect_multiline_multiple_dirs_diff_length(filled_series_run_NA: TempDir) {
-        let series_dir = filled_series_run_NA.path().to_path_buf();
+    fn table_collect_multiline_multiple_dirs_diff_length(filled_series_run_na: TempDir) {
+        let series_dir = filled_series_run_na.path().to_path_buf();
 
         // add out files in both run reps
         create_out_file(&series_dir, Some(TEST_RUN_REP_DIR0), "out_foo", "11\n20"); // two lines
@@ -546,9 +544,8 @@ mod tests {
     }
 
     #[rstest]
-    #[allow(non_snake_case)]
-    fn table_collect_output_full(filled_series_run_NA: TempDir) {
-        let series_dir = filled_series_run_NA.path().to_path_buf();
+    fn table_collect_output_full(filled_series_run_na: TempDir) {
+        let series_dir = filled_series_run_na.path().to_path_buf();
 
         // add multiple out_ files and some that will not be used
         create_out_file(&series_dir, Some(TEST_RUN_REP_DIR0), "not_out_file", "");

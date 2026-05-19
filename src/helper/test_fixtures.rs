@@ -97,8 +97,7 @@ pub fn skeleton_series_run_empty() -> TempDir {
 ///     \- [TEST_RUN_REP_DIR1]/
 /// ```
 #[fixture]
-#[allow(non_snake_case)]
-pub fn filled_series_run_NA() -> TempDir {
+pub fn filled_series_run_na() -> TempDir {
     let series_dir = TempDir::new().unwrap();
     let series_dir_path = series_dir.path().to_path_buf();
 
