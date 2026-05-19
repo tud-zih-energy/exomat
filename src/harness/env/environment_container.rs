@@ -344,8 +344,12 @@ mod tests {
 
         // env was written
         assert_eq!(
-            env.environment_list.first().unwrap().get_env_val("VAR"),
-            Some(&"VAL".to_string())
+            env.environment_list
+                .first()
+                .unwrap()
+                .get_env_val("VAR")
+                .unwrap(),
+            "VAL"
         );
 
         // appending a new value to an existing one should fail
@@ -408,8 +412,8 @@ mod tests {
         let res_first = var_at_pos(&container_single, 0);
         let res_last = var_at_pos(&container_single, 1);
 
-        assert_eq!(res_first, "VAL".to_string());
-        assert_eq!(res_last, "single".to_string());
+        assert_eq!(res_first, "VAL");
+        assert_eq!(res_last, "single");
     }
 
     #[rstest]
@@ -424,10 +428,10 @@ mod tests {
         let env1 = container_multiple.environment_list.first().unwrap();
         let env2 = container_multiple.environment_list.last().unwrap();
 
-        assert_eq!(env1.get_env_val("VAR1").unwrap(), &"VAL1".to_string());
-        assert_eq!(env1.get_env_val("VAR2").unwrap(), &"VAL2".to_string());
-        assert_eq!(env2.get_env_val("VAR1").unwrap(), &"VALUE".to_string());
-        assert_eq!(env2.get_env_val("VAR2").unwrap(), &"VAL2".to_string());
+        assert_eq!(env1.get_env_val("VAR1").unwrap(), "VAL1");
+        assert_eq!(env1.get_env_val("VAR2").unwrap(), "VAL2");
+        assert_eq!(env2.get_env_val("VAR1").unwrap(), "VALUE");
+        assert_eq!(env2.get_env_val("VAR2").unwrap(), "VAL2");
     }
 
     #[rstest]
@@ -459,7 +463,7 @@ mod tests {
         let env1 = env.environment_list.first().unwrap();
 
         // removed "VALUE" of VAR1 and VAR2 completely
-        assert_eq!(env1.get_env_val("VAR1").unwrap(), &"VAL".to_string());
+        assert_eq!(env1.get_env_val("VAR1").unwrap(), "VAL");
         assert!(env1.get_env_val("VAR2").is_none());
     }
 
