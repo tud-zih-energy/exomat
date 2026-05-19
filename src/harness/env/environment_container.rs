@@ -343,14 +343,7 @@ mod tests {
         env.add_environments(envlist_one_var_one_val).unwrap();
 
         // env was written
-        assert_eq!(
-            env.environment_list
-                .first()
-                .unwrap()
-                .get_env_val("VAR")
-                .unwrap(),
-            "VAL"
-        );
+        assert_eq!(env.environment_list[0].get_env_val("VAR").unwrap(), "VAL");
 
         // appending a new value to an existing one should fail
         assert!(env.add_environments(envlist_one_var_two_val).is_err());
@@ -425,8 +418,8 @@ mod tests {
 
         // expected: no error, value of VAR1 changed but VAR2 not touched
         assert_eq!(container_multiple.environment_count(), 2);
-        let env1 = container_multiple.environment_list.first().unwrap();
-        let env2 = container_multiple.environment_list.last().unwrap();
+        let env1 = &container_multiple.environment_list[0];
+        let env2 = &container_multiple.environment_list[1];
 
         assert_eq!(env1.get_env_val("VAR1").unwrap(), "VAL1");
         assert_eq!(env1.get_env_val("VAR2").unwrap(), "VAL2");
@@ -460,7 +453,7 @@ mod tests {
         env.remove_from_environments(envlist_mixed).unwrap();
 
         assert_eq!(env.environment_count(), 1);
-        let env1 = env.environment_list.first().unwrap();
+        let env1 = &env.environment_list[0];
 
         // removed "VALUE" of VAR1 and VAR2 completely
         assert_eq!(env1.get_env_val("VAR1").unwrap(), "VAL");
