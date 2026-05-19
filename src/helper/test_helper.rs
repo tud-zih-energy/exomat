@@ -22,7 +22,7 @@ pub fn read_log(location: PathBuf, log_name: &str) -> String {
 }
 
 /// helper to create a file at `location` with content `content`
-pub fn create_env_at(location: &PathBuf, content: &str) {
+pub fn create_file_at(location: &PathBuf, content: &str) {
     let mut env = std::fs::File::create(location).unwrap();
     env.write_all(content.as_bytes()).unwrap();
 }
@@ -30,7 +30,7 @@ pub fn create_env_at(location: &PathBuf, content: &str) {
 /// generates an experiment source and an experiment series dir in `base`
 ///
 /// returns (source_path, series_path, default_env_path, exomat_envs)
-pub fn skeleton_src_series_in(
+pub fn populate_src_with_series(
     base: &PathBuf,
     src_name: &str,
     series_name: &str,

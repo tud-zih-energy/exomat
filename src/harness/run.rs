@@ -368,7 +368,7 @@ mod tests {
     };
     use super::*;
     use crate::harness::env::ExomatEnvironment;
-    use crate::helper::test_helper::{create_env_at, place_filled_run_in, read_log};
+    use crate::helper::test_helper::{create_file_at, place_filled_run_in, read_log};
 
     rusty_fork_test! {
         #[test]
@@ -422,8 +422,8 @@ mod tests {
             place_filled_run_in(&tmpdir.join(exp_name), "FOO");
 
             // make multiple .env files that set $FOO to different values
-            create_env_at(&tmpdir.join(exp_name).join(SRC_ENV_DIR).join("0.env"), "FOO=BAR");
-            create_env_at(&tmpdir.join(exp_name).join(SRC_ENV_DIR).join("m.env"), "FOO=Z");
+            create_file_at(&tmpdir.join(exp_name).join(SRC_ENV_DIR).join("0.env"), "FOO=BAR");
+            create_file_at(&tmpdir.join(exp_name).join(SRC_ENV_DIR).join("m.env"), "FOO=Z");
 
             // run experiment and check logs
             experiment(
@@ -465,8 +465,8 @@ mod tests {
             place_filled_run_in(&tmpdir.join(exp_name), "FOO");
 
             // make multiple .env files that set $FOO to different values
-            create_env_at(&tmpdir.join(exp_name).join("envs").join("0.env"), "FOO=BAR");
-            create_env_at(&tmpdir.join(exp_name).join("envs").join("m.env"), "FOO=Z");
+            create_file_at(&tmpdir.join(exp_name).join("envs").join("0.env"), "FOO=BAR");
+            create_file_at(&tmpdir.join(exp_name).join("envs").join("m.env"), "FOO=Z");
 
             // no error
             trial(&PathBuf::from(exp_name), MultiProgress::new()).unwrap();

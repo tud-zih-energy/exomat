@@ -303,7 +303,7 @@ mod tests {
 
     use super::*;
     use crate::harness::env::{exomat_environment::append_exomat_envs, Environment};
-    use crate::helper::test_helper::skeleton_src_series_in;
+    use crate::helper::test_helper::populate_src_with_series;
 
     #[test]
     fn test_create_source_multiple_times() {
@@ -345,7 +345,7 @@ mod tests {
             std::env::set_current_dir(&tmpdir).unwrap();
 
             // create an experiment source, and an experiment series
-            let (exp_source, exp_series, default_env, exomat_env) = skeleton_src_series_in(&tmpdir.to_path_buf(), "FooSource", "FooSeries");
+            let (exp_source, exp_series, default_env, exomat_env) = populate_src_with_series(&tmpdir.to_path_buf(), "FooSource", "FooSeries");
             append_exomat_envs(&exp_source.join(SRC_ENV_DIR).join(SRC_ENV_FILE), &exomat_env).unwrap();
 
             // create run dir (based on exp_series, environment from default_env,
@@ -374,7 +374,7 @@ mod tests {
             let tmpdir = tmpdir.path();
             std::env::set_current_dir(&tmpdir).unwrap();
 
-            let (_, exp_series, default_env, exomat_envs) = skeleton_src_series_in(&tmpdir.to_path_buf(), "FooSource", "FooSeries");
+            let (_, exp_series, default_env, exomat_envs) = populate_src_with_series(&tmpdir.to_path_buf(), "FooSource", "FooSeries");
 
             let mut env = Environment::from_file(&default_env).unwrap();
             env.add_env(String::from("FOO"), String::from("BAR"));
