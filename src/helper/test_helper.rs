@@ -8,7 +8,7 @@ use crate::harness::skeleton::{build_series_directory, create_source_directory};
 /// helper to create a `run.sh` file in an experiment source directory.
 ///
 /// When executed, it will write the content of `${out_env}` to stdout and in `out_file`
-pub fn filled_run_in(exp_src: &PathBuf, out_env: &str) {
+pub fn place_filled_run_in(exp_src: &PathBuf, out_env: &str) {
     let run_sh_path = exp_src.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE);
     let content = format!("echo ${out_env}\necho ${out_env} >> out_file");
 

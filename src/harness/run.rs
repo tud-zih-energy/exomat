@@ -368,7 +368,7 @@ mod tests {
     };
     use super::*;
     use crate::harness::env::ExomatEnvironment;
-    use crate::helper::test_helper::{create_env_at, filled_run_in, read_log};
+    use crate::helper::test_helper::{create_env_at, place_filled_run_in, read_log};
 
     rusty_fork_test! {
         #[test]
@@ -384,7 +384,7 @@ mod tests {
             create_source_directory(&exp_source).unwrap();
 
             // write something in run.sh
-            filled_run_in(&exp_source,"EXP_SRC_DIR");
+            place_filled_run_in(&exp_source, "EXP_SRC_DIR");
 
             let series = series_dir_handle.path();
             build_series_directory(&exp_source, series).unwrap();
@@ -419,7 +419,7 @@ mod tests {
             crate::harness::skeleton::main(&PathBuf::from(exp_name)).unwrap();
 
             // Write something to run.sh that uses env var
-            filled_run_in(&tmpdir.join(exp_name), "FOO");
+            place_filled_run_in(&tmpdir.join(exp_name), "FOO");
 
             // make multiple .env files that set $FOO to different values
             create_env_at(&tmpdir.join(exp_name).join(SRC_ENV_DIR).join("0.env"), "FOO=BAR");
@@ -462,7 +462,7 @@ mod tests {
             crate::harness::skeleton::main(&PathBuf::from(exp_name)).unwrap();
 
             // Write something to run.sh that uses env var
-            filled_run_in(&tmpdir.join(exp_name), "FOO");
+            place_filled_run_in(&tmpdir.join(exp_name), "FOO");
 
             // make multiple .env files that set $FOO to different values
             create_env_at(&tmpdir.join(exp_name).join("envs").join("0.env"), "FOO=BAR");
