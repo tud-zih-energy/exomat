@@ -56,3 +56,22 @@ name                    | meaning                                         | poss
 `environment`           | A list of `NAME=value` pairs                    | content of an .env file
 `environment_container` | A list of environments                          | directory of .env files
 `exomat_environment`    | An environment with variables set by exomat     |
+
+## Types and Structs
+There are different types and structs defined by the exomat.
+As to not confuse them, here is a list of all defined types/structs:
+
+> These names should never be used for anything other than what they describe here
+
+### Structs
+name                 | module | description
+---------------------|--------|---------------
+Environment          | env    | Content of one `.env`-file
+EnvironmentContainer | env    | List of `.env`-files
+ExomatEnvironment    | env    | List of Exomat-internal environment variables
+
+### Type Definitions
+name                    | module | alias                           | description
+------------------------|--------|---------------------------------|--------------
+EnvList                 | env    | `HashMap<String, Vec<String>>`  | Lists all possible `values` for each `NAME` (see `env_list`)
+EnvironmentLocationList | env    | `HashMap<PathBuf, Environment>` | Maps File Paths to Environments
