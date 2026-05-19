@@ -64,7 +64,7 @@ pub fn main() -> Result<()> {
 ///
 /// The content of `out_$NAME` files is not validated or checked in any way, if you put
 /// weird content in them, you will get weird output.
-fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>> {
+fn collect_output(series_dir: &Path) -> Result<EnvList> {
     // filter all runs/run_[env]_rep[rep] from a series directory
     let runs_dir = series_dir.join(SERIES_RUNS_DIR);
     let run_repetitions = find_all_run_repetitions(&runs_dir);
@@ -118,7 +118,7 @@ fn collect_output(series_dir: &Path) -> Result<HashMap<String, Vec<String>>> {
 
     // (2) transform to correct output type
     split_and_balance_multiline(&mut value_by_var_by_dir)?;
-    let mut values_by_var: HashMap<String, Vec<String>> = HashMap::new();
+    let mut values_by_var: EnvList = HashMap::new();
 
     // (2a) collect all var names
     for (dir, value_by_var) in &value_by_var_by_dir {
