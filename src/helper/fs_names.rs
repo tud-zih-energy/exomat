@@ -29,6 +29,7 @@ pub const MARKER_RUN: &str = ".exomat_run";
 // names used in tests
 pub const TEST_RUN_REP_DIR0: &str = "run_x_rep0";
 pub const TEST_RUN_REP_DIR1: &str = "run_x_rep1";
+pub const TEST_RUN_REP_DIR2: &str = "run_y_rep0";
 
 /// Returns the last part of a path (which is the file-/directory name).
 ///
