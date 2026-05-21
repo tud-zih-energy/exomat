@@ -16,6 +16,7 @@ struct RunReader {
     out_files: Option<EnvList>,
 }
 
+#[derive(Debug)]
 struct RunReaderIter<'a> {
     run_reader: &'a RunReader,
     index: usize,
@@ -148,6 +149,7 @@ impl RunReader {
                             let val = &vals[index];
                             (var.to_string(), val.to_string())
                         })
+                        .filter(|(_, val)| !val.is_empty()) // ignore empty out files
                         .collect();
                     Ok(obs)
                 }
@@ -245,6 +247,20 @@ impl SeriesReader {
 
     pub fn run_count(&self) -> usize {
         self.runs.len()
+    }
+
+    pub fn keys(&self) -> Vec<&str> {
+        let mut keys: Vec<&str> = self
+            .runs
+            .iter()
+            .filter_map(|run| run.out_files.as_ref())
+            .flat_map(|out| out.keys().map(|k| k.as_str()))
+            .collect();
+
+        // remove duplicate keys
+        keys.sort();
+        keys.dedup();
+        keys
     }
 
     /// helper, that returns the content of a file if it is readable.
@@ -353,6 +369,47 @@ mod tests {
         tmp_run
     }
 
+    fn setup_series_no_runs() -> TempDir {
+        let tmp_run = TempDir::new().unwrap();
+        let series = tmp_run.path().to_path_buf();
+        let run = series.join(SERIES_RUNS_DIR).join(TEST_RUN_REP_DIR0);
+
+        // Create env file
+        std::fs::create_dir_all(&run).unwrap();
+        std::fs::write(&run.join(RUN_ENV_FILE), "VAR1=foo\nVAR2=bar").unwrap();
+
+        tmp_run
+    }
+
+    fn setup_series_empty_runs() -> TempDir {
+        let tmp_run = TempDir::new().unwrap();
+        let series = tmp_run.path().to_path_buf();
+        let run = series.join(SERIES_RUNS_DIR).join(TEST_RUN_REP_DIR0);
+
+        // Create env file
+        std::fs::create_dir_all(&run).unwrap();
+        std::fs::write(&run.join(RUN_ENV_FILE), "VAR1=foo\nVAR2=bar").unwrap();
+
+        // create empty out files
+        std::fs::File::create(&run.join("out_empty")).unwrap();
+
+        tmp_run
+    }
+
+    fn setup_run_dir_shadow() -> TempDir {
+        let tmp_run = TempDir::new().unwrap();
+        let run = tmp_run.path().to_path_buf();
+
+        // Create env file for both runs
+        std::fs::write(&run.join(RUN_ENV_FILE), "VAR1=foo\nVAR2=bar").unwrap();
+
+        // Create out_ files (equal)
+        std::fs::write(&run.join("out_VAR1"), "1").unwrap();
+        std::fs::write(&run.join("out_word"), "one").unwrap();
+
+        tmp_run
+    }
+
     fn setup_run_dir() -> TempDir {
         let tmp_run = TempDir::new().unwrap();
         let run = tmp_run.path().to_path_buf();
@@ -363,6 +420,20 @@ mod tests {
         // Create out_ files (equal)
         std::fs::write(&run.join("out_number"), "1\n2").unwrap();
         std::fs::write(&run.join("out_word"), "one\ntwo").unwrap();
+
+        tmp_run
+    }
+
+    fn setup_empty_run_dir() -> TempDir {
+        let tmp_run = TempDir::new().unwrap();
+        let run = tmp_run.path().to_path_buf();
+
+        // Create env file for both runs
+        std::fs::write(&run.join(RUN_ENV_FILE), "VAR1=foo\nVAR2=bar").unwrap();
+
+        // Create out_ files (equal)
+        std::fs::File::create(&run.join("out_number")).unwrap();
+        std::fs::File::create(&run.join("out_word")).unwrap();
 
         tmp_run
     }
@@ -408,40 +479,62 @@ mod tests {
 
     #[test]
     fn runreader_empty_out_files() {
-        let tmp = tempfile::tempdir().unwrap();
-        let run_dir = tmp.path().join("run_02");
-        std::fs::create_dir(&run_dir).unwrap();
+        let tmp = setup_empty_run_dir();
+        let run_dir = tmp.path().to_path_buf();
 
-        // Create env file only
-        let env_path = run_dir.join("env");
-        let mut env_file = File::create(&env_path).unwrap();
-        writeln!(env_file, "VAR1=foo").unwrap();
-
-        let run_reader = RunReader::parse(&run_dir).expect("Should parse run dir");
-        let mut iter = run_reader.into_iter();
-        assert!(iter.next().is_none(), "No out files, so no observations");
+        // iterator is created, but no observations
+        let run_reader = RunReader::parse(&run_dir).unwrap();
+        let mut run_iter = run_reader.iter();
+        println!("{run_iter:?}");
+        assert!(run_iter.next().is_none());
     }
 
     #[test]
     fn runreader_out_file_shadows_env_var() {
-        let tmp = tempfile::tempdir().unwrap();
-        let run_dir = tmp.path().join("run_03");
-        std::fs::create_dir(&run_dir).unwrap();
-
-        // Create env file
-        let env_path = run_dir.join("env");
-        let mut env_file = File::create(&env_path).unwrap();
-        writeln!(env_file, "VAR1=foo").unwrap();
-
-        // Create out_VAR1 file (shadows env var)
-        let out1_path = run_dir.join("out_VAR1");
-        let mut out1_file = File::create(&out1_path).unwrap();
-        writeln!(out1_file, "val1a").unwrap();
+        let tmp = setup_run_dir_shadow();
+        let run_dir = tmp.path().to_path_buf();
 
         // Should not panic, but log a warning
-        let run_reader = RunReader::parse(&run_dir).expect("Should parse run dir");
-        let mut iter = run_reader.into_iter();
-        let obs = iter.next().expect("Should yield observation");
-        assert_eq!(obs.get("VAR1").unwrap(), "val1a");
+        let run_reader = RunReader::parse(&run_dir).unwrap();
+        let mut iter = run_reader.iter();
+
+        let obs = iter.next().unwrap();
+        assert_eq!(obs.get("VAR1").unwrap(), "1");
+        assert_eq!(obs.get("word").unwrap(), "one");
+    }
+
+    #[test]
+    fn seriesreader_keys() {
+        let tmp_run = setup_series_dir();
+        let runs_dir = tmp_run.path().to_path_buf();
+
+        let series_reader = SeriesReader::parse(&runs_dir);
+        let keys = series_reader.keys();
+
+        assert!(keys.contains(&"number"));
+        assert!(keys.contains(&"word"));
+        assert!(keys.len() == 2);
+    }
+
+    #[test]
+    fn seriesreader_keys_no_content() {
+        let tmp_run = setup_series_empty_runs();
+        let runs_dir = tmp_run.path().to_path_buf();
+
+        let series_reader = SeriesReader::parse(&runs_dir);
+        let keys = series_reader.keys();
+
+        assert!(keys.contains(&"empty"));
+        assert!(keys.len() == 1);
+    }
+
+    #[test]
+    fn seriesreader_keys_no_out_files() {
+        let tmp_run = setup_series_no_runs();
+        let series_dir = tmp_run.path().to_path_buf();
+
+        let series_reader = SeriesReader::parse(&series_dir);
+        let keys = series_reader.keys();
+        assert!(keys.is_empty());
     }
 }
