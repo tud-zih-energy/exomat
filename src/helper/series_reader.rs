@@ -1,0 +1,398 @@
+use crate::harness::env::{EnvList, Environment};
+use crate::helper::errors::{Error, Result};
+use crate::helper::fs_names::*;
+
+use log::{debug, error, warn};
+use std::collections::HashMap;
+use std::fs::read_to_string;
+use std::path::{Path, PathBuf};
+
+type Observation = HashMap<String, String>;
+
+#[derive(Clone, Debug)]
+struct RunReader {
+    env: Environment,
+    out_files: Option<EnvList>,
+}
+
+impl IntoIterator for RunReader {
+    type Item = Observation;
+    type IntoIter = RunReaderIntoIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        RunReaderIntoIterator {
+            run_reader: self,
+            index: 0,
+        }
+    }
+}
+
+struct RunReaderIntoIterator {
+    run_reader: RunReader,
+    index: usize,
+}
+
+impl Iterator for RunReaderIntoIterator {
+    type Item = Observation;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let obs = self.run_reader.get_observation(self.index);
+        self.index += 1;
+
+        match obs {
+            Ok(obs) => Some(obs),
+            Err(_) => None,
+        }
+    }
+}
+
+impl RunReader {
+    fn parse(run: &PathBuf) -> Result<Self> {
+        // read env file
+        let env = Environment::from_file(&run.join(RUN_ENV_FILE))?;
+
+        // read out files
+        let mut out: EnvList = HashMap::new();
+        let prefix = "out_";
+        let contained_files = find_all_files(&run)?;
+        for file in contained_files.iter().filter_map(|file| {
+            file.file_name()
+                .and_then(|name| name.to_str())
+                .filter(|name| name.starts_with(prefix))
+                .map(|_| file)
+        }) {
+            // parse variable name from out file
+            let var_name = file_name_string(file)
+                .strip_prefix(prefix)
+                .unwrap()
+                .to_string();
+            if var_name.is_empty() {
+                return Err(Error::Empty(
+                    "variable name (prefix out_ alone is not permitted)".to_string(),
+                ));
+            }
+
+            // warn if out file shadows env var
+            if env.contains_env_var(&var_name) {
+                warn!(
+                    "in {}: out_{var_name} shadows input environment variable ${var_name}",
+                    run.display()
+                );
+            }
+
+            // read content
+            let new_val = read_to_string(file)?
+                .trim()
+                .split("\n")
+                .map(|v| v.to_string())
+                .collect();
+
+            if out.contains_key(&var_name) {
+                let val = out
+                    .get_mut(&var_name)
+                    .expect("Could not update output list");
+                val.extend(new_val);
+            } else {
+                out.insert(var_name, new_val);
+            }
+        }
+
+        // balance values
+        let out_balanced = match out.is_empty() {
+            true => None,
+            false => {
+                let max_length = out.values().map(|value| value.len()).max().unwrap_or(1);
+
+                // for each variable
+                for (var, vals) in out.iter_mut() {
+                    if vals.len() == 1 && max_length > 1 {
+                        // Cannot use Vec::repeat() here, because String does not implement the Copy Trait >:(
+                        let to_extend = max_length - vals.len();
+                        vals.extend(vec![vals[0].clone(); to_extend]);
+
+                        // We got multiple values for var, check if it has the same number of rows as the
+                        // other columns
+                    } else if vals.len() != max_length {
+                        return Err(Error::EnvError {
+                                        reason: format!("Mismatched number of values for {var} {}, other value in {} has {max_length}", vals.len(), run.display())});
+                    }
+                }
+
+                Some(out)
+            }
+        };
+
+        Ok(RunReader {
+            env: env,
+            out_files: out_balanced,
+        })
+    }
+
+    fn get_observation(&self, index: usize) -> Result<Observation> {
+        match &self.out_files {
+            None => Err(Error::Empty(String::from("No Observations found"))),
+            Some(out_files) => {
+                if index >= out_files.len() {
+                    Err(Error::EnvError {
+                        reason: String::from("Index out of range"),
+                    })
+                } else {
+                    let obs = out_files
+                        .iter()
+                        .map(|(var, vals)| {
+                            let val = &vals[index];
+                            (var.to_string(), val.to_string())
+                        })
+                        .collect();
+                    Ok(obs)
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct SeriesReader {
+    runs: Vec<RunReader>,
+    stdout_log: Option<String>,
+    stderr_log: Option<String>,
+    exomat_log: Option<String>,
+}
+
+impl IntoIterator for SeriesReader {
+    type Item = RunReader;
+    type IntoIter = SeriesReaderIntoIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        SeriesReaderIntoIterator {
+            series_reader: self,
+            index: 0,
+        }
+    }
+}
+
+struct SeriesReaderIntoIterator {
+    series_reader: SeriesReader,
+    index: usize,
+}
+
+impl Iterator for SeriesReaderIntoIterator {
+    type Item = RunReader;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.series_reader.runs.len() {
+            let run = self.series_reader.runs[self.index].clone();
+            self.index += 1;
+
+            Some(run)
+        } else {
+            None
+        }
+    }
+}
+
+impl SeriesReader {
+    pub fn parse(series: &PathBuf) -> Self {
+        // find all run dirs
+        let runs: Vec<RunReader> = find_run_repetitions(&series.join(SERIES_RUNS_DIR))
+            .iter()
+            .filter_map(|run| {
+                let r = RunReader::parse(run);
+                if r.is_err() {
+                    error!("Cannot parse run: {}", run.display());
+                }
+
+                r.ok()
+            })
+            .collect();
+
+        // read log files
+        let stdout_log = Self::read_log(&series.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG));
+        let stderr_log = Self::read_log(&series.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG));
+        let exomat_log = Self::read_log(&series.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG));
+
+        SeriesReader {
+            runs,
+            stdout_log,
+            stderr_log,
+            exomat_log,
+        }
+    }
+
+    pub fn to_csv(&self) -> String {
+        todo! {}
+    }
+
+    pub fn run_count(&self) -> usize {
+        self.runs.len()
+    }
+
+    /// helper, that returns the content of a file if it is readable.
+    /// Otherwise returns `None`
+    fn read_log(path: &PathBuf) -> Option<String> {
+        match read_to_string(path) {
+            Ok(log) => Some(log),
+            Err(_) => None,
+        }
+    }
+}
+
+fn find_run_repetitions(runs_dir: &Path) -> Vec<PathBuf> {
+    let mut repetitions = Vec::<PathBuf>::new();
+
+    // return the empty vector if runs_dir does not exist
+    if !runs_dir.is_dir() {
+        println!("runs dir empty");
+        return repetitions;
+    }
+
+    for entry in runs_dir.read_dir().expect("Could not read dir") {
+        if entry
+            .as_ref()
+            .expect("Entry not readable")
+            .metadata()
+            .expect("Metadata of entry not readable")
+            .is_dir()
+        {
+            // if directory name starts with "run_", it is considered a run repetition
+            if entry
+                .as_ref()
+                .unwrap()
+                .path() // complete path
+                .file_name() // last part of path; directory name
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .starts_with("run_")
+            {
+                println!("found run: {}", entry.as_ref().unwrap().path().display());
+                repetitions.push(entry.unwrap().path());
+            }
+        }
+    }
+
+    repetitions
+}
+
+fn find_all_files(dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::<PathBuf>::new();
+
+    for entry in dir.read_dir().expect("Could not read dir") {
+        if entry
+            .as_ref()
+            .expect("Entry not readable")
+            .metadata()
+            .expect("Metadata of entry not readable")
+            .is_file()
+        {
+            files.push(entry.unwrap().path());
+        }
+    }
+
+    Ok(files)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::fs::File;
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    // Helper to setup a fake run directory with env and out files
+    fn setup_run_dir() -> TempDir {
+        let tmp_run = TempDir::new().unwrap();
+        let runs_dir = tmp_run.path().to_path_buf();
+
+        // create run rep
+        let equal_run = runs_dir.join(SERIES_RUNS_DIR).join(TEST_RUN_REP_DIR0);
+        let unequal_run = runs_dir.join(SERIES_RUNS_DIR).join(TEST_RUN_REP_DIR1);
+        std::fs::create_dir_all(&equal_run).unwrap();
+        std::fs::create_dir_all(&unequal_run).unwrap();
+
+        // Create env file for both runs
+        std::fs::write(&unequal_run.join(RUN_ENV_FILE), "VAR1=foo\nVAR2=bar").unwrap();
+        std::fs::write(&equal_run.join(RUN_ENV_FILE), "VAR1=foo\nVAR2=bar").unwrap();
+
+        // Create out_ files (equal)
+        std::fs::write(&equal_run.join("out_number"), "1\n2").unwrap();
+        std::fs::write(&equal_run.join("out_word"), "one\ntwo").unwrap();
+
+        // Create out_ files (unequal)
+        std::fs::write(&unequal_run.join("out_number"), "1\n2\n3").unwrap();
+        std::fs::write(&unequal_run.join("out_word"), "NA").unwrap();
+
+        tmp_run
+    }
+
+    #[test]
+    fn seriesreader_iter() {
+        let tmp_run = setup_run_dir();
+        let runs_dir = tmp_run.path().to_path_buf();
+
+        let series_reader = SeriesReader::parse(&runs_dir);
+        assert_eq!(series_reader.run_count(), 2);
+
+        // iterate over runs, should work
+        for run in series_reader {
+            println!("run: {run:?}");
+            for obs in run {
+                println!("Observation: {obs:?}");
+            }
+        }
+
+        // let s_iter = series_reader.into_iter();
+        // let run1 = s_iter.next().unwrap();
+        //     let obs1 = run1.into_iter();
+
+        //     assert_eq!(obs1.get("VAR1").unwrap(), "val1a");
+        //     assert_eq!(obs1.get("VAR2").unwrap(), "val2a");
+
+        //     let obs2 = iter.next().expect("Should yield second observation");
+        //     assert_eq!(obs2.get("VAR1").unwrap(), "val1b");
+        //     assert_eq!(obs2.get("VAR2").unwrap(), "val2b");
+
+        //     assert!(iter.next().is_none(), "Should be no more observations");
+        // }
+    }
+
+    #[test]
+    fn runreader_empty_out_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let run_dir = tmp.path().join("run_02");
+        std::fs::create_dir(&run_dir).unwrap();
+
+        // Create env file only
+        let env_path = run_dir.join("env");
+        let mut env_file = File::create(&env_path).unwrap();
+        writeln!(env_file, "VAR1=foo").unwrap();
+
+        let run_reader = RunReader::parse(&run_dir).expect("Should parse run dir");
+        let mut iter = run_reader.into_iter();
+        assert!(iter.next().is_none(), "No out files, so no observations");
+    }
+
+    #[test]
+    fn runreader_out_file_shadows_env_var() {
+        let tmp = tempfile::tempdir().unwrap();
+        let run_dir = tmp.path().join("run_03");
+        std::fs::create_dir(&run_dir).unwrap();
+
+        // Create env file
+        let env_path = run_dir.join("env");
+        let mut env_file = File::create(&env_path).unwrap();
+        writeln!(env_file, "VAR1=foo").unwrap();
+
+        // Create out_VAR1 file (shadows env var)
+        let out1_path = run_dir.join("out_VAR1");
+        let mut out1_file = File::create(&out1_path).unwrap();
+        writeln!(out1_file, "val1a").unwrap();
+
+        // Should not panic, but log a warning
+        let run_reader = RunReader::parse(&run_dir).expect("Should parse run dir");
+        let mut iter = run_reader.into_iter();
+        let obs = iter.next().expect("Should yield observation");
+        assert_eq!(obs.get("VAR1").unwrap(), "val1a");
+    }
+}
