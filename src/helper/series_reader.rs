@@ -149,7 +149,6 @@ impl RunReader {
                             let val = &vals[index];
                             (var.to_string(), val.to_string())
                         })
-                        .filter(|(_, val)| !val.is_empty()) // ignore empty out files
                         .collect();
                     Ok(obs)
                 }
@@ -424,20 +423,6 @@ mod tests {
         tmp_run
     }
 
-    fn setup_empty_run_dir() -> TempDir {
-        let tmp_run = TempDir::new().unwrap();
-        let run = tmp_run.path().to_path_buf();
-
-        // Create env file for both runs
-        std::fs::write(&run.join(RUN_ENV_FILE), "VAR1=foo\nVAR2=bar").unwrap();
-
-        // Create out_ files (equal)
-        std::fs::File::create(&run.join("out_number")).unwrap();
-        std::fs::File::create(&run.join("out_word")).unwrap();
-
-        tmp_run
-    }
-
     #[test]
     fn seriesreader_iter() {
         // test iterating without error
@@ -479,11 +464,12 @@ mod tests {
 
     #[test]
     fn runreader_empty_out_files() {
-        let tmp = setup_empty_run_dir();
-        let run_dir = tmp.path().to_path_buf();
+        let tmp = setup_series_no_runs();
+        let series = tmp.path().to_path_buf();
 
         // iterator is created, but no observations
-        let run_reader = RunReader::parse(&run_dir).unwrap();
+        let run_reader =
+            RunReader::parse(&series.join(SERIES_RUNS_DIR).join(TEST_RUN_REP_DIR0)).unwrap();
         let mut run_iter = run_reader.iter();
         println!("{run_iter:?}");
         assert!(run_iter.next().is_none());
