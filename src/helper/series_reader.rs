@@ -2,7 +2,8 @@ use crate::harness::env::{EnvList, Environment};
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
 
-use log::{debug, error, warn};
+use csv::Writer;
+use log::{error, warn};
 use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::path::{Path, PathBuf};
@@ -134,25 +135,37 @@ impl RunReader {
         })
     }
 
+    fn from_env_list(envlist: &EnvList) -> Self {
+        RunReader {
+            env: Environment::new(),
+            out_files: Some(envlist.clone()),
+        }
+    }
+
     fn get_observation(&self, index: usize) -> Result<Observation> {
-        match &self.out_files {
-            None => Err(Error::Empty(String::from("No Observations found"))),
-            Some(out_files) => {
-                if index >= out_files.len() {
-                    Err(Error::EnvError {
+        // there are out_files
+        if let Some(out_files) = &self.out_files {
+            let mut observation: Observation = HashMap::new();
+            for (var, vals) in out_files {
+                // no values recorded
+                if vals.is_empty() {
+                    observation.insert(var.to_string(), String::from("NA"));
+                    // index is not in range
+                } else if index >= vals.len() {
+                    return Err(Error::EnvError {
                         reason: String::from("Index out of range"),
-                    })
+                    });
+                    // everything worked, get value
                 } else {
-                    let obs = out_files
-                        .iter()
-                        .map(|(var, vals)| {
-                            let val = &vals[index];
-                            (var.to_string(), val.to_string())
-                        })
-                        .collect();
-                    Ok(obs)
+                    observation.insert(var.to_string(), vals[index].to_string());
                 }
             }
+
+            Ok(observation)
+
+        // no out_files in this run
+        } else {
+            Err(Error::Empty(String::from("No Observations found")))
         }
     }
 }
@@ -163,18 +176,6 @@ struct SeriesReader {
     stderr_log: Option<String>,
     exomat_log: Option<String>,
 }
-
-// impl IntoIterator for SeriesReader {
-//     type Item = RunReader;
-//     type IntoIter = SeriesReaderIntoIterator;
-
-//     fn into_iter(self) -> Self::IntoIter {
-//         SeriesReaderIntoIterator {
-//             series_reader: self,
-//             index: 0,
-//         }
-//     }
-// }
 
 struct SeriesReaderIter<'a> {
     series_reader: &'a SeriesReader,
@@ -240,8 +241,34 @@ impl SeriesReader {
         }
     }
 
-    pub fn to_csv(&self) -> String {
-        todo! {}
+    /// Serializes it's content into `file`.
+    ///
+    /// If the no runs are found or all runs are empty, `file` will still be created.
+    ///
+    /// Uses the default CSV delimiter `,`. Any values containing it will be escaped using
+    /// `""`.
+    ///
+    /// ## Errors
+    /// - Returns a `CsvError` if something went wrong during the csv serialization
+    pub fn to_csv(&self, file: &PathBuf) -> Result<()> {
+        let mut wtr = Writer::from_path(file).map_err(|e| Error::CsvError {
+            reason: e.to_string(),
+        })?;
+
+        if !self.runs_are_empty() {
+            // turn self.runs into csv rows (contains header)
+            let content = self.to_csv_rows();
+
+            for row in content {
+                wtr.write_record(row).map_err(|e| Error::CsvError {
+                    reason: e.to_string(),
+                })?;
+            }
+        }
+
+        wtr.flush().map_err(|e| Error::CsvError {
+            reason: e.to_string(),
+        })
     }
 
     pub fn run_count(&self) -> usize {
@@ -260,6 +287,73 @@ impl SeriesReader {
         keys.sort();
         keys.dedup();
         keys
+    }
+
+    fn to_csv_rows(&self) -> Vec<Vec<String>> {
+        // collect all rows as HashMap
+        let mut rows: OutList = HashMap::new();
+        for run in &self.runs {
+            if let Some(out) = &run.out_files {
+                rows.extend(out.clone())
+            } else {
+                rows.extend(HashMap::new())
+            }
+        }
+
+        // collect all header
+        let mut rows_vec: Vec<Vec<String>> =
+            vec![self.keys().iter().map(|k| k.to_string()).collect()];
+
+        // turn all data into one list
+        let val_len = rows.values().map(|v| v.len()).max().unwrap_or(0);
+
+        for i in 0..val_len {
+            // (one entry = every ith element of each key)
+            let mut row: Vec<String> = Vec::new();
+
+            for key in self.keys() {
+                let value = rows.get(key).unwrap();
+                row.push(value.get(i).cloned().unwrap_or_else(|| String::new()));
+            }
+
+            rows_vec.push(row);
+        }
+
+        rows_vec
+    }
+
+    /// Checks if there is anything recorded in self.runs
+    ///
+    /// Returns `true` if:
+    /// - there are no runs
+    /// - there are runs, but none contain out_ files
+    /// - there are runs with out_ files, but all out_ files are empty
+    fn runs_are_empty(&self) -> bool {
+        if self.runs.is_empty()
+            || self.runs.iter().all(|run| run.out_files.is_none())
+            || self
+                .runs
+                .iter()
+                .all(|run| run.out_files.iter().all(|out| out.is_empty()))
+        {
+            true
+        } else {
+            false
+        }
+    }
+
+    fn from_env_lists(list_of_envlist: Vec<EnvList>) -> Self {
+        let runs: Vec<RunReader> = list_of_envlist
+            .iter()
+            .map(|envlist| RunReader::from_env_list(&envlist))
+            .collect();
+
+        SeriesReader {
+            runs: runs,
+            stdout_log: None,
+            stderr_log: None,
+            exomat_log: None,
+        }
     }
 
     /// helper, that returns the content of a file if it is readable.
@@ -522,5 +616,57 @@ mod tests {
         let series_reader = SeriesReader::parse(&series_dir);
         let keys = series_reader.keys();
         assert!(keys.is_empty());
+    }
+
+    use crate::helper::test_fixtures::{
+        envlist_1a, envlist_empty_string, envlist_mixed_weird, envlist_one_var_no_val,
+        filled_series_run_duplicate, filled_series_run_invalid, filled_series_run_na,
+        skeleton_series_run, skeleton_series_run_empty, skeleton_src,
+    };
+    use crate::helper::test_helper::contains_either;
+    use rstest::rstest;
+
+    #[rstest]
+    fn reader_serialize_multiline(
+        #[from(skeleton_src)] outdir: TempDir,
+        envlist_mixed_weird: EnvList,
+    ) {
+        let outdir = outdir.path().to_path_buf();
+        let out_file = outdir.join("2.csv");
+
+        // not created yet
+        assert!(!out_file.is_file());
+
+        let reader = SeriesReader::from_env_lists(vec![envlist_mixed_weird]);
+        reader.to_csv(&out_file).unwrap();
+
+        // with multiple keys and values the order of items after serialization is
+        // random, so only check if the correct lines are there
+        let file_2 = std::fs::read_to_string(out_file).unwrap();
+        assert!(contains_either(&file_2, "VAR1,VAR2\n", "VAR2,VAR1\n"));
+        assert!(contains_either(&file_2, "VALUE,\n", ",VALUE\n"));
+        assert!(contains_either(&file_2, "\"a,b\",baz\n", "baz,\"a,b\"\n"));
+    }
+
+    #[rstest]
+    #[case(HashMap::new(), "")]
+    #[case(envlist_1a(), "1\na\n")]
+    #[case(envlist_one_var_no_val(), "VAR\n")]
+    #[case(envlist_empty_string(), "VAR\n\"\"\n")]
+    fn reader_serialize_single(
+        #[from(skeleton_src)] outdir: TempDir,
+        #[case] envlist: EnvList,
+        #[case] expected: String,
+    ) {
+        let outdir = outdir.path().to_path_buf();
+        let out_file = outdir.join("0.csv");
+
+        // not created yet
+        assert!(!out_file.is_file());
+
+        let reader = SeriesReader::from_env_lists(vec![envlist]);
+        reader.to_csv(&out_file).unwrap();
+
+        assert_eq!(std::fs::read_to_string(out_file).unwrap(), expected);
     }
 }
