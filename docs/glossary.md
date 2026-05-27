@@ -89,9 +89,14 @@ name                 | module | description
 Environment          | env    | Content of one `.env`-file
 EnvironmentContainer | env    | List of `.env`-files
 ExomatEnvironment    | env    | List of Exomat-internal environment variables
+SeriesReader         | table  | Internal representation of an Experiment Series
+RunReader            | table  | Internal representation of an Experiment Run
 
 ### Type Definitions
 name                    | module | alias                           | description
 ------------------------|--------|---------------------------------|--------------
+Result                  | error  | `Result<T, Error>`              | Exomat return type
+OutList                 | table  | `HashMap<String, Vec<String>>`  | Maps out_ file names to their content
+Observation             | table  | `HashMap<String, String>`       | One row of values across all out_ files in an Experiment Run
 EnvList                 | env    | `HashMap<String, Vec<String>>`  | Lists all possible `values` for each `NAME` (see `env_list`)
 EnvironmentLocationList | env    | `HashMap<PathBuf, Environment>` | Maps File Paths to Environments
