@@ -10,6 +10,12 @@ use crate::harness::env::{EnvList, Environment};
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
 
+pub mod run_reader;
+pub mod series_reader;
+
+type Observation = HashMap<String, String>;
+type OutList = HashMap<String, Vec<String>>;
+
 /// Entrypoint for table binary
 ///
 /// Filters output (files) from every run repetition in the pwd.
