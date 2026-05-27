@@ -207,6 +207,7 @@ impl SeriesReader {
     }
 
     /// Returns the number of runs recorded (Test helper)
+    #[cfg(test)]
     fn run_count(&self) -> usize {
         self.runs.len()
     }
@@ -214,6 +215,7 @@ impl SeriesReader {
     /// Parses a SeriesReader from multiple OutLists (Test helper)
     ///
     /// One OutList represents the out_files of one RunReader.
+    #[cfg(test)]
     fn from_out_lists(list_of_envlist: Vec<OutList>) -> Self {
         let runs: Vec<RunReader> = list_of_envlist
             .iter()
