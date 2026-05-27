@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::path::{Path, PathBuf};
 
+/// Container for an Experiment Series
 #[derive(Debug, Clone)]
 pub struct SeriesReader {
     runs: Vec<RunReader>,
@@ -18,7 +19,7 @@ pub struct SeriesReader {
 }
 
 impl SeriesReader {
-    /// Use slice iterator for immutable iteration
+    /// Immutable iteration
     pub fn iter(&self) -> SeriesReaderIter {
         SeriesReaderIter {
             series_reader: self,
@@ -26,6 +27,13 @@ impl SeriesReader {
         }
     }
 
+    /// Parses an Experiment Series into a SeriesReader object.
+    ///
+    /// If `out_$NAME` is found in one experiment run directory, but not in another, a "NA"
+    /// will be added to the list of values.
+    ///
+    /// ### Error
+    /// - Returns a `ReaderError` if any RunReader failed to parse
     pub fn parse(series: &PathBuf) -> Result<Self> {
         // find all run dirs
         let runs: Vec<RunReader> = find_run_repetitions(&series.join(SERIES_RUNS_DIR))
@@ -54,6 +62,7 @@ impl SeriesReader {
         Ok(reader)
     }
 
+    /// Returns the list of Experiment Runs.
     pub fn get_runs(&self) -> &Vec<RunReader> {
         &self.runs
     }
@@ -88,10 +97,7 @@ impl SeriesReader {
         })
     }
 
-    pub fn run_count(&self) -> usize {
-        self.runs.len()
-    }
-
+    /// Returns a list of all keys present in the recorded RunReader in an arbitrary order.
     pub fn keys(&self) -> Vec<&str> {
         let mut keys: Vec<&str> = self
             .runs
@@ -106,6 +112,10 @@ impl SeriesReader {
         keys
     }
 
+    /// Adds missing out_ files to each RunReader.
+    ///
+    /// If a key is present in one RunReader but missing another, the key will be
+    /// added with "NA" as it's value.
     fn fill_missing_keys(&mut self) {
         // add "NA" if a run is missing a key
         let keys: Vec<String> = self.keys().into_iter().map(|k| k.to_string()).collect();
@@ -125,6 +135,25 @@ impl SeriesReader {
         }
     }
 
+    /// Parses `self.runs` into rows, that can be serialized in a CSV format.
+    /// Includes a header row, containing `self.keys()`.
+    ///
+    /// Returns a Vector of all rows, with each entry being listed as a separate String.
+    /// For example:
+    /// ```csv
+    /// word,number,comment
+    /// one,1,the first number
+    /// fortytwo,42,the best number
+    /// ```
+    ///
+    /// would be represented as
+    /// ```notest
+    /// [
+    ///     ["word", "number", "comment"],
+    ///     ["one", "1", "the first number"],
+    ///     ["fortytwo", "42", "the best number"]
+    /// ]
+    /// ```
     fn to_csv_rows(&self) -> Vec<Vec<String>> {
         // collect all rows as HashMap
         let mut rows: OutList = HashMap::new();
@@ -178,6 +207,14 @@ impl SeriesReader {
         }
     }
 
+    /// Returns the number of runs recorded (Test helper)
+    fn run_count(&self) -> usize {
+        self.runs.len()
+    }
+
+    /// Parses a SeriesReader from multiple OutLists (Test helper)
+    ///
+    /// One OutList represents the out_files of one RunReader.
     fn from_env_lists(list_of_envlist: Vec<EnvList>) -> Self {
         let runs: Vec<RunReader> = list_of_envlist
             .iter()
@@ -234,6 +271,12 @@ impl<'a> IntoIterator for &'a SeriesReader {
 
 // ========================== Helper ==========================
 
+/// Builds and returns a vector of all run repetitions in the given directory.
+///
+/// A directory is considered a run repetition, if it's name starts with "run_".
+///
+/// ## Panics
+/// - Panics if directory traversal went wrong
 fn find_run_repetitions(runs_dir: &Path) -> Vec<PathBuf> {
     let mut repetitions = Vec::<PathBuf>::new();
 
