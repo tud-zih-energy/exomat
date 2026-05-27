@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::path::PathBuf;
 
+/// Container for an Experiment Run
 #[derive(Clone, Debug)]
 pub struct RunReader {
     env: Environment,
@@ -16,7 +17,7 @@ pub struct RunReader {
 }
 
 impl RunReader {
-    /// Use slice iterator for immutable iteration
+    /// Immutable iteration
     pub fn iter(&self) -> RunReaderIter {
         RunReaderIter {
             run_reader: self,
@@ -24,6 +25,10 @@ impl RunReader {
         }
     }
 
+    /// Returns the content of an out_ file `out_[var]`
+    ///
+    /// If there is no file with this name, `None` is returned.
+    /// The returned Vec may be empty.
     pub fn get_var(&self, var: &str) -> Option<&Vec<String>> {
         match &self.out_files {
             Some(out) => out.get(var),
@@ -31,14 +36,36 @@ impl RunReader {
         }
     }
 
+    /// Returns a reference to the list of out_ files recorded
     pub fn get_out_files(&self) -> &Option<OutList> {
         &self.out_files
     }
 
+    /// Replaces `self.out_files` with `new_out`.
+    ///
+    /// The content of `new_out` is not checked in any way.
     pub fn replace_out_files_unchecked(&mut self, new_out: Option<OutList>) {
         self.out_files = new_out
     }
 
+    /// Parses an Experiment Run into a RunReader object.
+    ///
+    /// Will balance out missing values, if possible, so that the number of values
+    /// is even across all out_ files.
+    ///
+    /// The content of out_ files is not validated or checked in any way, if you put
+    /// weird content in them, you will get weird output.
+    ///
+    /// ### Warnings, Errors and Panics
+    /// What you will be **warn**ed about:
+    /// - no env file at run/[RUN_ENV_FILE]
+    /// - an out_ file shadows an env var
+    ///
+    /// What will cause an **Error**:
+    /// - invalid out_ file names
+    /// - unbalanced multiline out_ files
+    ///
+    /// This function my **Panic** if reading/writing failed.
     pub fn parse(run: &PathBuf) -> Result<Self> {
         // read env file
         let env = Environment::from_file(&run.join(RUN_ENV_FILE)).unwrap_or_else(|_| {
@@ -123,6 +150,9 @@ impl RunReader {
         })
     }
 
+    /// Generates a RunReader from `envlist`.
+    ///
+    /// Sets an empty Environemnt.
     pub fn from_env_list_unchecked(envlist: &OutList) -> Self {
         RunReader {
             env: Environment::new(),
@@ -130,6 +160,12 @@ impl RunReader {
         }
     }
 
+    /// Helper, that returns the value at `index` for all keys in the current run.
+    ///
+    /// If a value is empty "NA" will be returned as the key's value.
+    ///
+    /// - Returns an `EnvError` if the index is out of range
+    /// - Returns an `Empty` Error if there are no Observations, that can be returned
     fn get_observation(&self, index: usize) -> Result<Observation> {
         // there are out_files
         if let Some(out_files) = &self.out_files {
@@ -140,6 +176,7 @@ impl RunReader {
                     observation.insert(var.to_string(), String::from("NA"));
                     // index is not in range
                 } else if index >= vals.len() {
+                    //TODO: error type
                     return Err(Error::EnvError {
                         reason: String::from("Index out of range"),
                     });
@@ -159,6 +196,9 @@ impl RunReader {
 }
 
 // ========================== Iterator ==========================
+/// Iterator for RunReader
+///
+/// Iterates over the Observations in an EXperiment Run.
 #[derive(Debug)]
 pub struct RunReaderIter<'a> {
     run_reader: &'a RunReader,
