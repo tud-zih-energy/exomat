@@ -164,7 +164,7 @@ impl RunReader {
     ///
     /// If a value is empty "NA" will be returned as the key's value.
     ///
-    /// - Returns an `EnvError` if the index is out of range
+    /// - Returns an `IndexOutOfRange` Error if the index is out of range (unbelievable, I know)
     /// - Returns an `Empty` Error if there are no Observations, that can be returned
     fn get_observation(&self, index: usize) -> Result<Observation> {
         // there are out_files
@@ -176,9 +176,9 @@ impl RunReader {
                     observation.insert(var.to_string(), String::from("NA"));
                     // index is not in range
                 } else if index >= vals.len() {
-                    //TODO: error type
-                    return Err(Error::EnvError {
-                        reason: String::from("Index out of range"),
+                    return Err(Error::IndexOutOfRange {
+                        index,
+                        limit: vals.len(),
                     });
                     // everything worked, get value
                 } else {

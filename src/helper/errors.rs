@@ -48,4 +48,8 @@ pub enum Error {
     /// Something was empty that shouldn't be empty
     #[error("Value missing/empty, but must be given: {0}")]
     Empty(String),
+
+    /// Index out of range
+    #[error("Index out of range: index is {index} but limit is {limit}")]
+    IndexOutOfRange { index: usize, limit: usize },
 }
