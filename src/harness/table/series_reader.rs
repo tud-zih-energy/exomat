@@ -1,5 +1,4 @@
 use super::run_reader::RunReader;
-use crate::harness::env::EnvList;
 use crate::harness::table::OutList;
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
@@ -215,10 +214,10 @@ impl SeriesReader {
     /// Parses a SeriesReader from multiple OutLists (Test helper)
     ///
     /// One OutList represents the out_files of one RunReader.
-    fn from_env_lists(list_of_envlist: Vec<EnvList>) -> Self {
+    fn from_out_lists(list_of_envlist: Vec<OutList>) -> Self {
         let runs: Vec<RunReader> = list_of_envlist
             .iter()
-            .map(|envlist| RunReader::from_env_list_unchecked(&envlist))
+            .map(|envlist| RunReader::from_out_list_unchecked(&envlist))
             .collect();
 
         SeriesReader {
@@ -392,7 +391,7 @@ mod tests {
     #[rstest]
     fn seriesreader_serialize_multiline(
         #[from(skeleton_src)] outdir: TempDir,
-        envlist_mixed_weird: EnvList,
+        envlist_mixed_weird: OutList,
     ) {
         let outdir = outdir.path().to_path_buf();
         let out_file = outdir.join("2.csv");
@@ -400,7 +399,7 @@ mod tests {
         // not created yet
         assert!(!out_file.is_file());
 
-        let reader = SeriesReader::from_env_lists(vec![envlist_mixed_weird]);
+        let reader = SeriesReader::from_out_lists(vec![envlist_mixed_weird]);
         reader.to_csv(&out_file).unwrap();
 
         // with multiple keys and values the order of items after serialization is
@@ -418,7 +417,7 @@ mod tests {
     #[case(envlist_empty_string(), "VAR\n\"\"\n")]
     fn seriesreader_serialize_single(
         #[from(skeleton_src)] outdir: TempDir,
-        #[case] envlist: EnvList,
+        #[case] envlist: OutList,
         #[case] expected: String,
     ) {
         let outdir = outdir.path().to_path_buf();
@@ -427,7 +426,7 @@ mod tests {
         // not created yet
         assert!(!out_file.is_file());
 
-        let reader = SeriesReader::from_env_lists(vec![envlist]);
+        let reader = SeriesReader::from_out_lists(vec![envlist]);
         reader.to_csv(&out_file).unwrap();
 
         assert_eq!(std::fs::read_to_string(out_file).unwrap(), expected);
