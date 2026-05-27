@@ -8,7 +8,6 @@ pub mod helper {
     pub mod archivist;
     pub mod errors;
     pub mod fs_names;
-    pub mod series_reader;
 
     #[cfg(test)]
     pub mod test_fixtures;
