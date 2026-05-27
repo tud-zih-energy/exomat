@@ -153,7 +153,7 @@ impl RunReader {
     /// Generates a RunReader from `envlist`.
     ///
     /// Sets an empty Environemnt.
-    pub fn from_env_list_unchecked(envlist: &OutList) -> Self {
+    pub fn from_out_list_unchecked(envlist: &OutList) -> Self {
         RunReader {
             env: Environment::new(),
             out_files: Some(envlist.clone()),
