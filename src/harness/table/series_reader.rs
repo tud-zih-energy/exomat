@@ -111,6 +111,94 @@ impl SeriesReader {
         keys
     }
 
+    /// Creates a ready-to-print String based on the given parameters.
+    ///
+    /// ## Example
+    /// Given the values:
+    /// - `exp_name = Foo`
+    /// - `run = Ok(_)`
+    ///
+    /// ```bash
+    /// [Foo] exomat:
+    /// [info] ...
+    /// ---
+    /// [Foo] stdout:
+    /// normal output
+    /// ---
+    /// [Foo] stderr:
+    ///
+    /// ---
+    /// [Foo] returned:
+    /// Successful
+    /// ```
+    ///
+    /// An extra "\n" will be added to `stdout`, `stderr` and `exomat`.
+    ///
+    /// If `run = Err(e)`, the last lines will be:
+    /// ```bash
+    /// [Foo] returned:
+    /// Failed (reason: e)
+    /// ```
+    pub fn print_report<T>(&self, exp_name: &str, run: &Result<T>) {
+        let mut eval_str = String::new();
+
+        let exomat = self.exomat_log.as_deref().unwrap_or("");
+        let stderr = self.stderr_log.as_deref().unwrap_or("");
+        let stdout = self.stdout_log.as_deref().unwrap_or("");
+
+        // append exomat
+        eval_str.push_str(&format!("[{exp_name}] exomat:\n"));
+        eval_str.push_str(exomat);
+        eval_str.push_str("\n---\n");
+
+        // append stdout
+        eval_str.push_str(&format!("[{exp_name}] stdout:\n"));
+        eval_str.push_str(stdout);
+        eval_str.push_str("\n---\n");
+
+        // append stderr
+        eval_str.push_str(&format!("[{exp_name}] stderr:\n"));
+        eval_str.push_str(stderr);
+        eval_str.push_str("\n---\n");
+
+        if self.runs_are_empty() {
+            eval_str.push_str("[{exp_name}] created no output files\n")
+        } else {
+            if let Some(outfiles) = self.get_runs()[0].get_out_files() {
+                for (out_file, content) in outfiles {
+                    if content.len() > 5 {
+                        // truncate after 5 lines
+                        let size = content.len() - 5;
+                        let (cut_content, _) = content.split_at(5);
+
+                        eval_str.push_str(&format!(
+                            "[{exp_name}] {out_file}: {cut_content:?} (...{size} more items)\n",
+                        ));
+                    } else if content.len() == 1 {
+                        // print without brackets if only 1 element
+                        eval_str
+                            .push_str(&format!("[{exp_name}] {out_file}: \"{}\"\n", content[0]));
+                    } else {
+                        // print entire content if less than 5 lines
+                        eval_str.push_str(&format!("[{exp_name}] {out_file}: {content:?}\n"));
+                    }
+                }
+            } else {
+                eval_str.push_str("[{exp_name}] error reading output files\n")
+            }
+        }
+        eval_str.push_str("---\n");
+
+        // append overall success/failure report
+        eval_str.push_str(&format!("[{exp_name}] returned:\n"));
+        match run {
+            Ok(_) => eval_str.push_str("Successful\n"),
+            Err(e) => eval_str.push_str(&format!("Failed (reason: {e})\n")),
+        }
+
+        print!("{eval_str}");
+    }
+
     /// Adds missing out_ files to each RunReader.
     ///
     /// If a key is present in one RunReader but missing another, the key will be

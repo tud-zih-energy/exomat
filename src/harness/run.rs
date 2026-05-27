@@ -82,16 +82,8 @@ pub fn trial(experiment: &PathBuf, log_progress_handler: MultiProgress) -> Resul
     spdlog::default_logger().flush();
 
     // gather results
-    let stdout =
-        std::fs::read_to_string(trial_dir_path.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG))?;
-    let stderr =
-        std::fs::read_to_string(trial_dir_path.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG))?;
-    let exomat =
-        std::fs::read_to_string(trial_dir_path.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG))?;
-    let out_files = collect_output(&trial_dir_path)?;
-
-    let eval_res = create_report(&exp_name, &res, &stdout, &stderr, &out_files, &exomat);
-    print!("{eval_res}");
+    let reader = crate::harness::table::SeriesReader::parse(&trial_dir_path)?;
+    reader.print_report(&exp_name, &res);
 
     res
 }
@@ -353,104 +345,6 @@ fn log_run_result(
     }
 
     Ok(())
-}
-
-/// Creates a ready-to-print String based on the given parameters.
-///
-/// ## Example
-/// Given the values:
-/// - `exp_name = Foo`
-/// - `run = Ok(_)`
-/// - `stdout = "normal output"`
-/// - `stderr = ""`
-/// - `out_files = {"out_foo": "some content". "out_bar": "42"}`
-/// - `exomat = "[info] ..."`
-///
-/// ```bash
-/// [Foo] exomat:
-/// [info] ...
-/// ---
-/// [Foo] stdout:
-/// normal output
-/// ---
-/// [Foo] stderr:
-///
-/// ---
-/// [Foo] out_foo:
-/// some content
-///
-/// [Foo] out_bar:
-/// 42
-///
-/// ---
-/// [Foo] returned:
-/// Successful
-/// ```
-///
-/// An extra "\n" will be added to `stdout`, `stderr` and `exomat`.
-///
-/// If `run = Err(e)`, the last lines will be:
-/// ```bash
-/// [Foo] returned:
-/// Failed (reason: e)
-/// ```
-fn create_report<T>(
-    exp_name: &str,
-    run: &Result<T>,
-    stdout: &str,
-    stderr: &str,
-    out_files: &HashMap<String, Vec<String>>,
-    exomat: &str,
-) -> String {
-    let mut eval_str = String::new();
-
-    // append exomat
-    eval_str.push_str(&format!("[{exp_name}] exomat:\n"));
-    eval_str.push_str(exomat);
-    eval_str.push_str("\n---\n");
-
-    // append stdout
-    eval_str.push_str(&format!("[{exp_name}] stdout:\n"));
-    eval_str.push_str(stdout);
-    eval_str.push_str("\n---\n");
-
-    // append stderr
-    eval_str.push_str(&format!("[{exp_name}] stderr:\n"));
-    eval_str.push_str(stderr);
-    eval_str.push_str("\n---\n");
-
-    // append out file content
-    if out_files.is_empty() {
-        eval_str.push_str("[{exp_name}] created no output files\n")
-    } else {
-        for (out_file, content) in out_files.iter() {
-            if content.len() > 5 {
-                // truncate after 5 lines
-                let size = content.len() - 5;
-                let (cut_content, _) = content.split_at(5);
-
-                eval_str.push_str(&format!(
-                    "[{exp_name}] {out_file}: {cut_content:?} (...{size} more items)\n",
-                ));
-            } else if content.len() == 1 {
-                // print without brackets if only 1 element
-                eval_str.push_str(&format!("[{exp_name}] {out_file}: \"{}\"\n", content[0]));
-            } else {
-                // print entire content if less than 5 lines
-                eval_str.push_str(&format!("[{exp_name}] {out_file}: {content:?}\n"));
-            }
-        }
-    }
-    eval_str.push_str("---\n");
-
-    // append overall success/failure report
-    eval_str.push_str(&format!("[{exp_name}] returned:\n"));
-    match run {
-        Ok(_) => eval_str.push_str("Successful\n"),
-        Err(e) => eval_str.push_str(&format!("Failed (reason: {e})\n")),
-    }
-
-    eval_str
 }
 
 #[cfg(test)]
