@@ -54,9 +54,19 @@ impl RunReader {
         }
     }
 
-    fn parse(run: &PathBuf) -> Result<Self> {
+    pub fn get_var(&self, var: &str) -> Option<&Vec<String>> {
+        match &self.out_files {
+            Some(out) => out.get(var),
+            None => None,
+        }
+    }
+
+    pub fn parse(run: &PathBuf) -> Result<Self> {
         // read env file
-        let env = Environment::from_file(&run.join(RUN_ENV_FILE))?;
+        let env = Environment::from_file(&run.join(RUN_ENV_FILE)).unwrap_or_else(|_| {
+            warn!("No environment found in run {}", run.display());
+            Environment::new()
+        });
 
         // read out files
         let mut out: EnvList = HashMap::new();
@@ -169,7 +179,7 @@ impl RunReader {
         }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct SeriesReader {
     runs: Vec<RunReader>,
     stdout_log: Option<String>,
@@ -214,31 +224,36 @@ impl SeriesReader {
         }
     }
 
-    pub fn parse(series: &PathBuf) -> Self {
+    pub fn parse(series: &PathBuf) -> Result<Self> {
         // find all run dirs
         let runs: Vec<RunReader> = find_run_repetitions(&series.join(SERIES_RUNS_DIR))
             .iter()
-            .filter_map(|run| {
-                let r = RunReader::parse(run);
-                if r.is_err() {
-                    error!("Cannot parse run: {}", run.display());
-                }
-
-                r.ok()
+            .map(|run| {
+                RunReader::parse(run).map_err(|e| Error::ReaderError {
+                    dir: run.display().to_string(),
+                    reason: e.to_string(),
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>>>()?;
 
         // read log files
         let stdout_log = Self::read_log(&series.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG));
         let stderr_log = Self::read_log(&series.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG));
         let exomat_log = Self::read_log(&series.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG));
 
-        SeriesReader {
+        let mut reader = SeriesReader {
             runs,
             stdout_log,
             stderr_log,
             exomat_log,
-        }
+        };
+
+        reader.fill_missing_keys();
+        Ok(reader)
+    }
+
+    pub fn get_runs(&self) -> &Vec<RunReader> {
+        &self.runs
     }
 
     /// Serializes it's content into `file`.
@@ -287,6 +302,25 @@ impl SeriesReader {
         keys.sort();
         keys.dedup();
         keys
+    }
+
+    fn fill_missing_keys(&mut self) {
+        // add "NA" if a run is missing a key
+        let keys: Vec<String> = self.keys().into_iter().map(|k| k.to_string()).collect();
+
+        for run in self.runs.iter_mut() {
+            for key in &keys {
+                if run.get_var(key).is_none() {
+                    let mut new_run = match &run.out_files {
+                        None => HashMap::new(),
+                        Some(r) => r.clone(),
+                    };
+                    new_run.insert(key.clone(), vec!["NA".to_string()]);
+
+                    run.out_files = Some(new_run);
+                }
+            }
+        }
     }
 
     fn to_csv_rows(&self) -> Vec<Vec<String>> {
@@ -425,8 +459,13 @@ fn find_all_files(dir: &Path) -> Result<Vec<PathBuf>> {
 mod tests {
     use super::*;
 
-    use std::fs::File;
-    use std::io::Write;
+    use crate::helper::test_fixtures::{
+        envlist_1a, envlist_empty_string, envlist_mixed_weird, envlist_one_var_no_val,
+        filled_series_run_duplicate, filled_series_run_invalid, filled_series_run_na,
+        skeleton_series_run, skeleton_series_run_empty, skeleton_src,
+    };
+    use crate::helper::test_helper::{contains_either, create_out_file};
+    use rstest::rstest;
     use tempfile::TempDir;
 
     // Helper to setup a fake run directory with env and out files
@@ -462,7 +501,7 @@ mod tests {
         tmp_run
     }
 
-    fn setup_series_no_runs() -> TempDir {
+    fn setup_series_no_out() -> TempDir {
         let tmp_run = TempDir::new().unwrap();
         let series = tmp_run.path().to_path_buf();
         let run = series.join(SERIES_RUNS_DIR).join(TEST_RUN_REP_DIR0);
@@ -474,7 +513,7 @@ mod tests {
         tmp_run
     }
 
-    fn setup_series_empty_runs() -> TempDir {
+    fn setup_series_empty_out() -> TempDir {
         let tmp_run = TempDir::new().unwrap();
         let series = tmp_run.path().to_path_buf();
         let run = series.join(SERIES_RUNS_DIR).join(TEST_RUN_REP_DIR0);
@@ -523,12 +562,11 @@ mod tests {
         let tmp_run = setup_series_dir();
         let runs_dir = tmp_run.path().to_path_buf();
 
-        let series_reader = SeriesReader::parse(&runs_dir);
+        let series_reader = SeriesReader::parse(&runs_dir).unwrap();
         assert_eq!(series_reader.run_count(), 3);
 
         // iterate over runs and observations
         for run in series_reader.iter() {
-            println!("run: {run:?}");
             for obs in run.iter() {
                 assert!(obs.get("number").is_some());
                 assert!(obs.get("word").is_some());
@@ -558,7 +596,7 @@ mod tests {
 
     #[test]
     fn runreader_empty_out_files() {
-        let tmp = setup_series_no_runs();
+        let tmp = setup_series_no_out();
         let series = tmp.path().to_path_buf();
 
         // iterator is created, but no observations
@@ -588,7 +626,7 @@ mod tests {
         let tmp_run = setup_series_dir();
         let runs_dir = tmp_run.path().to_path_buf();
 
-        let series_reader = SeriesReader::parse(&runs_dir);
+        let series_reader = SeriesReader::parse(&runs_dir).unwrap();
         let keys = series_reader.keys();
 
         assert!(keys.contains(&"number"));
@@ -598,36 +636,34 @@ mod tests {
 
     #[test]
     fn seriesreader_keys_no_content() {
-        let tmp_run = setup_series_empty_runs();
+        let tmp_run = setup_series_empty_out();
         let runs_dir = tmp_run.path().to_path_buf();
 
-        let series_reader = SeriesReader::parse(&runs_dir);
-        let keys = series_reader.keys();
+        let series_reader = SeriesReader::parse(&runs_dir).unwrap();
 
+        let keys = series_reader.keys();
         assert!(keys.contains(&"empty"));
         assert!(keys.len() == 1);
+
+        let content = series_reader.get_runs()[0].get_var(keys[0]);
+        assert!(content.is_some());
+        assert_eq!(content.unwrap(), &vec![String::from("")]);
     }
 
     #[test]
     fn seriesreader_keys_no_out_files() {
-        let tmp_run = setup_series_no_runs();
+        let tmp_run = setup_series_no_out();
         let series_dir = tmp_run.path().to_path_buf();
 
-        let series_reader = SeriesReader::parse(&series_dir);
+        let series_reader = SeriesReader::parse(&series_dir).unwrap();
         let keys = series_reader.keys();
+
         assert!(keys.is_empty());
+        assert!(series_reader.runs_are_empty());
     }
 
-    use crate::helper::test_fixtures::{
-        envlist_1a, envlist_empty_string, envlist_mixed_weird, envlist_one_var_no_val,
-        filled_series_run_duplicate, filled_series_run_invalid, filled_series_run_na,
-        skeleton_series_run, skeleton_series_run_empty, skeleton_src,
-    };
-    use crate::helper::test_helper::contains_either;
-    use rstest::rstest;
-
     #[rstest]
-    fn reader_serialize_multiline(
+    fn seriesreader_serialize_multiline(
         #[from(skeleton_src)] outdir: TempDir,
         envlist_mixed_weird: EnvList,
     ) {
@@ -653,7 +689,7 @@ mod tests {
     #[case(envlist_1a(), "1\na\n")]
     #[case(envlist_one_var_no_val(), "VAR\n")]
     #[case(envlist_empty_string(), "VAR\n\"\"\n")]
-    fn reader_serialize_single(
+    fn seriesreader_serialize_single(
         #[from(skeleton_src)] outdir: TempDir,
         #[case] envlist: EnvList,
         #[case] expected: String,
@@ -668,5 +704,191 @@ mod tests {
         reader.to_csv(&out_file).unwrap();
 
         assert_eq!(std::fs::read_to_string(out_file).unwrap(), expected);
+    }
+
+    #[rstest]
+    fn seriesreader_parse_empty(#[from(skeleton_src)] series_dir: TempDir) {
+        let series_dir = series_dir.path().to_path_buf();
+        let reader = SeriesReader::parse(&series_dir).unwrap();
+
+        assert_eq!(reader.run_count(), 0);
+        assert!(reader.runs_are_empty());
+        assert!(reader.keys().is_empty());
+    }
+
+    #[rstest]
+    fn seriesreader_parse_no_out(#[from(skeleton_series_run_empty)] series_dir: TempDir) {
+        let series_dir = series_dir.path().to_path_buf();
+        let reader = SeriesReader::parse(&series_dir).unwrap();
+
+        assert_eq!(reader.run_count(), 1);
+        assert!(reader.runs_are_empty());
+        assert!(reader.keys().is_empty());
+    }
+
+    #[rstest]
+    fn seriesreader_parse_empty_out(skeleton_series_run: TempDir) {
+        let series_dir = skeleton_series_run.path().to_path_buf();
+        let reader = SeriesReader::parse(&series_dir).unwrap();
+
+        // key "empty" should be present, but without values
+        assert_eq!(reader.run_count(), 1);
+        let res = &reader.get_runs()[0];
+
+        assert!(res.get_var("empty") == Some(&vec![String::new()]));
+    }
+
+    #[rstest]
+    fn seriesreader_parse_no_value(filled_series_run_na: TempDir) {
+        let series_dir = filled_series_run_na.path().to_path_buf();
+
+        // both runs recognized
+        let reader = SeriesReader::parse(&series_dir).unwrap();
+        assert_eq!(reader.run_count(), 2);
+
+        let mut series_iter = reader.get_runs().iter();
+        let res = series_iter.next().unwrap();
+        println!("res: {res:?}");
+        assert_eq!(res.get_var("empty").unwrap(), &vec![String::from("NA")]); // "NA" from run_rep_dir_1
+
+        let res = series_iter.next().unwrap();
+        assert_eq!(res.get_var("empty").unwrap(), &vec![String::new()]); // empty string from run_rep_dir_0
+
+        assert!(series_iter.next().is_none());
+    }
+
+    #[rstest]
+    fn seriesreader_parse_duplicates(filled_series_run_duplicate: TempDir) {
+        let series_dir = filled_series_run_duplicate.path().to_path_buf();
+        let reader = SeriesReader::parse(&series_dir).unwrap();
+        assert_eq!(reader.run_count(), 1);
+
+        let res = &reader.get_runs()[0];
+
+        assert!(res.get_var("some").is_some());
+        assert!(res.get_var("some.txt").is_some());
+    }
+
+    #[rstest]
+    fn seriesreader_parse_out_no_name(filled_series_run_invalid: TempDir) {
+        let series_dir = filled_series_run_invalid.path().to_path_buf();
+        assert!(SeriesReader::parse(&series_dir).is_err());
+    }
+
+    #[rstest]
+    fn seriesreader_parse_multiline(skeleton_series_run: TempDir) {
+        // add out files
+        let series_dir = skeleton_series_run.path().to_path_buf();
+        create_out_file(&series_dir, None, "out_single", "foo");
+        create_out_file(&series_dir, None, "out_multi", "11\n20");
+        create_out_file(&series_dir, None, "out_trailing", "11\n20");
+
+        let reader = SeriesReader::parse(&series_dir).unwrap();
+        assert_eq!(reader.run_count(), 1);
+        let res = &reader.get_runs()[0];
+
+        // check content, order is important
+        assert!(res.get_var("multi").is_some());
+        assert_eq!(
+            res.get_var("multi").unwrap(),
+            &vec!["11".to_string(), "20".to_string()]
+        );
+
+        // same as multi
+        assert!(res.get_var("trailing").is_some());
+        assert_eq!(
+            res.get_var("trailing").unwrap(),
+            &vec!["11".to_string(), "20".to_string()]
+        );
+
+        assert!(res.get_var("single").is_some());
+        assert_eq!(
+            res.get_var("single").unwrap(),
+            &vec!["foo".to_string(), "foo".to_string()]
+        );
+    }
+
+    #[rstest]
+    fn seriesreader_parse_multiline_empty(skeleton_series_run: TempDir) {
+        // add out files
+        let series_dir = skeleton_series_run.path().to_path_buf();
+        create_out_file(&series_dir, None, "out_multi", "foo\nbar");
+        create_out_file(&series_dir, None, "out_empty", "");
+
+        let reader = SeriesReader::parse(&series_dir).unwrap();
+        assert_eq!(reader.run_count(), 1);
+        let res = &reader.get_runs()[0];
+
+        // check content
+        assert!(res.get_var("multi").is_some());
+        assert_eq!(
+            res.get_var("multi").unwrap(),
+            &vec!["foo".to_string(), "bar".to_string()]
+        );
+
+        assert!(res.get_var("empty").is_some());
+        assert_eq!(
+            res.get_var("empty").unwrap(),
+            &vec![String::new(), String::new()]
+        );
+    }
+
+    // If there are two values in the same run,
+    // they have to have the same number of rows.
+    #[rstest]
+    fn seriesreader_parse_multiline_mismatch(skeleton_series_run: TempDir) {
+        // add out files in both run reps
+        let series_dir = skeleton_series_run.path().to_path_buf();
+        create_out_file(&series_dir, None, "out_foo", "11\n20"); // two lines
+        create_out_file(&series_dir, None, "out_bar", "6\n48\n15"); // three lines
+
+        assert!(SeriesReader::parse(&series_dir).is_err());
+    }
+
+    // If there are multiple runs, then the number of rows in a value
+    // can differ between
+    #[rstest]
+    fn seriesreader_parse_multiline_multiple_dirs_diff_length(filled_series_run_na: TempDir) {
+        // add out files in both run reps
+        let series_dir = filled_series_run_na.path().to_path_buf();
+        create_out_file(&series_dir, Some(TEST_RUN_REP_DIR0), "out_foo", "11\n20"); // two lines
+        create_out_file(&series_dir, Some(TEST_RUN_REP_DIR1), "out_foo", "6\n48\n15"); // three lines
+
+        let reader = SeriesReader::parse(&series_dir).unwrap();
+
+        // check content
+        assert!(!reader.runs_are_empty());
+    }
+
+    #[rstest]
+    fn seriesreader_parse_output_full(filled_series_run_na: TempDir) {
+        // add multiple out_ files and some that will not be used
+        let series_dir = filled_series_run_na.path().to_path_buf();
+        create_out_file(&series_dir, Some(TEST_RUN_REP_DIR0), "not_out_file", "");
+        create_out_file(&series_dir, Some(TEST_RUN_REP_DIR0), "random", "");
+
+        create_out_file(&series_dir, Some(TEST_RUN_REP_DIR0), "out_empty.txt", "");
+        create_out_file(&series_dir, Some(TEST_RUN_REP_DIR0), "out_some", "foo");
+        create_out_file(&series_dir, Some(TEST_RUN_REP_DIR1), "out_some", "bar");
+
+        // both runs parsed
+        let reader = SeriesReader::parse(&series_dir).unwrap();
+        assert_eq!(reader.run_count(), 2);
+        let mut series_iter = reader.get_runs().iter();
+
+        let res = series_iter.next().unwrap();
+        println!("res: {res:?}");
+        assert!(res.get_var("some").unwrap().contains(&String::from("bar")));
+        assert!(res.get_var("empty").unwrap().contains(&String::from("NA")));
+        assert!(res
+            .get_var("empty.txt")
+            .unwrap()
+            .contains(&String::from("NA")));
+
+        let res = series_iter.next().unwrap();
+        println!("res: {res:?}");
+        assert!(res.get_var("empty").unwrap().contains(&String::new()));
+        assert!(res.get_var("empty.txt").unwrap().contains(&String::new()));
+        assert!(res.get_var("some").unwrap().contains(&String::from("foo")));
     }
 }
