@@ -34,6 +34,10 @@ pub enum Error {
     #[error("Cannot generate autocompletion file: {err}")]
     CompletionError { err: String },
 
+    /// Occurs when the SeariesReader or RunReader produce an error
+    #[error("Cannot read {dir}: {reason:?}")]
+    ReaderError { dir: String, reason: String },
+
     /// error from whitin dotenvy
     #[error("Error during environment file handling: {0}")]
     DotenvyError(#[from] dotenvy::Error),
