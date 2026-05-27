@@ -336,3 +336,148 @@ pub fn container_multiple() -> EnvironmentContainer {
         ("VAR2".to_string(), "VAL2".to_string()),
     ])])
 }
+
+/// generates a Series dir with three Run reps and out_ files
+///
+/// ```notest
+/// tempdir/
+/// \- [SERIES_RUNS_DIR]/
+///     |- [TEST_RUN_REP_DIR0]
+///     |   |- [RUN_ENV_FILE]       [content: "VAR1=foo\nVAR2=bar"]
+///     |   |- out_number           [content: "1\n2"]
+///     |   \- out_word             [content: "one\ntwo"]
+///     |- [TEST_RUN_REP_DIR1]
+///     |   |- [RUN_ENV_FILE]       [content: "VAR1=foo\nVAR2=bar"]
+///     |   |- out_number           [content: "1\n2"]
+///     |   \- out_word             [content: "one\ntwo"]
+///     \- [TEST_RUN_REP_DIR2]
+///         |- [RUN_ENV_FILE]       [content: "VAR1=foo\nVAR2=bar"]
+///         |- out_number           [content: "1\n2"]
+///         \- out_word             [content: "one\ntwo"]
+/// ```
+#[fixture]
+pub fn setup_series_dir() -> TempDir {
+    let tmp_run = TempDir::new().unwrap();
+    let runs_dir = tmp_run.path().to_path_buf();
+
+    // create run rep
+    let equal_run = runs_dir.join(SERIES_RUNS_DIR).join(TEST_RUN_REP_DIR0);
+    let unequal_run = runs_dir.join(SERIES_RUNS_DIR).join(TEST_RUN_REP_DIR1);
+    let empty_run = runs_dir.join(SERIES_RUNS_DIR).join(TEST_RUN_REP_DIR2);
+    std::fs::create_dir_all(&equal_run).unwrap();
+    std::fs::create_dir_all(&unequal_run).unwrap();
+    std::fs::create_dir_all(&empty_run).unwrap();
+
+    // Create env file for all runs
+    std::fs::write(&unequal_run.join(RUN_ENV_FILE), "VAR1=foo\nVAR2=bar").unwrap();
+    std::fs::write(&equal_run.join(RUN_ENV_FILE), "VAR1=foo\nVAR2=bar").unwrap();
+    std::fs::write(&empty_run.join(RUN_ENV_FILE), "VAR1=foo\nVAR2=bar").unwrap();
+
+    // Create out_ files (equal)
+    std::fs::write(&equal_run.join("out_number"), "1\n2").unwrap();
+    std::fs::write(&equal_run.join("out_word"), "one\ntwo").unwrap();
+
+    // Create out_ files (unequal)
+    std::fs::write(&unequal_run.join("out_number"), "1\n2\n3").unwrap();
+    std::fs::write(&unequal_run.join("out_word"), "NA").unwrap();
+
+    // Create out_ files (empty)
+    std::fs::write(&unequal_run.join("out_number"), "1\n2\n").unwrap();
+    std::fs::File::create(&unequal_run.join("out_word")).unwrap();
+
+    tmp_run
+}
+
+/// generates a Series dir with one Run rep
+///
+/// ```notest
+/// tempdir/
+/// \- [SERIES_RUNS_DIR]/
+///     \- [TEST_RUN_REP_DIR0]
+///         \- [RUN_ENV_FILE]       [content: "VAR1=foo\nVAR2=bar"]
+/// ```
+#[fixture]
+pub fn setup_series_no_out() -> TempDir {
+    let tmp_run = TempDir::new().unwrap();
+    let series = tmp_run.path().to_path_buf();
+    let run = series.join(SERIES_RUNS_DIR).join(TEST_RUN_REP_DIR0);
+
+    // Create env file
+    std::fs::create_dir_all(&run).unwrap();
+    std::fs::write(&run.join(RUN_ENV_FILE), "VAR1=foo\nVAR2=bar").unwrap();
+
+    tmp_run
+}
+
+/// generates a Series dir with one Run rep and an empty out_ file
+///
+/// ```notest
+/// tempdir/
+/// \- [SERIES_RUNS_DIR]/
+///     \- [TEST_RUN_REP_DIR0]
+///         |- [RUN_ENV_FILE]       [content: "VAR1=foo\nVAR2=bar"]
+///         \- [out_empty]          [EMPTY]
+/// ```
+#[fixture]
+pub fn setup_series_empty_out() -> TempDir {
+    let tmp_run = TempDir::new().unwrap();
+    let series = tmp_run.path().to_path_buf();
+    let run = series.join(SERIES_RUNS_DIR).join(TEST_RUN_REP_DIR0);
+
+    // Create env file
+    std::fs::create_dir_all(&run).unwrap();
+    std::fs::write(&run.join(RUN_ENV_FILE), "VAR1=foo\nVAR2=bar").unwrap();
+
+    // create empty out files
+    std::fs::File::create(&run.join("out_empty")).unwrap();
+
+    tmp_run
+}
+
+/// generates a Series dir with one Run rep and an out file that shadows an env var
+///
+/// ```notest
+/// tempdir/
+/// \- [SERIES_RUNS_DIR]/
+///     \- [TEST_RUN_REP_DIR0]
+///         |- [RUN_ENV_FILE]       [content: "VAR1=foo\nVAR2=bar"]
+///         |- [out_VAR1]           [content: "1"]
+///         \- [out_word]           [content: "one"]
+/// ```
+#[fixture]
+pub fn setup_run_dir_shadow() -> TempDir {
+    let tmp_run = TempDir::new().unwrap();
+    let run = tmp_run.path().to_path_buf();
+
+    // Create env file for both runs
+    std::fs::write(&run.join(RUN_ENV_FILE), "VAR1=foo\nVAR2=bar").unwrap();
+
+    // Create out_ files (equal)
+    std::fs::write(&run.join("out_VAR1"), "1").unwrap();
+    std::fs::write(&run.join("out_word"), "one").unwrap();
+
+    tmp_run
+}
+
+/// generates a Run dir with out_ files
+///
+/// ```notest
+/// tempdir/
+///  |- [RUN_ENV_FILE]       [content: "VAR1=foo\nVAR2=bar"]
+///  |- [out_number]         [content: "1\n2"]
+///  \- [out_word]           [content: "one\ntwo]
+/// ```
+#[fixture]
+pub fn setup_run_dir() -> TempDir {
+    let tmp_run = TempDir::new().unwrap();
+    let run = tmp_run.path().to_path_buf();
+
+    // Create env file for both runs
+    std::fs::write(&run.join(RUN_ENV_FILE), "VAR1=foo\nVAR2=bar").unwrap();
+
+    // Create out_ files (equal)
+    std::fs::write(&run.join("out_number"), "1\n2").unwrap();
+    std::fs::write(&run.join("out_word"), "one\ntwo").unwrap();
+
+    tmp_run
+}
