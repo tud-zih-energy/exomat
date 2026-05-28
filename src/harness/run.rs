@@ -432,6 +432,9 @@ fn create_report<T>(
                 eval_str.push_str(&format!(
                     "[{exp_name}] {out_file}: {cut_content:?} (...{size} more items)\n",
                 ));
+            } else if content.len() == 1 {
+                // print without brackets if only 1 element
+                eval_str.push_str(&format!("[{exp_name}] {out_file}: \"{}\"\n", content[0]));
             } else {
                 // print entire content if less than 5 lines
                 eval_str.push_str(&format!("[{exp_name}] {out_file}: {content:?}\n"));
