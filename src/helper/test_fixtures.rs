@@ -438,11 +438,9 @@ pub fn setup_series_empty_out() -> TempDir {
 ///
 /// ```notest
 /// tempdir/
-/// \- [SERIES_RUNS_DIR]/
-///     \- [TEST_RUN_REP_DIR0]
-///         |- [RUN_ENV_FILE]       [content: "VAR1=foo\nVAR2=bar"]
-///         |- [out_VAR1]           [content: "1"]
-///         \- [out_word]           [content: "one"]
+///  |- [RUN_ENV_FILE]       [content: "VAR1=foo\nVAR2=bar"]
+///  |- [out_VAR1]           [content: "1"]
+///  \- [out_word]           [content: "one"]
 /// ```
 #[fixture]
 pub fn setup_run_dir_shadow() -> TempDir {
