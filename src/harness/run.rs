@@ -132,6 +132,7 @@ fn collect_output(dir: &PathBuf) -> Result<HashMap<String, Vec<String>>> {
                     output.insert(
                         file_name,
                         file_content
+                            .trim()
                             .split('\n')
                             .map(|line| line.to_string())
                             .collect(),
