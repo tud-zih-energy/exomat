@@ -128,6 +128,9 @@ impl SeriesReader {
     /// [Foo] stderr:
     ///
     /// ---
+    /// [Foo] out_uptime.s: "1234"
+    /// [Foo] out_hello: "world"
+    /// ---
     /// [Foo] returned:
     /// Successful
     /// ```
