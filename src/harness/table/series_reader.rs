@@ -199,6 +199,18 @@ impl SeriesReader {
         print!("{eval_str}");
     }
 
+    /// Checks if the SeriesReader contains a valid trial run.
+    ///
+    /// Currently checks:
+    /// - run repetitions == 1
+    pub fn is_valid_trial(&self) -> bool {
+        if self.run_count() == 1 {
+            true
+        } else {
+            false
+        }
+    }
+
     /// Adds missing out_ files to each RunReader.
     ///
     /// If a key is present in one RunReader but missing another, the key will be
@@ -295,7 +307,6 @@ impl SeriesReader {
     }
 
     /// Returns the number of runs recorded (Test helper)
-    #[cfg(test)]
     fn run_count(&self) -> usize {
         self.runs.len()
     }
@@ -706,5 +717,23 @@ mod tests {
         assert!(res.get_var("empty").unwrap().contains(&String::new()));
         assert!(res.get_var("empty.txt").unwrap().contains(&String::new()));
         assert!(res.get_var("some").unwrap().contains(&String::from("foo")));
+    }
+
+    #[rstest]
+    fn seriesreader_invalid_trial(filled_series_run_na: TempDir) {
+        let series_dir = filled_series_run_na.path().to_path_buf();
+        let reader = SeriesReader::parse(&series_dir).unwrap();
+
+        assert!(!reader.is_valid_trial());
+    }
+
+    #[rstest]
+    fn seriesreader_valid_trial(setup_series_empty_out: TempDir) {
+        let series_dir = setup_series_empty_out.path().to_path_buf();
+        assert!(series_dir.is_dir());
+
+        let reader = SeriesReader::parse(&series_dir).unwrap();
+
+        assert!(reader.is_valid_trial());
     }
 }
