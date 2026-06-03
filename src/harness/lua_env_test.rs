@@ -42,7 +42,7 @@ impl FromLua for EnvList {
 }
 
 impl UserData for EnvList {
-    // union
+    // addition
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_meta_function(MetaMethod::Add, |_, (lhs, rhs): (EnvList, EnvList)| {
             assert_eq!(
@@ -50,19 +50,12 @@ impl UserData for EnvList {
                 rhs.list.keys().sorted().collect_vec()
             );
 
-            let mut env_union = lhs.clone();
-            env_union.list.extend(rhs.list);
-            env_union.list.values_mut().for_each(|v| {
-                v.dedup();
-                v.sort();
-            });
-
-            Ok(env_union)
+            Ok(vec![lhs.clone(), rhs.clone()])
         });
     }
 }
 
-fn evaluate_env_lua() -> LuaResult<Vec<EnvList>> {
+fn evaluate_env_lua(chunk_str: String) -> LuaResult<Vec<EnvList>> {
     let lua = Lua::new();
     let globals = lua.globals();
 
@@ -91,22 +84,36 @@ fn evaluate_env_lua() -> LuaResult<Vec<EnvList>> {
     globals.set("from_output", from_output)?;
 
     // (2) mutation
-    // create the union of sets (only sets with equal keys)
+    // create the union of all provided EnvLists
     let cross_prod = lua.create_function(|_, lists: Vec<EnvList>| {
-        // TODO
-        Ok(lists)
+        let mut combined = EnvList::from(HashMap::new());
+
+        for env in lists {
+            for (key, values) in env.list {
+                combined
+                    .list
+                    .entry(key)
+                    .or_insert_with(Vec::new)
+                    .extend(values);
+            }
+        }
+
+        combined.list.values_mut().for_each(|v| {
+            v.sort();
+            v.dedup();
+        });
+
+        Ok(combined)
     })?;
     globals.set("cross", cross_prod)?;
 
-    let chunk_src =
-        std::fs::read_to_string("tests/env_test.lua").expect("no file at this location");
-    let chunk = lua.load(&chunk_src);
+    let chunk = lua.load(&chunk_str);
 
     // Try to evaluate as Vec<EnvList>, if value is no table: fallback to EnvList
     match chunk.eval::<Vec<EnvList>>() {
         Ok(vec) => Ok(vec),
         Err(_) => {
-            let chunk = lua.load(&chunk_src);
+            let chunk = lua.load(&chunk_str);
             match chunk.eval::<EnvList>() {
                 Ok(single) => Ok(vec![single]),
                 Err(e) => Err(e),
@@ -120,10 +127,80 @@ mod tests {
     use super::*;
 
     #[test]
-    fn call_eval() {
-        let res = evaluate_env_lua();
-        print!("{res:?}\n");
+    fn lua_from_file() {
+        let chunk_src = std::fs::read_to_string("tests/env_test.lua").unwrap();
+        assert!(evaluate_env_lua(chunk_src).is_ok())
+    }
 
-        assert!(res.is_ok())
+    #[test]
+    fn lua_cross() {
+        let chunk_src = String::from("freqs = from_list(\"FREQ\", {1000, 2000, 3000})
+kernels = from_output(\"KERNELS\", \"add\\nmul\\ndiv\")
+cpus = from_list(\"CPUS\", {\"0,1\", \"0,1,2,3\"})
+result = cross({freqs, cpus, kernels})
+return result",
+        );
+        let res = evaluate_env_lua(chunk_src).unwrap();
+        assert_eq!(res.len(), 1);
+
+        let envlist = &res[0].list;
+        assert_eq!(envlist.len(), 3);
+        assert_eq!(envlist.get("FREQ").unwrap(), &vec!["1000", "2000", "3000"]);
+        assert_eq!(envlist.get("KERNELS").unwrap(), &vec!["add", "div", "mul"]);
+        assert_eq!(envlist.get("CPUS").unwrap(), &vec!["0,1", "0,1,2,3"]);
+    }
+
+    #[test]
+    fn lua_union() {
+        let chunk_src = String::from("freqs = from_list(\"FREQ\", {1000, 2000, 3000})
+result = freqs + freqs
+return result",
+        );
+        let res = evaluate_env_lua(chunk_src).unwrap();
+        assert_eq!(res.len(), 2);
+
+        let envlist = &res[0].list;
+        assert_eq!(envlist.len(), 1);
+        assert_eq!(envlist.get("FREQ").unwrap(), &vec!["1000", "2000", "3000"]);
+
+        let envlist = &res[1].list;
+        assert_eq!(envlist.len(), 1);
+        assert_eq!(envlist.get("FREQ").unwrap(), &vec!["1000", "2000", "3000"]);
+    }
+
+    #[test]
+    fn lua_union_key_missmatch() {
+        let chunk_src = String::from("freqs = from_list(\"FREQ\", {1000, 2000, 3000})
+kernels = from_output(\"KERNELS\", \"add\\nmul\\ndiv\")
+result = freqs + kernels
+return result",
+        );
+        assert!(evaluate_env_lua(chunk_src).is_err());
+    }
+
+    #[test]
+    fn lua_full() {
+        let chunk_str = String::from("freqs = from_list(\"FREQ\", {1000, 2000, 3000})
+kernels = from_output(\"KERNELS\", \"add\\nmul\\ndiv\")
+cpus = from_list(\"CPUS\", {\"0,1\", \"0,1,2,3\"})
+result = cross({freqs, cpus, kernels, from_list(\"TURBO\", {\"OFF\"})}) + cross({from_list(\"FREQ\", {3000}), cpus, kernels, from_list(\"TURBO\", {\"ON\"})})
+return result");
+
+        let res = evaluate_env_lua(chunk_str).unwrap();
+        assert_eq!(res.len(), 2);
+
+        let envlist = &res[0].list;
+        assert_eq!(envlist.len(), 4);
+        assert_eq!(envlist.get("FREQ").unwrap(), &vec!["1000", "2000", "3000"]);
+        assert_eq!(envlist.get("KERNELS").unwrap(), &vec!["add", "div", "mul"]);
+        assert_eq!(envlist.get("CPUS").unwrap(), &vec!["0,1", "0,1,2,3"]);
+        assert_eq!(envlist.get("TURBO").unwrap(), &vec!["OFF",]);
+
+        let envlist = &res[1].list;
+        assert_eq!(envlist.len(), 4);
+        assert_eq!(envlist.get("FREQ").unwrap(), &vec!["3000"]);
+        assert_eq!(envlist.get("KERNELS").unwrap(), &vec!["add", "div", "mul"]);
+        assert_eq!(envlist.get("CPUS").unwrap(), &vec!["0,1", "0,1,2,3"]);
+        assert_eq!(envlist.get("TURBO").unwrap(), &vec!["ON",]);
     }
 }
