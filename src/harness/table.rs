@@ -46,7 +46,6 @@ pub fn main() -> Result<()> {
     let series_dir = crate::find_marker_pwd(MARKER_SERIES)?;
 
     // collect all output from every run in series_dir
-    // let out_content = collect_output(&series_dir)?;
     let reader = SeriesReader::parse(&series_dir)?;
 
     let keys = reader.keys();
