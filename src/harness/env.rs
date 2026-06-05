@@ -281,6 +281,7 @@ fn generate_environments(
     to_add: EnvList,
     to_append: EnvList,
     to_remove: EnvList,
+    lua: Vec<EnvList>,
 ) -> Result<()> {
     let mut env = EnvironmentContainer::from_files(&env_path)?;
 
@@ -291,7 +292,10 @@ fn generate_environments(
     }
 
     // Check if user tries to edit reserved variable
-    if contains_reserved(&to_add) || contains_reserved(&to_append) || contains_reserved(&to_remove)
+    if contains_reserved(&to_add)
+        || contains_reserved(&to_append)
+        || contains_reserved(&to_remove)
+        || lua.iter().any(|env| contains_reserved(env))
     {
         return Err(Error::EnvError {
             reason: format!(
@@ -301,17 +305,21 @@ fn generate_environments(
         });
     }
 
-    // edit existing envs
-    if !to_add.is_empty() {
-        env.add_environments(to_add)?;
-    }
+    if !lua.is_empty() {
+        env = EnvironmentContainer::from_lua(lua)?;
+    } else {
+        // edit existing envs
+        if !to_add.is_empty() {
+            env.add_environments(to_add)?;
+        }
 
-    if !to_append.is_empty() {
-        env.append_to_environments(to_append)?;
-    }
+        if !to_append.is_empty() {
+            env.append_to_environments(to_append)?;
+        }
 
-    if !to_remove.is_empty() {
-        env.remove_from_environments(to_remove)?;
+        if !to_remove.is_empty() {
+            env.remove_from_environments(to_remove)?;
+        }
     }
 
     // remove existing env files
@@ -402,16 +410,14 @@ pub fn main(
     let to_append = to_env_list(&to_append).unwrap_or(HashMap::new());
     let to_remove = to_env_list(&to_remove).unwrap_or(HashMap::new());
 
-    match lua {
-        Some(l) => {
-            let lua_vec = lua::eval(std::fs::read_to_string(&l)?).unwrap();
-            println!("lua produced: {:?}", lua_vec);
-            Ok(())
-        }
-        None => match to_add.is_empty() && to_append.is_empty() && to_remove.is_empty() {
-            true => print_all_environments(env_path),
-            false => generate_environments(env_path, to_add, to_append, to_remove),
-        },
+    let from_lua: Vec<EnvList> = match lua {
+        None => Vec::new(),
+        Some(l) => lua::eval(std::fs::read_to_string(&l)?).unwrap(),
+    };
+
+    match to_add.is_empty() && to_append.is_empty() && to_remove.is_empty() && from_lua.is_empty() {
+        true => print_all_environments(env_path),
+        false => generate_environments(env_path, to_add, to_append, to_remove, from_lua),
     }
 }
 
@@ -492,17 +498,26 @@ mod tests {
             mock_env.clone(),
             reserved.clone(),
             HashMap::new(),
-            HashMap::new()
+            HashMap::new(),
+            Vec::new()
         )
         .is_err());
         assert!(generate_environments(
             mock_env.clone(),
             HashMap::new(),
             reserved.clone(),
-            HashMap::new()
+            HashMap::new(),
+            Vec::new()
         )
         .is_err());
-        assert!(generate_environments(mock_env, HashMap::new(), HashMap::new(), reserved).is_err());
+        assert!(generate_environments(
+            mock_env,
+            HashMap::new(),
+            HashMap::new(),
+            reserved,
+            Vec::new()
+        )
+        .is_err());
     }
 
     #[test]
