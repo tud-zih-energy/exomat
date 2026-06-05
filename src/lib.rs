@@ -1,6 +1,5 @@
 pub mod harness {
     pub mod env;
-    pub mod lua_env_test;
     pub mod run;
     pub mod skeleton;
     pub mod table;

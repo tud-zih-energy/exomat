@@ -9,6 +9,7 @@ use std::path::PathBuf;
 pub mod environment;
 pub mod environment_container;
 pub mod exomat_environment;
+pub mod lua;
 
 use crate::helper::archivist::find_marker_pwd;
 use crate::helper::errors::{Error, Result};

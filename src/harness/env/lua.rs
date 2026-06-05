@@ -54,7 +54,7 @@ impl UserData for EnvList {
     }
 }
 
-fn evaluate_env_lua(chunk_str: String) -> LuaResult<Vec<EnvList>> {
+pub fn eval(chunk_str: String) -> LuaResult<Vec<EnvList>> {
     let lua = Lua::new();
     let globals = lua.globals();
 
@@ -128,7 +128,7 @@ mod tests {
     #[test]
     fn lua_from_file() {
         let chunk_src = std::fs::read_to_string("tests/env_test.lua").unwrap();
-        assert!(evaluate_env_lua(chunk_src).is_ok())
+        assert!(eval(chunk_src).is_ok())
     }
 
     #[test]
@@ -140,7 +140,7 @@ cpus = from_list(\"CPUS\", {\"0,1\", \"0,1,2,3\"})
 result = cross({freqs, cpus, kernels})
 return result",
         );
-        let res = evaluate_env_lua(chunk_src).unwrap();
+        let res = eval(chunk_src).unwrap();
         assert_eq!(res.len(), 1);
 
         let envlist = &res[0].list;
@@ -157,7 +157,7 @@ return result",
 result = freqs + freqs
 return result",
         );
-        let res = evaluate_env_lua(chunk_src).unwrap();
+        let res = eval(chunk_src).unwrap();
         assert_eq!(res.len(), 2);
 
         let envlist = &res[0].list;
@@ -177,7 +177,7 @@ kernels = from_output(\"KERNELS\", \"add\\nmul\\ndiv\")
 result = freqs + kernels
 return result",
         );
-        assert!(evaluate_env_lua(chunk_src).is_err());
+        assert!(eval(chunk_src).is_err());
     }
 
     #[test]
@@ -188,7 +188,7 @@ cpus = from_list(\"CPUS\", {\"0,1\", \"0,1,2,3\"})
 result = cross({freqs, cpus, kernels, from_list(\"TURBO\", {\"OFF\"})}) + cross({from_list(\"FREQ\", {3000}), cpus, kernels, from_list(\"TURBO\", {\"ON\"})})
 return result");
 
-        let res = evaluate_env_lua(chunk_str).unwrap();
+        let res = eval(chunk_str).unwrap();
         assert_eq!(res.len(), 2);
 
         let envlist = &res[0].list;
