@@ -19,7 +19,7 @@ impl EnvList {
 
 impl FromLua for EnvList {
     fn from_lua(value: Value, _: &Lua) -> Result<Self> {
-        // helper
+        // helper to read an EnvList from a Lua Table
         fn envlist_from_lua(tb: LuaTable) -> Result<EnvList> {
             let mut map = HashMap::new();
             for pair in tb.pairs::<String, mlua::Table>() {
@@ -42,7 +42,7 @@ impl FromLua for EnvList {
 }
 
 impl UserData for EnvList {
-    // addition
+    // Add multiple EnvLists to a List of EnvLists with "+"
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_meta_function(MetaMethod::Add, |_, (lhs, rhs): (EnvList, EnvList)| {
             if lhs.list.keys().sorted().collect_vec() != rhs.list.keys().sorted().collect_vec() {
@@ -64,7 +64,7 @@ fn evaluate_env_lua(chunk_str: String) -> LuaResult<Vec<EnvList>> {
     })?;
 
     // (1) creation
-    // create a set of values from a list
+    // create a set of values from a list with "from_list()"
     let from_list = lua.create_function(|_, (variable, values): (String, Vec<String>)| {
         let env = EnvList::from(HashMap::from([(variable, values)]));
 
@@ -72,7 +72,7 @@ fn evaluate_env_lua(chunk_str: String) -> LuaResult<Vec<EnvList>> {
     })?;
     globals.set("from_list", from_list)?;
 
-    // create a set of values from a newline seperated string
+    // create a set of values from a newline seperated string with "from_output()"
     let from_output = lua.create_function(|_, (variable, value): (String, String)| {
         let env = EnvList::from(HashMap::from([(
             variable,
@@ -83,7 +83,7 @@ fn evaluate_env_lua(chunk_str: String) -> LuaResult<Vec<EnvList>> {
     globals.set("from_output", from_output)?;
 
     // (2) mutation
-    // create the union of all provided EnvLists
+    // create the union of all provided EnvLists with "cross()"
     let cross_prod = lua.create_function(|_, lists: Vec<EnvList>| {
         let mut combined = EnvList::from(HashMap::new());
 
@@ -109,7 +109,6 @@ fn evaluate_env_lua(chunk_str: String) -> LuaResult<Vec<EnvList>> {
     // (3) load and evaluate
     // Try to evaluate as Vec<EnvList>, if value is no table: fallback to EnvList
     let chunk = lua.load(&chunk_str);
-
     match chunk.eval::<Vec<EnvList>>() {
         Ok(vec) => Ok(vec),
         Err(_) => {
