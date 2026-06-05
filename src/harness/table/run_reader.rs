@@ -10,7 +10,7 @@ use std::fs::read_to_string;
 use std::path::PathBuf;
 
 /// Container for an Experiment Run
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RunReader {
     env: Environment,
     out_files: Option<OutList>,

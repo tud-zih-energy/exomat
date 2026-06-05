@@ -574,17 +574,14 @@ mod tests {
 
         // both runs recognized
         let reader = SeriesReader::parse(&series_dir).unwrap();
+        let runs = reader.get_runs();
+
+        let expected0 = HashMap::from([(String::from("empty"), vec![String::from("")])]);
+        let expected1 = HashMap::from([(String::from("empty"), vec![String::from("NA")])]);
+
         assert_eq!(reader.run_count(), 2);
-
-        let mut series_iter = reader.get_runs().iter();
-        let res = series_iter.next().unwrap();
-        println!("res: {res:?}");
-        assert_eq!(res.get_var("empty").unwrap(), &vec![String::from("NA")]); // "NA" from run_rep_dir_1
-
-        let res = series_iter.next().unwrap();
-        assert_eq!(res.get_var("empty").unwrap(), &vec![String::new()]); // empty string from run_rep_dir_0
-
-        assert!(series_iter.next().is_none());
+        assert!(runs.contains(&RunReader::from_out_list_unchecked(&expected0)));
+        assert!(runs.contains(&RunReader::from_out_list_unchecked(&expected1)));
     }
 
     #[rstest]
@@ -703,24 +700,24 @@ mod tests {
 
         // both runs parsed
         let reader = SeriesReader::parse(&series_dir).unwrap();
+        let runs = reader.get_runs();
+
+        let expected0 = HashMap::from([
+            (String::from("empty"), vec![String::from("NA")]),
+            (String::from("some"), vec![String::from("bar")]),
+            (String::from("empty.txt"), vec![String::from("NA")]),
+        ]);
+        let expected1 = HashMap::from([
+            (String::from("empty"), vec![String::from("")]),
+            (String::from("some"), vec![String::from("foo")]),
+            (String::from("empty.txt"), vec![String::from("")]),
+        ]);
+
         assert_eq!(reader.run_count(), 2);
-        let mut series_iter = reader.get_runs().iter();
-
-        let res = series_iter.next().unwrap();
-        println!("res: {res:?}");
-        assert!(res.get_var("some").unwrap().contains(&String::from("bar")));
-        assert!(res.get_var("empty").unwrap().contains(&String::from("NA")));
-        assert!(res
-            .get_var("empty.txt")
-            .unwrap()
-            .contains(&String::from("NA")));
-
-        let res = series_iter.next().unwrap();
-        println!("res: {res:?}");
-        assert!(res.get_var("empty").unwrap().contains(&String::new()));
-        assert!(res.get_var("empty.txt").unwrap().contains(&String::new()));
-        assert!(res.get_var("some").unwrap().contains(&String::from("foo")));
+        assert!(runs.contains(&RunReader::from_out_list_unchecked(&expected0)));
+        assert!(runs.contains(&RunReader::from_out_list_unchecked(&expected1)));
     }
+
 
     #[rstest]
     fn seriesreader_invalid_trial(filled_series_run_na: TempDir) {
