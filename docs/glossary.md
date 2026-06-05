@@ -54,6 +54,7 @@ name                    | meaning                                         | poss
 `env_val`               | The `value` of an env                           |
 `env_list`              | A list of all possible `values` for each `NAME` |
 `environment`           | A list of `NAME=value` pairs                    | content of an .env file
+`environment_list`      | A list of `(NAME, value)` pairs                 | dotenvy vars
 `environment_container` | A list of environments                          | directory of .env files
 `exomat_environment`    | An environment with variables set by exomat     |
 

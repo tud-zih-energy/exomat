@@ -146,7 +146,7 @@ where
 /// - Returns `EnvError` if a key from `to_add` is already in `given`
 fn try_assemble_all(given: &Environment, to_add: &EnvList) -> Result<Vec<Environment>> {
     // combine all values from to_add
-    let mut combinations = EnvironmentContainer::from_env_list(
+    let mut combinations = EnvironmentContainer::from_environments(
         to_add
             .values()
             .multi_cartesian_product()
@@ -158,7 +158,7 @@ fn try_assemble_all(given: &Environment, to_add: &EnvList) -> Result<Vec<Environ
                     .cloned()
                     .zip(val_combos.iter().map(|s| s.to_string()))
                     .collect::<Vec<(String, String)>>();
-                Environment::from_env_list(pairs)
+                Environment::from_environment_list(pairs)
             })
             .collect(),
     );
@@ -169,7 +169,7 @@ fn try_assemble_all(given: &Environment, to_add: &EnvList) -> Result<Vec<Environ
     combinations.extend_environments(given);
     debug!("Finished assembling environments: {combinations:?}");
 
-    Ok(combinations.to_env_list().to_owned())
+    Ok(combinations.to_environments().to_owned())
 }
 
 /// Takes a list of `Vec<Vec<String>>` and turns it into a `HashMap<String, Vec<String>>`.
@@ -177,7 +177,7 @@ fn try_assemble_all(given: &Environment, to_add: &EnvList) -> Result<Vec<Environ
 ///
 /// ## Example
 /// ```ignore
-/// use exomat::harness::env::transform_env_list;
+/// use exomat::harness::env::to_env_list;
 ///
 /// let list = vec![
 ///     vec!["VAR1".to_string(), "A".to_string(), "B".to_string()],
@@ -189,7 +189,7 @@ fn try_assemble_all(given: &Environment, to_add: &EnvList) -> Result<Vec<Environ
 ///     ],
 /// ];
 ///
-/// let new_map = transform_env_list(&list).unwrap();
+/// let new_map = to_env_list(&list).unwrap();
 ///
 /// assert_eq!(new_map.len(), 2);
 /// assert_eq!(*new_map.get("VAR1").unwrap(), vec!["A".to_string(), "B".to_string()]);
@@ -465,7 +465,7 @@ mod tests {
         let assembled = try_assemble_all(&env_1a, &envlist_2b).unwrap();
 
         assert_eq!(assembled.len(), 1);
-        assert!(assembled.contains(&Environment::from_env_list(vec![
+        assert!(assembled.contains(&Environment::from_environment_list(vec![
             ("1".to_string(), "a".to_string()),
             ("2".to_string(), "b".to_string()),
         ])));
@@ -532,7 +532,7 @@ mod tests {
     fn env_try_assemble(env_1a: Environment) {
         // helper
         fn env_from_pairs(v: Vec<(&str, &str)>) -> Environment {
-            Environment::from_env_list(
+            Environment::from_environment_list(
                 v.into_iter()
                     .map(|(a, b)| (a.to_string(), b.to_string()))
                     .collect_vec(),
@@ -591,12 +591,12 @@ mod tests {
             std::fs::write("two.env", "FOO=baz").unwrap();
             std::fs::write("01.env", "FOO=bar").unwrap();
 
-            let expected_bar = Environment::from_env_list(vec![("FOO".to_string(), "bar".to_string())]);
-            let expected_baz = Environment::from_env_list(vec![("FOO".to_string(), "baz".to_string())]);
+            let expected_bar = Environment::from_environment_list(vec![("FOO".to_string(), "bar".to_string())]);
+            let expected_baz = Environment::from_environment_list(vec![("FOO".to_string(), "baz".to_string())]);
 
             let envs_no_fname = EnvironmentContainer::from_files(&PathBuf::from(".")).unwrap();
-            assert!(envs_no_fname.to_env_list().contains(&expected_baz));
-            assert!(envs_no_fname.to_env_list().contains(&expected_bar));
+            assert!(envs_no_fname.to_environments().contains(&expected_baz));
+            assert!(envs_no_fname.to_environments().contains(&expected_bar));
 
             let envs_fname = get_existing_environments_by_fname(&PathBuf::from(".")).unwrap();
             assert_eq!(

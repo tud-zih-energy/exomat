@@ -53,7 +53,7 @@ impl Environment {
     }
 
     /// Returns a new Environment with `list` as it's variables.
-    pub fn from_env_list(list: Vec<(String, String)>) -> Self {
+    pub fn from_environment_list(list: Vec<(String, String)>) -> Self {
         Environment {
             envs: list.into_iter().collect(),
         }
@@ -92,7 +92,9 @@ impl Environment {
     /// ```
     pub fn from_file_with_load(env_file: &PathBuf) -> Result<Self> {
         dotenvy::from_path_override(env_file)?;
-        Ok(Environment::from_env_list(dotenvy::vars().collect()))
+        Ok(Environment::from_environment_list(
+            dotenvy::vars().collect(),
+        ))
     }
 
     /// Serialize current envs to `file_path`.
