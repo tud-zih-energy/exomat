@@ -4,23 +4,25 @@ use std::collections::HashMap;
 use mlua::prelude::*;
 use mlua::{FromLua, Lua, MetaMethod, Result, UserData, UserDataMethods, Value};
 
+use crate::harness::env::EnvList;
+
 #[derive(Clone, Debug, PartialEq)]
-struct EnvList {
+struct LuaEnvList {
     list: HashMap<String, Vec<String>>,
 }
 
-impl EnvList {
+impl LuaEnvList {
     fn from(map: HashMap<String, Vec<String>>) -> Self {
-        EnvList {
+        LuaEnvList {
             list: HashMap::from(map),
         }
     }
 }
 
-impl FromLua for EnvList {
+impl FromLua for LuaEnvList {
     fn from_lua(value: Value, _: &Lua) -> Result<Self> {
         // helper to read an EnvList from a Lua Table
-        fn envlist_from_lua(tb: LuaTable) -> Result<EnvList> {
+        fn envlist_from_lua(tb: LuaTable) -> Result<LuaEnvList> {
             let mut map = HashMap::new();
             for pair in tb.pairs::<String, mlua::Table>() {
                 let (key, val_table) = pair?;
@@ -30,7 +32,7 @@ impl FromLua for EnvList {
                 map.insert(key, vec);
             }
 
-            Ok(EnvList::from(map))
+            Ok(LuaEnvList::from(map))
         }
 
         match value {
@@ -41,16 +43,20 @@ impl FromLua for EnvList {
     }
 }
 
-impl UserData for EnvList {
+impl UserData for LuaEnvList {
     // Add multiple EnvLists to a List of EnvLists with "+"
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
-        methods.add_meta_function(MetaMethod::Add, |_, (lhs, rhs): (EnvList, EnvList)| {
-            if lhs.list.keys().sorted().collect_vec() != rhs.list.keys().sorted().collect_vec() {
-                Err(LuaError::external("Key missmatch"))
-            } else {
-                Ok(vec![lhs.clone(), rhs.clone()])
-            }
-        });
+        methods.add_meta_function(
+            MetaMethod::Add,
+            |_, (lhs, rhs): (LuaEnvList, LuaEnvList)| {
+                if lhs.list.keys().sorted().collect_vec() != rhs.list.keys().sorted().collect_vec()
+                {
+                    Err(LuaError::external("Key missmatch"))
+                } else {
+                    Ok(vec![lhs.clone(), rhs.clone()])
+                }
+            },
+        );
     }
 }
 
@@ -59,14 +65,14 @@ pub fn eval(chunk_str: String) -> LuaResult<Vec<EnvList>> {
     let globals = lua.globals();
 
     // Register EnvList as a Lua userdata type
-    lua.register_userdata_type::<EnvList>(|metatable| {
-        EnvList::add_methods(metatable);
+    lua.register_userdata_type::<LuaEnvList>(|metatable| {
+        LuaEnvList::add_methods(metatable);
     })?;
 
     // (1) creation
     // create a set of values from a list with "from_list()"
     let from_list = lua.create_function(|_, (variable, values): (String, Vec<String>)| {
-        let env = EnvList::from(HashMap::from([(variable, values)]));
+        let env = LuaEnvList::from(HashMap::from([(variable, values)]));
 
         Ok(env)
     })?;
@@ -74,7 +80,7 @@ pub fn eval(chunk_str: String) -> LuaResult<Vec<EnvList>> {
 
     // create a set of values from a newline seperated string with "from_output()"
     let from_output = lua.create_function(|_, (variable, value): (String, String)| {
-        let env = EnvList::from(HashMap::from([(
+        let env = LuaEnvList::from(HashMap::from([(
             variable,
             value.split("\n").map(|s| s.to_string()).collect(),
         )]));
@@ -84,8 +90,8 @@ pub fn eval(chunk_str: String) -> LuaResult<Vec<EnvList>> {
 
     // (2) mutation
     // create the union of all provided EnvLists with "cross()"
-    let cross_prod = lua.create_function(|_, lists: Vec<EnvList>| {
-        let mut combined = EnvList::from(HashMap::new());
+    let cross_prod = lua.create_function(|_, lists: Vec<LuaEnvList>| {
+        let mut combined = LuaEnvList::from(HashMap::new());
 
         for env in lists {
             for (key, values) in env.list {
@@ -109,16 +115,19 @@ pub fn eval(chunk_str: String) -> LuaResult<Vec<EnvList>> {
     // (3) load and evaluate
     // Try to evaluate as Vec<EnvList>, if value is no table: fallback to EnvList
     let chunk = lua.load(&chunk_str);
-    match chunk.eval::<Vec<EnvList>>() {
+    let lua_env = match chunk.eval::<Vec<LuaEnvList>>() {
         Ok(vec) => Ok(vec),
         Err(_) => {
             let chunk = lua.load(&chunk_str);
-            match chunk.eval::<EnvList>() {
+            match chunk.eval::<LuaEnvList>() {
                 Ok(single) => Ok(vec![single]),
                 Err(e) => Err(e),
             }
         }
-    }
+    }?;
+
+    let lua_env: Vec<EnvList> = lua_env.iter().map(|env| env.list.clone()).collect();
+    Ok(lua_env)
 }
 
 #[cfg(test)]
@@ -143,7 +152,7 @@ return result",
         let res = eval(chunk_src).unwrap();
         assert_eq!(res.len(), 1);
 
-        let envlist = &res[0].list;
+        let envlist = &res[0];
         assert_eq!(envlist.len(), 3);
         assert_eq!(envlist.get("FREQ").unwrap(), &vec!["1000", "2000", "3000"]);
         assert_eq!(envlist.get("KERNELS").unwrap(), &vec!["add", "div", "mul"]);
@@ -160,11 +169,11 @@ return result",
         let res = eval(chunk_src).unwrap();
         assert_eq!(res.len(), 2);
 
-        let envlist = &res[0].list;
+        let envlist = &res[0];
         assert_eq!(envlist.len(), 1);
         assert_eq!(envlist.get("FREQ").unwrap(), &vec!["1000", "2000", "3000"]);
 
-        let envlist = &res[1].list;
+        let envlist = &res[1];
         assert_eq!(envlist.len(), 1);
         assert_eq!(envlist.get("FREQ").unwrap(), &vec!["1000", "2000", "3000"]);
     }
@@ -191,14 +200,14 @@ return result");
         let res = eval(chunk_str).unwrap();
         assert_eq!(res.len(), 2);
 
-        let envlist = &res[0].list;
+        let envlist = &res[0];
         assert_eq!(envlist.len(), 4);
         assert_eq!(envlist.get("FREQ").unwrap(), &vec!["1000", "2000", "3000"]);
         assert_eq!(envlist.get("KERNELS").unwrap(), &vec!["add", "div", "mul"]);
         assert_eq!(envlist.get("CPUS").unwrap(), &vec!["0,1", "0,1,2,3"]);
         assert_eq!(envlist.get("TURBO").unwrap(), &vec!["OFF",]);
 
-        let envlist = &res[1].list;
+        let envlist = &res[1];
         assert_eq!(envlist.len(), 4);
         assert_eq!(envlist.get("FREQ").unwrap(), &vec!["3000"]);
         assert_eq!(envlist.get("KERNELS").unwrap(), &vec!["add", "div", "mul"]);
