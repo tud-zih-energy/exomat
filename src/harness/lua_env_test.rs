@@ -45,12 +45,11 @@ impl UserData for EnvList {
     // addition
     fn add_methods<M: UserDataMethods<Self>>(methods: &mut M) {
         methods.add_meta_function(MetaMethod::Add, |_, (lhs, rhs): (EnvList, EnvList)| {
-            assert_eq!(
-                lhs.list.keys().sorted().collect_vec(),
-                rhs.list.keys().sorted().collect_vec()
-            );
-
-            Ok(vec![lhs.clone(), rhs.clone()])
+            if lhs.list.keys().sorted().collect_vec() != rhs.list.keys().sorted().collect_vec() {
+                Err(LuaError::external("Key missmatch"))
+            } else {
+                Ok(vec![lhs.clone(), rhs.clone()])
+            }
         });
     }
 }
@@ -107,9 +106,10 @@ fn evaluate_env_lua(chunk_str: String) -> LuaResult<Vec<EnvList>> {
     })?;
     globals.set("cross", cross_prod)?;
 
+    // (3) load and evaluate
+    // Try to evaluate as Vec<EnvList>, if value is no table: fallback to EnvList
     let chunk = lua.load(&chunk_str);
 
-    // Try to evaluate as Vec<EnvList>, if value is no table: fallback to EnvList
     match chunk.eval::<Vec<EnvList>>() {
         Ok(vec) => Ok(vec),
         Err(_) => {
@@ -134,7 +134,8 @@ mod tests {
 
     #[test]
     fn lua_cross() {
-        let chunk_src = String::from("freqs = from_list(\"FREQ\", {1000, 2000, 3000})
+        let chunk_src = String::from(
+            "freqs = from_list(\"FREQ\", {1000, 2000, 3000})
 kernels = from_output(\"KERNELS\", \"add\\nmul\\ndiv\")
 cpus = from_list(\"CPUS\", {\"0,1\", \"0,1,2,3\"})
 result = cross({freqs, cpus, kernels})
@@ -152,7 +153,8 @@ return result",
 
     #[test]
     fn lua_union() {
-        let chunk_src = String::from("freqs = from_list(\"FREQ\", {1000, 2000, 3000})
+        let chunk_src = String::from(
+            "freqs = from_list(\"FREQ\", {1000, 2000, 3000})
 result = freqs + freqs
 return result",
         );
@@ -170,7 +172,8 @@ return result",
 
     #[test]
     fn lua_union_key_missmatch() {
-        let chunk_src = String::from("freqs = from_list(\"FREQ\", {1000, 2000, 3000})
+        let chunk_src = String::from(
+            "freqs = from_list(\"FREQ\", {1000, 2000, 3000})
 kernels = from_output(\"KERNELS\", \"add\\nmul\\ndiv\")
 result = freqs + kernels
 return result",
