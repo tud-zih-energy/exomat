@@ -398,18 +398,20 @@ pub fn main(
     let exp_source = find_marker_pwd(crate::MARKER_SRC)?;
     let env_path = exp_source.join(crate::SRC_ENV_DIR);
 
-    if let Some(lua_file) = lua {
-        // TODO
-        // let envlist = lua::eval(std::fs::read_to_string(&lua_file)?);
-    }
-
     let to_add = to_env_list(&to_add).unwrap_or(HashMap::new());
     let to_append = to_env_list(&to_append).unwrap_or(HashMap::new());
     let to_remove = to_env_list(&to_remove).unwrap_or(HashMap::new());
 
-    match to_add.is_empty() && to_append.is_empty() && to_remove.is_empty() {
-        true => print_all_environments(env_path),
-        false => generate_environments(env_path, to_add, to_append, to_remove),
+    match lua {
+        Some(l) => {
+            let lua_vec = lua::eval(std::fs::read_to_string(&l)?).unwrap();
+            println!("lua produced: {:?}", lua_vec);
+            Ok(())
+        }
+        None => match to_add.is_empty() && to_append.is_empty() && to_remove.is_empty() {
+            true => print_all_environments(env_path),
+            false => generate_environments(env_path, to_add, to_append, to_remove),
+        },
     }
 }
 

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::harness::env::EnvList;
 use crate::helper::errors::{Error, Result};
 
 /// Represents one environment file
@@ -117,7 +118,7 @@ impl Environment {
     }
 
     /// Returns a map with the env values in a vector
-    pub fn to_env_list(&self) -> HashMap<String, Vec<String>> {
+    pub fn to_env_list(&self) -> EnvList {
         self.envs
             .iter()
             .map(|(k, v)| (k.clone(), vec![v.clone()]))
