@@ -104,6 +104,23 @@ pub enum Commands {
         /// > The order of these files does not necessarily represent reality
         #[arg(short = 'r', long, num_args = 1..)]
         remove: Vec<Vec<String>>,
+
+        /// Parses Environments from a lua file.
+        ///
+        /// A valid lua file might look like this:
+        /// ```lua
+        /// freqs = from_list("FREQ", {1000, 2000})
+        /// kernels = from_output("KERNELS", "add\nmul")
+        /// cpus = from_list("CPUS", {"0,1", "0,1,2,3"})
+        ///
+        /// result = cross({freqs, cpus, kernels, from_list("TURBO", {"OFF"})}) + cross({from_list("FREQ", {3000}), cpus, kernels, from_list("TURBO", {"ON"})})
+        /// return result
+        /// ```
+        /// This would result in env files for every combination of `["FREQ": 1000, 2000; "KERNELS": "add", "mul"; "CPUS": "0,1", "0,1,2,3", "TURBO": "OFF"]`
+        /// and every combination of `["FREQ": 3000; "KERNELS": "add", "mul"; "CPUS": "0,1", "0,1,2,3", "TURBO": "ON"]`
+        ///
+        #[arg(short = 'l', long)]
+        lua: Option<PathBuf>,
     },
 
     /// Execute an experiment from an experiment directory

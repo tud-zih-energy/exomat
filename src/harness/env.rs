@@ -393,9 +393,15 @@ pub fn main(
     to_add: Vec<Vec<String>>,
     to_append: Vec<Vec<String>>,
     to_remove: Vec<Vec<String>>,
+    lua: Option<PathBuf>,
 ) -> Result<()> {
     let exp_source = find_marker_pwd(crate::MARKER_SRC)?;
     let env_path = exp_source.join(crate::SRC_ENV_DIR);
+
+    if let Some(lua_file) = lua {
+        // TODO
+        // let envlist = lua::eval(std::fs::read_to_string(&lua_file)?);
+    }
 
     let to_add = to_env_list(&to_add).unwrap_or(HashMap::new());
     let to_append = to_env_list(&to_append).unwrap_or(HashMap::new());
@@ -580,7 +586,7 @@ mod tests {
             let to_remove = vec![vec!["VAR".to_string(), "FOO".to_string()]];
 
             // check that no error occurs
-            main( to_add, to_append, to_remove).unwrap()
+            main( to_add, to_append, to_remove, None).unwrap()
         }
 
         #[test]
