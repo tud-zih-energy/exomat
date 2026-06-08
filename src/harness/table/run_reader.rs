@@ -18,7 +18,7 @@ pub struct RunReader {
 
 impl RunReader {
     /// Immutable iteration
-    pub fn iter(&self) -> RunReaderIter {
+    pub fn iter<'a>(&'a self) -> RunReaderIter<'a> {
         RunReaderIter {
             run_reader: self,
             index: 0,
