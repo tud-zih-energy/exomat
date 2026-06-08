@@ -1,3 +1,7 @@
+#![doc=include_str!("../README.md")]
+#![doc=include_str!("../docs/glossary.md")]
+#![doc=include_str!("../docs/control_flow.md")]
+
 pub mod harness {
     pub mod env;
     pub mod run;
