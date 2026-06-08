@@ -28,7 +28,8 @@ fn main() -> ExitCode {
             add,
             append,
             remove,
-        } => exomat::harness::env::main(add, append, remove),
+            lua,
+        } => exomat::harness::env::main(add, append, remove, lua),
         Commands::MakeTable {} => exomat::harness::table::main(),
         Commands::Completion { shell } => bin::completion::main(shell),
     };
