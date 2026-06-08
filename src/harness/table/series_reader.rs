@@ -19,7 +19,7 @@ pub struct SeriesReader {
 
 impl SeriesReader {
     /// Immutable iteration
-    pub fn iter(&self) -> SeriesReaderIter {
+    pub fn iter<'a>(&'a self) -> SeriesReaderIter<'a> {
         SeriesReaderIter {
             series_reader: self,
             index: 0,
@@ -717,7 +717,6 @@ mod tests {
         assert!(runs.contains(&RunReader::from_out_list_unchecked(&expected0)));
         assert!(runs.contains(&RunReader::from_out_list_unchecked(&expected1)));
     }
-
 
     #[rstest]
     fn seriesreader_invalid_trial(filled_series_run_na: TempDir) {
