@@ -86,6 +86,7 @@ This experiment run contains the `Observation`s:
 
 ## Environments
 If a function contains one of the following words, this is what you can expect:
+
 name                    | meaning                                         | possible use
 ------------------------|-------------------------------------------------|---------------------
 `env`                   | A single `NAME=value` pair                      |
