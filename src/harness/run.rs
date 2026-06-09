@@ -4,7 +4,6 @@ use chrono::Local;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{error, info, trace, warn};
 use rand::seq::SliceRandom;
-use std::collections::HashMap;
 use std::{
     fs::OpenOptions,
     io::Read,
@@ -16,6 +15,7 @@ use strip_ansi::strip_ansi;
 
 use super::env::{fetch_environment_files, Environment, ExomatEnvironment};
 use super::skeleton::{build_run_directory, build_series_directory};
+use crate::experiment::{ExperimentSeries, FileReader};
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
 
@@ -82,75 +82,13 @@ pub fn trial(experiment: &PathBuf, log_progress_handler: MultiProgress) -> Resul
     spdlog::default_logger().flush();
 
     // gather results
-    let stdout =
-        std::fs::read_to_string(trial_dir_path.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG))?;
-    let stderr =
-        std::fs::read_to_string(trial_dir_path.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG))?;
-    let exomat =
-        std::fs::read_to_string(trial_dir_path.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG))?;
-    let out_files = collect_output(&trial_dir_path)?;
-
-    let eval_res = create_report(&exp_name, &res, &stdout, &stderr, &out_files, &exomat);
-    print!("{eval_res}");
+    let reader = ExperimentSeries::parse(&trial_dir_path)?;
+    assert!(reader.is_valid_trial());
+    reader.print_report(&exp_name, &res);
 
     res
 }
 
-/// Filters all "out_$NAME" files from the given experiment series directory. Then creates
-/// a map with each out_$NAME becomming a key and the content of this file becomming the associated value.
-///
-/// Uses `crate::harness::table::collect_output()`, but does not include any environment variables.
-///
-/// ## Errors and Panics
-/// - Panics if there is more than one run/repetition in the series directory
-///
-/// The content of `out_$NAME` files is not validated or checked in any way, if you put
-/// weird content in them, you will get weird output.
-fn collect_output(dir: &PathBuf) -> Result<HashMap<String, Vec<String>>> {
-    let mut output = HashMap::<String, Vec<String>>::new();
-    let prefix = "out_";
-    let reps = crate::harness::table::find_all_run_repetitions(&dir.join(SERIES_RUNS_DIR));
-
-    if reps.len() == 1 {
-        for entry in reps[0].read_dir().expect("Could not read dir") {
-            let entry = entry.expect("Entry not readable");
-            if entry
-                .metadata()
-                .expect("Metadata of entry not readable")
-                .is_file()
-            {
-                let file_name = entry
-                    .file_name()
-                    .into_string()
-                    .expect("Could not determine filename of entry");
-
-                if file_name.starts_with(prefix) {
-                    // found an out_* file, so read and add to map
-                    let file_content =
-                        std::fs::read_to_string(entry.path()).expect("Could not read out file");
-
-                    output.insert(
-                        file_name,
-                        file_content
-                            .trim()
-                            .split('\n')
-                            .map(|line| line.to_string())
-                            .collect(),
-                    );
-                }
-            }
-        }
-        Ok(output)
-    } else if reps.len() < 1 {
-        // return empty map
-        Ok(output)
-    } else {
-        Err(Error::HarnessRunError {
-            experiment: dir.display().to_string(),
-            err: format!("Too many runs executed in a trial."),
-        })
-    }
-}
 /// Runs the experiment defined in `exp_source_dir` `repetitions` times for each
 /// environment.
 ///
@@ -355,104 +293,6 @@ fn log_run_result(
     Ok(())
 }
 
-/// Creates a ready-to-print String based on the given parameters.
-///
-/// ## Example
-/// Given the values:
-/// - `exp_name = Foo`
-/// - `run = Ok(_)`
-/// - `stdout = "normal output"`
-/// - `stderr = ""`
-/// - `out_files = {"out_foo": "some content". "out_bar": "42"}`
-/// - `exomat = "[info] ..."`
-///
-/// ```bash
-/// [Foo] exomat:
-/// [info] ...
-/// ---
-/// [Foo] stdout:
-/// normal output
-/// ---
-/// [Foo] stderr:
-///
-/// ---
-/// [Foo] out_foo:
-/// some content
-///
-/// [Foo] out_bar:
-/// 42
-///
-/// ---
-/// [Foo] returned:
-/// Successful
-/// ```
-///
-/// An extra "\n" will be added to `stdout`, `stderr` and `exomat`.
-///
-/// If `run = Err(e)`, the last lines will be:
-/// ```bash
-/// [Foo] returned:
-/// Failed (reason: e)
-/// ```
-fn create_report<T>(
-    exp_name: &str,
-    run: &Result<T>,
-    stdout: &str,
-    stderr: &str,
-    out_files: &HashMap<String, Vec<String>>,
-    exomat: &str,
-) -> String {
-    let mut eval_str = String::new();
-
-    // append exomat
-    eval_str.push_str(&format!("[{exp_name}] exomat:\n"));
-    eval_str.push_str(exomat);
-    eval_str.push_str("\n---\n");
-
-    // append stdout
-    eval_str.push_str(&format!("[{exp_name}] stdout:\n"));
-    eval_str.push_str(stdout);
-    eval_str.push_str("\n---\n");
-
-    // append stderr
-    eval_str.push_str(&format!("[{exp_name}] stderr:\n"));
-    eval_str.push_str(stderr);
-    eval_str.push_str("\n---\n");
-
-    // append out file content
-    if out_files.is_empty() {
-        eval_str.push_str("[{exp_name}] created no output files\n")
-    } else {
-        for (out_file, content) in out_files.iter() {
-            if content.len() > 5 {
-                // truncate after 5 lines
-                let size = content.len() - 5;
-                let (cut_content, _) = content.split_at(5);
-
-                eval_str.push_str(&format!(
-                    "[{exp_name}] {out_file}: {cut_content:?} (...{size} more items)\n",
-                ));
-            } else if content.len() == 1 {
-                // print without brackets if only 1 element
-                eval_str.push_str(&format!("[{exp_name}] {out_file}: \"{}\"\n", content[0]));
-            } else {
-                // print entire content if less than 5 lines
-                eval_str.push_str(&format!("[{exp_name}] {out_file}: {content:?}\n"));
-            }
-        }
-    }
-    eval_str.push_str("---\n");
-
-    // append overall success/failure report
-    eval_str.push_str(&format!("[{exp_name}] returned:\n"));
-    match run {
-        Ok(_) => eval_str.push_str("Successful\n"),
-        Err(e) => eval_str.push_str(&format!("Failed (reason: {e})\n")),
-    }
-
-    eval_str
-}
-
 #[cfg(test)]
 mod tests {
     use rusty_fork::rusty_fork_test;
@@ -464,11 +304,7 @@ mod tests {
     };
     use super::*;
     use crate::harness::env::ExomatEnvironment;
-    use crate::helper::test_fixtures::{
-        filled_series_run_na, skeleton_series_run, skeleton_series_run_full, skeleton_src,
-    };
     use crate::helper::test_helper::{create_file_at, place_filled_run_in, read_log};
-    use rstest::rstest;
 
     rusty_fork_test! {
         #[test]
@@ -571,42 +407,5 @@ mod tests {
             // no error
             trial(&PathBuf::from(exp_name), MultiProgress::new()).unwrap();
         }
-    }
-
-    #[rstest]
-    fn collect_out_no_files(skeleton_src: TempDir) {
-        // collect on dir without out_* files
-        std::fs::File::create(skeleton_src.path().join("random_file")).unwrap();
-        std::fs::File::create(skeleton_src.path().join("contains_out_in_middle.txt")).unwrap();
-
-        let res = collect_output(&skeleton_src.path().to_path_buf()).unwrap();
-        assert!(res.is_empty());
-    }
-
-    #[rstest]
-    fn collect_out_empty(skeleton_series_run: TempDir) {
-        // collect on dir with out_* file, without content
-        let res = collect_output(&skeleton_series_run.path().to_path_buf()).unwrap();
-        assert_eq!(res.len(), 1);
-        assert_eq!(res.get("out_empty").unwrap(), &vec![String::new()]);
-    }
-
-    #[rstest]
-    fn collect_out_working(skeleton_series_run_full: TempDir) {
-        // collect on dir with out_* files, with content
-        let res = collect_output(&skeleton_series_run_full.path().to_path_buf()).unwrap();
-        assert_eq!(res.len(), 3);
-        assert_eq!(res.get("out_empty").unwrap(), &vec![String::new()]);
-        assert_eq!(res.get("out_full").unwrap(), &vec!["foo bar".to_string()]);
-        assert_eq!(
-            res.get("out_multi").unwrap(),
-            &vec!["foo".to_string(), "bar".to_string()]
-        );
-    }
-
-    #[rstest]
-    fn collect_out_too_many_runs(filled_series_run_na: TempDir) {
-        // collect on dir with out_* files from multiple runs
-        assert!(collect_output(&filled_series_run_na.path().to_path_buf()).is_err());
     }
 }

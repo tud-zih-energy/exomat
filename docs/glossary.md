@@ -29,14 +29,16 @@
        |    |-> .exomat_run
        |    |-> run.sh
        |    |-> environment.env
-       |    |-> my_special_output_file.txt
+       |    | # experiment output / out_ file
+       |    |-> out_put.txt
        |    \-> [...]
        |   # experiment run folder
        |-> run_[env_name]_rep[repetition2]
        |    |-> .exomat_run
        |    |-> run.sh
        |    |-> environment.env
-       |    |-> my_special_output_file.txt
+       |    | # experiment output / out_ file
+       |    |-> out_put.txt
        |    \-> [...]
        |   # experiment run folder
        |-> run_[...]
@@ -44,6 +46,24 @@
        |-> stderr.log
        \-> exomat.log
 ```
+---
+Inside of an out_ file, there can be multiple `Observations`.
+For example, given the following out_ files inside of an experiment run:
+```bash
+# run[...]/out_duration
+0
+1
+2
+3
+
+# run[...]/out_value
+42
+69
+420
+67
+```
+This experiment run contains the Observations:
+`[0, 42], [1,69], [2,420], [3,67]`
 
 ## Environments
 If a function contains one of the following words, this is what you can expect:
@@ -70,9 +90,14 @@ name                 | module | description
 Environment          | env    | Content of one `.env`-file
 EnvironmentContainer | env    | List of `.env`-files
 ExomatEnvironment    | env    | List of Exomat-internal environment variables
+SeriesReader         | table  | Internal representation of an Experiment Series
+RunReader            | table  | Internal representation of an Experiment Run
 
 ### Type Definitions
 name                    | module | alias                           | description
 ------------------------|--------|---------------------------------|--------------
+Result                  | error  | `Result<T, Error>`              | Exomat return type
+OutList                 | table  | `HashMap<String, Vec<String>>`  | Maps out_ file names to their content
+Observation             | table  | `HashMap<String, String>`       | One row of values across all out_ files in an Experiment Run
 EnvList                 | env    | `HashMap<String, Vec<String>>`  | Lists all possible `values` for each `NAME` (see `env_list`)
 EnvironmentLocationList | env    | `HashMap<PathBuf, Environment>` | Maps File Paths to Environments

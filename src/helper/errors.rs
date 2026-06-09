@@ -34,6 +34,10 @@ pub enum Error {
     #[error("Cannot generate autocompletion file: {err}")]
     CompletionError { err: String },
 
+    /// Occurs when the SeariesReader or RunReader produce an error
+    #[error("Cannot read {dir}: {reason:?}")]
+    ReaderError { dir: String, reason: String },
+
     /// error from whitin dotenvy
     #[error("Error during environment file handling: {0}")]
     DotenvyError(#[from] dotenvy::Error),
@@ -44,4 +48,8 @@ pub enum Error {
     /// Something was empty that shouldn't be empty
     #[error("Value missing/empty, but must be given: {0}")]
     Empty(String),
+
+    /// Index out of range
+    #[error("Index out of range: index is {index} but limit is {limit}")]
+    IndexOutOfRange { index: usize, limit: usize },
 }
