@@ -1,11 +1,10 @@
 use super::experiment_run::ExperimentRun;
 use super::{CsvWriter, FileReader};
-use crate::experiment::out_file::OutList;
+use crate::experiment::out_file::{OutFile, OutList};
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
 
 use csv::Writer;
-use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::path::{Path, PathBuf};
 
@@ -38,7 +37,7 @@ impl ExperimentSeries {
             .runs
             .iter()
             .filter_map(|run| run.get_out_files().as_ref())
-            .flat_map(|out| out.keys().map(|k| k.as_str()))
+            .flat_map(|outlist| outlist.iter().map(|outfile| outfile.var_name().as_str()))
             .collect();
 
         // remove duplicate keys
@@ -104,23 +103,8 @@ impl ExperimentSeries {
             eval_str.push_str("[{exp_name}] created no output files\n")
         } else {
             if let Some(outfiles) = self.get_runs()[0].get_out_files() {
-                for (out_file, content) in outfiles {
-                    if content.len() > 5 {
-                        // truncate after 5 lines
-                        let size = content.len() - 5;
-                        let (cut_content, _) = content.split_at(5);
-
-                        eval_str.push_str(&format!(
-                            "[{exp_name}] {out_file}: {cut_content:?} (...{size} more items)\n",
-                        ));
-                    } else if content.len() == 1 {
-                        // print without brackets if only 1 element
-                        eval_str
-                            .push_str(&format!("[{exp_name}] {out_file}: \"{}\"\n", content[0]));
-                    } else {
-                        // print entire content if less than 5 lines
-                        eval_str.push_str(&format!("[{exp_name}] {out_file}: {content:?}\n"));
-                    }
+                for out_file in outfiles.to_vec() {
+                    eval_str.push_str(&format!("[{exp_name}] {out_file}\n"));
                 }
             } else {
                 eval_str.push_str("[{exp_name}] error reading output files\n")
@@ -162,10 +146,10 @@ impl ExperimentSeries {
             for key in &keys {
                 if run.get_var(key).is_none() {
                     let mut new_run = match &run.get_out_files() {
-                        None => HashMap::new(),
+                        None => OutList::default(),
                         Some(r) => r.clone(),
                     };
-                    new_run.insert(key.clone(), vec!["NA".to_string()]);
+                    new_run.push(OutFile::from(key, vec!["NA".to_string()]));
 
                     run.replace_out_files_unchecked(Some(new_run));
                 }
@@ -194,12 +178,12 @@ impl ExperimentSeries {
     /// ```
     fn to_csv_rows(&self) -> Vec<Vec<String>> {
         // collect all rows as HashMap
-        let mut rows: OutList = HashMap::new();
+        let mut rows = OutList::default();
         for run in &self.runs {
             if let Some(out) = &run.get_out_files() {
-                rows.extend(out.clone())
+                rows.extend_list(out)
             } else {
-                rows.extend(HashMap::new())
+                rows.extend(Vec::new())
             }
         }
 
@@ -208,15 +192,24 @@ impl ExperimentSeries {
             vec![self.keys().iter().map(|k| k.to_string()).collect()];
 
         // turn all data into one list
-        let val_len = rows.values().map(|v| v.len()).max().unwrap_or(0);
+        let val_len = rows.iter().map(|out| out.value_count()).max().unwrap_or(0);
 
         for i in 0..val_len {
             // (one entry = every ith element of each key)
             let mut row: Vec<String> = Vec::new();
 
             for key in self.keys() {
-                let value = rows.get(key).unwrap();
-                row.push(value.get(i).cloned().unwrap_or_else(|| String::new()));
+                let outfile = rows
+                    .iter()
+                    .find(|outfile| outfile.var_name() == key)
+                    .expect(&format!("No outfile with name \"{}\" found", key));
+                row.push(
+                    outfile
+                        .values()
+                        .get(i)
+                        .cloned()
+                        .unwrap_or_else(|| String::new()),
+                );
             }
 
             rows_vec.push(row);
@@ -713,17 +706,19 @@ mod tests {
         let runs = reader.get_runs();
 
         let expected0 = OutList::from(vec![
-            OutFile::from("empty", vec![String::from("NA")]),
             OutFile::from("some", vec![String::from("bar")]),
+            OutFile::from("empty", vec![String::from("NA")]),
             OutFile::from("empty.txt", vec![String::from("NA")]),
         ])
         .unwrap();
         let expected1 = OutList::from(vec![
-            OutFile::from("empty", vec![String::from("")]),
             OutFile::from("some", vec![String::from("foo")]),
             OutFile::from("empty.txt", vec![String::from("")]),
+            OutFile::from("empty", vec![String::from("")]),
         ])
         .unwrap();
+
+        print!("{reader:#?}");
 
         assert_eq!(reader.run_count(), 2);
         assert!(runs.contains(&ExperimentRun::from_out_list_unchecked(&expected0)));
