@@ -15,7 +15,7 @@ use strip_ansi::strip_ansi;
 
 use super::env::{fetch_environment_files, Environment, ExomatEnvironment};
 use super::skeleton::{build_run_directory, build_series_directory};
-use crate::experiment::ExperimentSeries;
+use crate::experiment::{ExperimentSeries, FileReader};
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
 

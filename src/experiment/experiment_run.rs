@@ -1,3 +1,4 @@
+use super::experiment_traits::FileReader;
 use crate::experiment::out_file::{Observation, OutList};
 use crate::harness::env::Environment;
 use crate::helper::archivist::find_all_files;
@@ -18,8 +19,8 @@ pub struct ExperimentRun {
 
 impl ExperimentRun {
     /// Immutable iteration
-    pub fn iter<'a>(&'a self) -> RunReaderIter<'a> {
-        RunReaderIter {
+    pub fn iter<'a>(&'a self) -> ExperimentRunIter<'a> {
+        ExperimentRunIter {
             run_reader: self,
             index: 0,
         }
@@ -46,108 +47,6 @@ impl ExperimentRun {
     /// The content of `new_out` is not checked in any way.
     pub fn replace_out_files_unchecked(&mut self, new_out: Option<OutList>) {
         self.out_files = new_out
-    }
-
-    /// Parses an Experiment Run into a RunReader object.
-    ///
-    /// Will balance out missing values, if possible, so that the number of values
-    /// is even across all out_ files.
-    ///
-    /// The content of out_ files is not validated or checked in any way, if you put
-    /// weird content in them, you will get weird output.
-    ///
-    /// ### Warnings, Errors and Panics
-    /// What you will be **warn**ed about:
-    /// - no env file at run/[RUN_ENV_FILE]
-    /// - an out_ file shadows an env var
-    ///
-    /// What will cause an **Error**:
-    /// - invalid out_ file names
-    /// - unbalanced multiline out_ files
-    ///
-    /// This function my **Panic** if reading/writing failed.
-    pub fn parse(run: &PathBuf) -> Result<Self> {
-        // read env file
-        let env = Environment::from_file(&run.join(RUN_ENV_FILE)).unwrap_or_else(|_| {
-            warn!("No environment found in run {}", run.display());
-            Environment::new()
-        });
-
-        // read out files
-        let mut out: OutList = HashMap::new();
-        let prefix = "out_";
-        let contained_files = find_all_files(&run)?;
-        for file in contained_files.iter().filter_map(|file| {
-            file.file_name()
-                .and_then(|name| name.to_str())
-                .filter(|name| name.starts_with(prefix))
-                .map(|_| file)
-        }) {
-            // parse variable name from out file
-            let var_name = file_name_string(file)
-                .strip_prefix(prefix)
-                .unwrap()
-                .to_string();
-            if var_name.is_empty() {
-                return Err(Error::Empty(
-                    "variable name (prefix out_ alone is not permitted)".to_string(),
-                ));
-            }
-
-            // warn if out file shadows env var
-            if env.contains_env_var(&var_name) {
-                warn!(
-                    "in {}: out_{var_name} shadows input environment variable ${var_name}",
-                    run.display()
-                );
-            }
-
-            // read content
-            let new_val = read_to_string(file)?
-                .trim()
-                .split("\n")
-                .map(|v| v.to_string())
-                .collect();
-
-            if out.contains_key(&var_name) {
-                let val = out
-                    .get_mut(&var_name)
-                    .expect("Could not update output list");
-                val.extend(new_val);
-            } else {
-                out.insert(var_name, new_val);
-            }
-        }
-
-        // balance values
-        let out_balanced = match out.is_empty() {
-            true => None,
-            false => {
-                let max_length = out.values().map(|value| value.len()).max().unwrap_or(1);
-
-                // for each variable
-                for (var, vals) in out.iter_mut() {
-                    if vals.len() == 1 && max_length > 1 {
-                        // Cannot use Vec::repeat() here, because String does not implement the Copy Trait >:(
-                        let to_extend = max_length - vals.len();
-                        vals.extend(vec![vals[0].clone(); to_extend]);
-
-                        // We got multiple values for var, check if it has the same number of rows as the
-                        // other columns
-                    } else if vals.len() != max_length {
-                        return Err(Error::EnvError {
-                                        reason: format!("Mismatched number of values for {var} {}, other value in {} has {max_length}", vals.len(), run.display())});
-                    }
-                }
-
-                Some(out)
-            }
-        };
-
-        Ok(ExperimentRun {
-            env: env,
-            out_files: out_balanced,
-        })
     }
 
     /// Generates a RunReader from `envlist`.
@@ -195,17 +94,124 @@ impl ExperimentRun {
     }
 }
 
+// ========================== Reader ==========================
+impl FileReader for ExperimentRun {
+    type Item = ExperimentRun;
+
+    /// Parses an Experiment Run into a RunReader object.
+    ///
+    /// Will balance out missing values, if possible, so that the number of values
+    /// is even across all out_ files.
+    ///
+    /// The content of out_ files is not validated or checked in any way, if you put
+    /// weird content in them, you will get weird output.
+    ///
+    /// ### Warnings, Errors and Panics
+    /// What you will be **warn**ed about:
+    /// - no env file at run/[RUN_ENV_FILE]
+    /// - an out_ file shadows an env var
+    ///
+    /// What will cause an **Error**:
+    /// - invalid out_ file names
+    /// - unbalanced multiline out_ files
+    ///
+    /// This function my **Panic** if reading/writing failed.
+    fn parse(dir: &PathBuf) -> Result<Self::Item> {
+        // read env file
+        let env = Environment::from_file(&dir.join(RUN_ENV_FILE)).unwrap_or_else(|_| {
+            warn!("No environment found in run {}", dir.display());
+            Environment::new()
+        });
+
+        // read out files
+        let mut out: OutList = HashMap::new();
+        let prefix = "out_";
+        let contained_files = find_all_files(&dir)?;
+        for file in contained_files.iter().filter_map(|file| {
+            file.file_name()
+                .and_then(|name| name.to_str())
+                .filter(|name| name.starts_with(prefix))
+                .map(|_| file)
+        }) {
+            // parse variable name from out file
+            let var_name = file_name_string(file)
+                .strip_prefix(prefix)
+                .unwrap()
+                .to_string();
+            if var_name.is_empty() {
+                return Err(Error::Empty(
+                    "variable name (prefix out_ alone is not permitted)".to_string(),
+                ));
+            }
+
+            // warn if out file shadows env var
+            if env.contains_env_var(&var_name) {
+                warn!(
+                    "in {}: out_{var_name} shadows input environment variable ${var_name}",
+                    dir.display()
+                );
+            }
+
+            // read content
+            let new_val = read_to_string(file)?
+                .trim()
+                .split("\n")
+                .map(|v| v.to_string())
+                .collect();
+
+            if out.contains_key(&var_name) {
+                let val = out
+                    .get_mut(&var_name)
+                    .expect("Could not update output list");
+                val.extend(new_val);
+            } else {
+                out.insert(var_name, new_val);
+            }
+        }
+
+        // balance values
+        let out_balanced = match out.is_empty() {
+            true => None,
+            false => {
+                let max_length = out.values().map(|value| value.len()).max().unwrap_or(1);
+
+                // for each variable
+                for (var, vals) in out.iter_mut() {
+                    if vals.len() == 1 && max_length > 1 {
+                        // Cannot use Vec::repeat() here, because String does not implement the Copy Trait >:(
+                        let to_extend = max_length - vals.len();
+                        vals.extend(vec![vals[0].clone(); to_extend]);
+
+                        // We got multiple values for var, check if it has the same number of rows as the
+                        // other columns
+                    } else if vals.len() != max_length {
+                        return Err(Error::EnvError {
+                                        reason: format!("Mismatched number of values for {var} {}, other value in {} has {max_length}", vals.len(), dir.display())});
+                    }
+                }
+
+                Some(out)
+            }
+        };
+
+        Ok(ExperimentRun {
+            env: env,
+            out_files: out_balanced,
+        })
+    }
+}
+
 // ========================== Iterator ==========================
 /// Iterator for RunReader
 ///
 /// Iterates over the Observations in an EXperiment Run.
 #[derive(Debug)]
-pub struct RunReaderIter<'a> {
+pub struct ExperimentRunIter<'a> {
     run_reader: &'a ExperimentRun,
     index: usize,
 }
 
-impl<'a> Iterator for RunReaderIter<'a> {
+impl<'a> Iterator for ExperimentRunIter<'a> {
     type Item = Observation;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -220,7 +226,7 @@ impl<'a> Iterator for RunReaderIter<'a> {
 }
 impl<'a> IntoIterator for &'a ExperimentRun {
     type Item = Observation;
-    type IntoIter = RunReaderIter<'a>;
+    type IntoIter = ExperimentRunIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()

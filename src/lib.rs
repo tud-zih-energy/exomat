@@ -9,10 +9,12 @@ pub mod experiment {
     pub mod experiment_run;
     pub mod experiment_series;
     pub mod experiment_source;
+    pub mod experiment_traits;
     pub mod out_file;
 
     pub use experiment_run::ExperimentRun;
     pub use experiment_series::ExperimentSeries;
+    pub use experiment_traits::*;
 }
 pub mod helper {
     pub mod archivist;
