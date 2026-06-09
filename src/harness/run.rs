@@ -299,10 +299,9 @@ mod tests {
     use std::path::PathBuf;
     use tempfile::TempDir;
 
-    use super::super::skeleton::{
-        build_run_directory, build_series_directory, create_source_directory,
-    };
+    use super::super::skeleton::{build_run_directory, build_series_directory};
     use super::*;
+    use crate::experiment::{ExperimentSource, FileWriter};
     use crate::harness::env::ExomatEnvironment;
     use crate::helper::test_helper::{create_file_at, place_filled_run_in, read_log};
 
@@ -317,7 +316,9 @@ mod tests {
             let exp_source = TempDir::new_in(tmpdir.path()).unwrap();
             let exp_source = exp_source.path().to_path_buf();
             std::env::set_current_dir(&exp_source).unwrap();
-            create_source_directory(&exp_source).unwrap();
+
+            let src = ExperimentSource::new();
+            src.persist(&exp_source).unwrap();
 
             // write something in run.sh
             place_filled_run_in(&exp_source, "EXP_SRC_DIR");

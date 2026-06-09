@@ -11,7 +11,7 @@ use super::{
 use crate::helper::errors::{Error, Result};
 
 /// List of multiple env files
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EnvironmentContainer {
     environment_list: Vec<Environment>,
 }

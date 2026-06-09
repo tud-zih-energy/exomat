@@ -14,6 +14,7 @@ pub mod experiment {
 
     pub use experiment_run::ExperimentRun;
     pub use experiment_series::ExperimentSeries;
+    pub use experiment_source::ExperimentSource;
     pub use experiment_traits::*;
 }
 pub mod helper {
