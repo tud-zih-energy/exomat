@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use crate::helper::errors::Result;
 use crate::helper::fs_names::*;
 
-use crate::experiment::{ExperimentSeries, FileReader};
+use crate::experiment::{CsvWriter, ExperimentSeries, FileReader};
 
 /// Entrypoint for table binary
 ///

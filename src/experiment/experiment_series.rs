@@ -1,5 +1,5 @@
 use super::experiment_run::ExperimentRun;
-use super::experiment_traits::FileReader;
+use super::{CsvWriter, FileReader};
 use crate::experiment::out_file::OutList;
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
@@ -30,36 +30,6 @@ impl ExperimentSeries {
     /// Returns the list of Experiment Runs.
     pub fn get_runs(&self) -> &Vec<ExperimentRun> {
         &self.runs
-    }
-
-    /// Serializes it's content into `file`.
-    ///
-    /// If the no runs are found or all runs are empty, `file` will still be created.
-    ///
-    /// Uses the default CSV delimiter `,`. Any values containing it will be escaped using
-    /// `""`.
-    ///
-    /// ## Errors
-    /// - Returns a `CsvError` if something went wrong during the csv serialization
-    pub fn to_csv(&self, file: &PathBuf) -> Result<()> {
-        let mut wtr = Writer::from_path(file).map_err(|e| Error::CsvError {
-            reason: e.to_string(),
-        })?;
-
-        if !self.runs_are_empty() {
-            // turn self.runs into csv rows (contains header)
-            let content = self.to_csv_rows();
-
-            for row in content {
-                wtr.write_record(row).map_err(|e| Error::CsvError {
-                    reason: e.to_string(),
-                })?;
-            }
-        }
-
-        wtr.flush().map_err(|e| Error::CsvError {
-            reason: e.to_string(),
-        })
     }
 
     /// Returns a list of all keys present in the recorded RunReader in an arbitrary order.
@@ -348,8 +318,40 @@ impl FileReader for ExperimentSeries {
     }
 }
 
-// ========================== Iterator ==========================
+// ========================== Writer ==========================
+impl CsvWriter for ExperimentSeries {
+    /// Serializes it's content into `file`.
+    ///
+    /// If the no runs are found or all runs are empty, `file` will still be created.
+    ///
+    /// Uses the default CSV delimiter `,`. Any values containing it will be escaped using
+    /// `""`.
+    ///
+    /// ## Errors
+    /// - Returns a `CsvError` if something went wrong during the csv serialization
+    fn to_csv(&self, file: &PathBuf) -> Result<()> {
+        let mut wtr = Writer::from_path(file).map_err(|e| Error::CsvError {
+            reason: e.to_string(),
+        })?;
 
+        if !self.runs_are_empty() {
+            // turn self.runs into csv rows (contains header)
+            let content = self.to_csv_rows();
+
+            for row in content {
+                wtr.write_record(row).map_err(|e| Error::CsvError {
+                    reason: e.to_string(),
+                })?;
+            }
+        }
+
+        wtr.flush().map_err(|e| Error::CsvError {
+            reason: e.to_string(),
+        })
+    }
+}
+
+// ========================== Iterator ==========================
 pub struct SeriesReaderIter<'a> {
     series_reader: &'a ExperimentSeries,
     index: usize,
