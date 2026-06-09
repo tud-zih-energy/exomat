@@ -6,6 +6,7 @@ use super::{
     archivist::{create_harness_dir, create_harness_file},
     fs_names::*,
 };
+use crate::experiment::out_file::{OutFile, OutList};
 use crate::harness::env::{EnvList, Environment};
 
 /// generates an empty tempdir, that can be used as an empty Experiment Source Directory
@@ -222,6 +223,12 @@ pub fn envlist_1a() -> EnvList {
     HashMap::from([("1".to_string(), vec!["a".to_string()])])
 }
 
+/// generates an OutList with `1: ["a"]`
+#[fixture]
+pub fn outlist_1a() -> OutList {
+    OutList::from(vec![OutFile::from("1", vec!["a".to_string()])]).unwrap()
+}
+
 /// generates an EnvList with `2: ["b"]`
 #[fixture]
 pub fn envlist_2b() -> EnvList {
@@ -234,10 +241,22 @@ pub fn envlist_empty_string() -> EnvList {
     HashMap::from([("VAR".to_string(), vec!["".to_string()])])
 }
 
+/// generates an Outlist with `VAR: [""]`
+#[fixture]
+pub fn outlist_empty_string() -> OutList {
+    OutList::from(vec![OutFile::from("VAR", vec!["".to_string()])]).unwrap()
+}
+
 /// generates an EnvList with `VAR: []`
 #[fixture]
 pub fn envlist_one_var_no_val() -> EnvList {
     HashMap::from([("VAR".to_string(), vec![])])
+}
+
+/// generates an OutList with `VAR: []`
+#[fixture]
+pub fn outlist_one_var_no_val() -> OutList {
+    OutList::from(vec![OutFile::from("VAR", vec![])]).unwrap()
 }
 
 /// generates an EnvList with `VAR: ["VAL"]`
@@ -289,6 +308,16 @@ pub fn envlist_mixed_weird() -> EnvList {
         ),
         ("VAR2".to_string(), vec![String::new(), "a,b".to_string()]),
     ])
+}
+
+/// generates an OutList with `VAR1: ["VALUE", "baz"], VAR2: ["", "a,b"]`
+#[fixture]
+pub fn outlist_mixed_weird() -> OutList {
+    OutList::from(vec![
+        OutFile::from("VAR1", vec!["VALUE".to_string(), "baz".to_string()]),
+        OutFile::from("VAR2", vec![String::new(), "a,b".to_string()]),
+    ])
+    .unwrap()
 }
 
 /// generates a Vector with `[A, B]`

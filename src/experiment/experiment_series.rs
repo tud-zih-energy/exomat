@@ -432,9 +432,9 @@ mod tests {
     use super::*;
 
     use crate::helper::test_fixtures::{
-        envlist_1a, envlist_empty_string, envlist_mixed_weird, envlist_one_var_no_val,
-        filled_series_run_duplicate, filled_series_run_invalid, filled_series_run_na,
-        setup_series_dir, setup_series_empty_out, setup_series_no_out, skeleton_series_run,
+        filled_series_run_duplicate, filled_series_run_invalid, filled_series_run_na, outlist_1a,
+        outlist_empty_string, outlist_mixed_weird, outlist_one_var_no_val, setup_series_dir,
+        setup_series_empty_out, setup_series_no_out, skeleton_series_run,
         skeleton_series_run_empty, skeleton_src,
     };
     use crate::helper::test_helper::{contains_either, create_out_file};
@@ -503,7 +503,7 @@ mod tests {
     #[rstest]
     fn seriesreader_serialize_multiline(
         #[from(skeleton_src)] outdir: TempDir,
-        envlist_mixed_weird: OutList,
+        outlist_mixed_weird: OutList,
     ) {
         let outdir = outdir.path().to_path_buf();
         let out_file = outdir.join("2.csv");
@@ -511,7 +511,7 @@ mod tests {
         // not created yet
         assert!(!out_file.is_file());
 
-        let reader = ExperimentSeries::from_out_lists(vec![envlist_mixed_weird]);
+        let reader = ExperimentSeries::from_out_lists(vec![outlist_mixed_weird]);
         reader.to_csv(&out_file).unwrap();
 
         // with multiple keys and values the order of items after serialization is
@@ -523,13 +523,13 @@ mod tests {
     }
 
     #[rstest]
-    #[case(HashMap::new(), "")]
-    #[case(envlist_1a(), "1\na\n")]
-    #[case(envlist_one_var_no_val(), "VAR\n")]
-    #[case(envlist_empty_string(), "VAR\n\"\"\n")]
+    #[case(OutList::default(), "")]
+    #[case(outlist_1a(), "1\na\n")]
+    #[case(outlist_one_var_no_val(), "VAR\n")]
+    #[case(outlist_empty_string(), "VAR\n\"\"\n")]
     fn seriesreader_serialize_single(
         #[from(skeleton_src)] outdir: TempDir,
-        #[case] envlist: OutList,
+        #[case] outlist: OutList,
         #[case] expected: String,
     ) {
         let outdir = outdir.path().to_path_buf();
@@ -538,7 +538,7 @@ mod tests {
         // not created yet
         assert!(!out_file.is_file());
 
-        let reader = ExperimentSeries::from_out_lists(vec![envlist]);
+        let reader = ExperimentSeries::from_out_lists(vec![outlist]);
         reader.to_csv(&out_file).unwrap();
 
         assert_eq!(std::fs::read_to_string(out_file).unwrap(), expected);
@@ -584,8 +584,10 @@ mod tests {
         let reader = ExperimentSeries::parse(&series_dir).unwrap();
         let runs = reader.get_runs();
 
-        let expected0 = HashMap::from([(String::from("empty"), vec![String::from("")])]);
-        let expected1 = HashMap::from([(String::from("empty"), vec![String::from("NA")])]);
+        let expected0 =
+            OutList::from(vec![OutFile::from("empty", vec![String::from("")])]).unwrap();
+        let expected1 =
+            OutList::from(vec![OutFile::from("empty", vec![String::from("NA")])]).unwrap();
 
         assert_eq!(reader.run_count(), 2);
         assert!(runs.contains(&ExperimentRun::from_out_list_unchecked(&expected0)));
@@ -710,16 +712,18 @@ mod tests {
         let reader = ExperimentSeries::parse(&series_dir).unwrap();
         let runs = reader.get_runs();
 
-        let expected0 = HashMap::from([
-            (String::from("empty"), vec![String::from("NA")]),
-            (String::from("some"), vec![String::from("bar")]),
-            (String::from("empty.txt"), vec![String::from("NA")]),
-        ]);
-        let expected1 = HashMap::from([
-            (String::from("empty"), vec![String::from("")]),
-            (String::from("some"), vec![String::from("foo")]),
-            (String::from("empty.txt"), vec![String::from("")]),
-        ]);
+        let expected0 = OutList::from(vec![
+            OutFile::from("empty", vec![String::from("NA")]),
+            OutFile::from("some", vec![String::from("bar")]),
+            OutFile::from("empty.txt", vec![String::from("NA")]),
+        ])
+        .unwrap();
+        let expected1 = OutList::from(vec![
+            OutFile::from("empty", vec![String::from("")]),
+            OutFile::from("some", vec![String::from("foo")]),
+            OutFile::from("empty.txt", vec![String::from("")]),
+        ])
+        .unwrap();
 
         assert_eq!(reader.run_count(), 2);
         assert!(runs.contains(&ExperimentRun::from_out_list_unchecked(&expected0)));
