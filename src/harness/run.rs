@@ -15,7 +15,7 @@ use strip_ansi::strip_ansi;
 
 use super::env::{fetch_environment_files, Environment, ExomatEnvironment};
 use super::skeleton::{build_run_directory, build_series_directory};
-use super::table::SeriesReader;
+use crate::experiment::ExperimentSeries;
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
 
@@ -82,7 +82,7 @@ pub fn trial(experiment: &PathBuf, log_progress_handler: MultiProgress) -> Resul
     spdlog::default_logger().flush();
 
     // gather results
-    let reader = SeriesReader::parse(&trial_dir_path)?;
+    let reader = ExperimentSeries::parse(&trial_dir_path)?;
     assert!(reader.is_valid_trial());
     reader.print_report(&exp_name, &res);
 

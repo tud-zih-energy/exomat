@@ -1,23 +1,12 @@
 //! harness make-table command
 
 use log::info;
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::helper::errors::Result;
 use crate::helper::fs_names::*;
 
-pub use run_reader::RunReader;
-pub use series_reader::SeriesReader;
-
-pub mod run_reader;
-pub mod series_reader;
-
-/// One row of values across all out_ files in an Experiment Run
-type Observation = HashMap<String, String>;
-
-/// Maps out_ file names to their content (separated by newlines)
-type OutList = HashMap<String, Vec<String>>;
+use crate::experiment::ExperimentSeries;
 
 /// Entrypoint for table binary
 ///
@@ -46,7 +35,7 @@ pub fn main() -> Result<()> {
     let series_dir = crate::find_marker_pwd(MARKER_SERIES)?;
 
     // collect all output from every run in series_dir
-    let reader = SeriesReader::parse(&series_dir)?;
+    let reader = ExperimentSeries::parse(&series_dir)?;
 
     let keys = reader.keys();
     info!("Collected output for {} keys", keys.len());
