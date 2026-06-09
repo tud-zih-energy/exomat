@@ -1,6 +1,6 @@
 use super::experiment_run::ExperimentRun;
+use super::out_file::{OutFile, OutList};
 use super::{CsvWriter, FileReader};
-use crate::experiment::out_file::{OutFile, OutList};
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
 
@@ -705,24 +705,31 @@ mod tests {
         let reader = ExperimentSeries::parse(&series_dir).unwrap();
         let runs = reader.get_runs();
 
-        let expected0 = OutList::from(vec![
-            OutFile::from("some", vec![String::from("bar")]),
-            OutFile::from("empty", vec![String::from("NA")]),
-            OutFile::from("empty.txt", vec![String::from("NA")]),
-        ])
-        .unwrap();
-        let expected1 = OutList::from(vec![
-            OutFile::from("some", vec![String::from("foo")]),
-            OutFile::from("empty.txt", vec![String::from("")]),
-            OutFile::from("empty", vec![String::from("")]),
-        ])
-        .unwrap();
+        // check results
+        let some0 = OutFile::from("some", vec![String::from("bar")]);
+        let empty0 = OutFile::from("empty", vec![String::from("NA")]);
+        let emptytxt0 = OutFile::from("empty.txt", vec![String::from("NA")]);
 
-        print!("{reader:#?}");
+        let some1 = OutFile::from("some", vec![String::from("foo")]);
+        let empty1 = OutFile::from("empty", vec![String::from("")]);
+        let emptytxt1 = OutFile::from("empty.txt", vec![String::from("")]);
 
         assert_eq!(reader.run_count(), 2);
-        assert!(runs.contains(&ExperimentRun::from_out_list_unchecked(&expected0)));
-        assert!(runs.contains(&ExperimentRun::from_out_list_unchecked(&expected1)));
+
+        // since the order of OutFiles per run is not always the same, test it this way
+        for run in runs {
+            let outlist = run.get_out_files().as_ref().unwrap();
+            assert_eq!(outlist.len(), 3);
+
+            assert!(
+                outlist.contains(&some0)
+                    && outlist.contains(&empty0)
+                    && outlist.contains(&emptytxt0)
+                    || outlist.contains(&some1)
+                        && outlist.contains(&empty1)
+                        && outlist.contains(&emptytxt1)
+            )
+        }
     }
 
     #[rstest]
