@@ -1,5 +1,5 @@
-use super::run_reader::RunReader;
-use crate::harness::table::OutList;
+use super::experiment_run::ExperimentRun;
+use crate::experiment::out_file::OutList;
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
 
@@ -10,14 +10,14 @@ use std::path::{Path, PathBuf};
 
 /// Container for an Experiment Series
 #[derive(Debug, Clone)]
-pub struct SeriesReader {
-    runs: Vec<RunReader>,
+pub struct ExperimentSeries {
+    runs: Vec<ExperimentRun>,
     stdout_log: Option<String>,
     stderr_log: Option<String>,
     exomat_log: Option<String>,
 }
 
-impl SeriesReader {
+impl ExperimentSeries {
     /// Immutable iteration
     pub fn iter<'a>(&'a self) -> SeriesReaderIter<'a> {
         SeriesReaderIter {
@@ -35,10 +35,10 @@ impl SeriesReader {
     /// - Returns a `ReaderError` if any RunReader failed to parse
     pub fn parse(series: &PathBuf) -> Result<Self> {
         // find all run dirs
-        let runs: Vec<RunReader> = find_run_repetitions(&series.join(SERIES_RUNS_DIR))
+        let runs: Vec<ExperimentRun> = find_run_repetitions(&series.join(SERIES_RUNS_DIR))
             .iter()
             .map(|run| {
-                RunReader::parse(run).map_err(|e| Error::ReaderError {
+                ExperimentRun::parse(run).map_err(|e| Error::ReaderError {
                     dir: run.display().to_string(),
                     reason: e.to_string(),
                 })
@@ -50,7 +50,7 @@ impl SeriesReader {
         let stderr_log = Self::read_log(&series.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG));
         let exomat_log = Self::read_log(&series.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG));
 
-        let mut reader = SeriesReader {
+        let mut reader = ExperimentSeries {
             runs,
             stdout_log,
             stderr_log,
@@ -62,7 +62,7 @@ impl SeriesReader {
     }
 
     /// Returns the list of Experiment Runs.
-    pub fn get_runs(&self) -> &Vec<RunReader> {
+    pub fn get_runs(&self) -> &Vec<ExperimentRun> {
         &self.runs
     }
 
@@ -319,12 +319,12 @@ impl SeriesReader {
     /// One OutList represents the out_files of one RunReader.
     #[cfg(test)]
     fn from_out_lists(list_of_envlist: Vec<OutList>) -> Self {
-        let runs: Vec<RunReader> = list_of_envlist
+        let runs: Vec<ExperimentRun> = list_of_envlist
             .iter()
-            .map(|envlist| RunReader::from_out_list_unchecked(&envlist))
+            .map(|envlist| ExperimentRun::from_out_list_unchecked(&envlist))
             .collect();
 
-        SeriesReader {
+        ExperimentSeries {
             runs: runs,
             stdout_log: None,
             stderr_log: None,
@@ -345,12 +345,12 @@ impl SeriesReader {
 // ========================== Iterator ==========================
 
 pub struct SeriesReaderIter<'a> {
-    series_reader: &'a SeriesReader,
+    series_reader: &'a ExperimentSeries,
     index: usize,
 }
 
 impl<'a> Iterator for SeriesReaderIter<'a> {
-    type Item = RunReader;
+    type Item = ExperimentRun;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.series_reader.runs.len() {
@@ -363,8 +363,8 @@ impl<'a> Iterator for SeriesReaderIter<'a> {
         }
     }
 }
-impl<'a> IntoIterator for &'a SeriesReader {
-    type Item = RunReader;
+impl<'a> IntoIterator for &'a ExperimentSeries {
+    type Item = ExperimentRun;
     type IntoIter = SeriesReaderIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -439,7 +439,7 @@ mod tests {
         let tmp_run = setup_series_dir();
         let runs_dir = tmp_run.path().to_path_buf();
 
-        let series_reader = SeriesReader::parse(&runs_dir).unwrap();
+        let series_reader = ExperimentSeries::parse(&runs_dir).unwrap();
         assert_eq!(series_reader.run_count(), 3);
 
         // iterate over runs and observations
@@ -456,7 +456,7 @@ mod tests {
         let tmp_run = setup_series_dir();
         let runs_dir = tmp_run.path().to_path_buf();
 
-        let series_reader = SeriesReader::parse(&runs_dir).unwrap();
+        let series_reader = ExperimentSeries::parse(&runs_dir).unwrap();
         let keys = series_reader.keys();
 
         assert!(keys.contains(&"number"));
@@ -469,7 +469,7 @@ mod tests {
         let tmp_run = setup_series_empty_out();
         let runs_dir = tmp_run.path().to_path_buf();
 
-        let series_reader = SeriesReader::parse(&runs_dir).unwrap();
+        let series_reader = ExperimentSeries::parse(&runs_dir).unwrap();
 
         let keys = series_reader.keys();
         assert!(keys.contains(&"empty"));
@@ -485,7 +485,7 @@ mod tests {
         let tmp_run = setup_series_no_out();
         let series_dir = tmp_run.path().to_path_buf();
 
-        let series_reader = SeriesReader::parse(&series_dir).unwrap();
+        let series_reader = ExperimentSeries::parse(&series_dir).unwrap();
         let keys = series_reader.keys();
 
         assert!(keys.is_empty());
@@ -503,7 +503,7 @@ mod tests {
         // not created yet
         assert!(!out_file.is_file());
 
-        let reader = SeriesReader::from_out_lists(vec![envlist_mixed_weird]);
+        let reader = ExperimentSeries::from_out_lists(vec![envlist_mixed_weird]);
         reader.to_csv(&out_file).unwrap();
 
         // with multiple keys and values the order of items after serialization is
@@ -530,7 +530,7 @@ mod tests {
         // not created yet
         assert!(!out_file.is_file());
 
-        let reader = SeriesReader::from_out_lists(vec![envlist]);
+        let reader = ExperimentSeries::from_out_lists(vec![envlist]);
         reader.to_csv(&out_file).unwrap();
 
         assert_eq!(std::fs::read_to_string(out_file).unwrap(), expected);
@@ -539,7 +539,7 @@ mod tests {
     #[rstest]
     fn seriesreader_parse_empty(#[from(skeleton_src)] series_dir: TempDir) {
         let series_dir = series_dir.path().to_path_buf();
-        let reader = SeriesReader::parse(&series_dir).unwrap();
+        let reader = ExperimentSeries::parse(&series_dir).unwrap();
 
         assert_eq!(reader.run_count(), 0);
         assert!(reader.runs_are_empty());
@@ -549,7 +549,7 @@ mod tests {
     #[rstest]
     fn seriesreader_parse_no_out(#[from(skeleton_series_run_empty)] series_dir: TempDir) {
         let series_dir = series_dir.path().to_path_buf();
-        let reader = SeriesReader::parse(&series_dir).unwrap();
+        let reader = ExperimentSeries::parse(&series_dir).unwrap();
 
         assert_eq!(reader.run_count(), 1);
         assert!(reader.runs_are_empty());
@@ -559,7 +559,7 @@ mod tests {
     #[rstest]
     fn seriesreader_parse_empty_out(skeleton_series_run: TempDir) {
         let series_dir = skeleton_series_run.path().to_path_buf();
-        let reader = SeriesReader::parse(&series_dir).unwrap();
+        let reader = ExperimentSeries::parse(&series_dir).unwrap();
 
         // key "empty" should be present, but without values
         assert_eq!(reader.run_count(), 1);
@@ -573,21 +573,21 @@ mod tests {
         let series_dir = filled_series_run_na.path().to_path_buf();
 
         // both runs recognized
-        let reader = SeriesReader::parse(&series_dir).unwrap();
+        let reader = ExperimentSeries::parse(&series_dir).unwrap();
         let runs = reader.get_runs();
 
         let expected0 = HashMap::from([(String::from("empty"), vec![String::from("")])]);
         let expected1 = HashMap::from([(String::from("empty"), vec![String::from("NA")])]);
 
         assert_eq!(reader.run_count(), 2);
-        assert!(runs.contains(&RunReader::from_out_list_unchecked(&expected0)));
-        assert!(runs.contains(&RunReader::from_out_list_unchecked(&expected1)));
+        assert!(runs.contains(&ExperimentRun::from_out_list_unchecked(&expected0)));
+        assert!(runs.contains(&ExperimentRun::from_out_list_unchecked(&expected1)));
     }
 
     #[rstest]
     fn seriesreader_parse_duplicates(filled_series_run_duplicate: TempDir) {
         let series_dir = filled_series_run_duplicate.path().to_path_buf();
-        let reader = SeriesReader::parse(&series_dir).unwrap();
+        let reader = ExperimentSeries::parse(&series_dir).unwrap();
         assert_eq!(reader.run_count(), 1);
 
         let res = &reader.get_runs()[0];
@@ -599,7 +599,7 @@ mod tests {
     #[rstest]
     fn seriesreader_parse_out_no_name(filled_series_run_invalid: TempDir) {
         let series_dir = filled_series_run_invalid.path().to_path_buf();
-        assert!(SeriesReader::parse(&series_dir).is_err());
+        assert!(ExperimentSeries::parse(&series_dir).is_err());
     }
 
     #[rstest]
@@ -610,7 +610,7 @@ mod tests {
         create_out_file(&series_dir, None, "out_multi", "11\n20");
         create_out_file(&series_dir, None, "out_trailing", "11\n20");
 
-        let reader = SeriesReader::parse(&series_dir).unwrap();
+        let reader = ExperimentSeries::parse(&series_dir).unwrap();
         assert_eq!(reader.run_count(), 1);
         let res = &reader.get_runs()[0];
 
@@ -642,7 +642,7 @@ mod tests {
         create_out_file(&series_dir, None, "out_multi", "foo\nbar");
         create_out_file(&series_dir, None, "out_empty", "");
 
-        let reader = SeriesReader::parse(&series_dir).unwrap();
+        let reader = ExperimentSeries::parse(&series_dir).unwrap();
         assert_eq!(reader.run_count(), 1);
         let res = &reader.get_runs()[0];
 
@@ -669,7 +669,7 @@ mod tests {
         create_out_file(&series_dir, None, "out_foo", "11\n20"); // two lines
         create_out_file(&series_dir, None, "out_bar", "6\n48\n15"); // three lines
 
-        assert!(SeriesReader::parse(&series_dir).is_err());
+        assert!(ExperimentSeries::parse(&series_dir).is_err());
     }
 
     // If there are multiple runs, then the number of rows in a value
@@ -681,7 +681,7 @@ mod tests {
         create_out_file(&series_dir, Some(TEST_RUN_REP_DIR0), "out_foo", "11\n20"); // two lines
         create_out_file(&series_dir, Some(TEST_RUN_REP_DIR1), "out_foo", "6\n48\n15"); // three lines
 
-        let reader = SeriesReader::parse(&series_dir).unwrap();
+        let reader = ExperimentSeries::parse(&series_dir).unwrap();
 
         // check content
         assert!(!reader.runs_are_empty());
@@ -699,7 +699,7 @@ mod tests {
         create_out_file(&series_dir, Some(TEST_RUN_REP_DIR1), "out_some", "bar");
 
         // both runs parsed
-        let reader = SeriesReader::parse(&series_dir).unwrap();
+        let reader = ExperimentSeries::parse(&series_dir).unwrap();
         let runs = reader.get_runs();
 
         let expected0 = HashMap::from([
@@ -714,14 +714,14 @@ mod tests {
         ]);
 
         assert_eq!(reader.run_count(), 2);
-        assert!(runs.contains(&RunReader::from_out_list_unchecked(&expected0)));
-        assert!(runs.contains(&RunReader::from_out_list_unchecked(&expected1)));
+        assert!(runs.contains(&ExperimentRun::from_out_list_unchecked(&expected0)));
+        assert!(runs.contains(&ExperimentRun::from_out_list_unchecked(&expected1)));
     }
 
     #[rstest]
     fn seriesreader_invalid_trial(filled_series_run_na: TempDir) {
         let series_dir = filled_series_run_na.path().to_path_buf();
-        let reader = SeriesReader::parse(&series_dir).unwrap();
+        let reader = ExperimentSeries::parse(&series_dir).unwrap();
 
         assert!(!reader.is_valid_trial());
     }
@@ -731,7 +731,7 @@ mod tests {
         let series_dir = setup_series_empty_out.path().to_path_buf();
         assert!(series_dir.is_dir());
 
-        let reader = SeriesReader::parse(&series_dir).unwrap();
+        let reader = ExperimentSeries::parse(&series_dir).unwrap();
 
         assert!(reader.is_valid_trial());
     }

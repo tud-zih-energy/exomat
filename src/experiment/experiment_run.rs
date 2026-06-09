@@ -1,5 +1,5 @@
+use crate::experiment::out_file::{Observation, OutList};
 use crate::harness::env::Environment;
-use crate::harness::table::{Observation, OutList};
 use crate::helper::archivist::find_all_files;
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
@@ -11,12 +11,12 @@ use std::path::PathBuf;
 
 /// Container for an Experiment Run
 #[derive(Clone, Debug, PartialEq)]
-pub struct RunReader {
+pub struct ExperimentRun {
     env: Environment,
     out_files: Option<OutList>,
 }
 
-impl RunReader {
+impl ExperimentRun {
     /// Immutable iteration
     pub fn iter<'a>(&'a self) -> RunReaderIter<'a> {
         RunReaderIter {
@@ -144,7 +144,7 @@ impl RunReader {
             }
         };
 
-        Ok(RunReader {
+        Ok(ExperimentRun {
             env: env,
             out_files: out_balanced,
         })
@@ -154,7 +154,7 @@ impl RunReader {
     ///
     /// Sets an empty Environemnt.
     pub fn from_out_list_unchecked(envlist: &OutList) -> Self {
-        RunReader {
+        ExperimentRun {
             env: Environment::new(),
             out_files: Some(envlist.clone()),
         }
@@ -201,7 +201,7 @@ impl RunReader {
 /// Iterates over the Observations in an EXperiment Run.
 #[derive(Debug)]
 pub struct RunReaderIter<'a> {
-    run_reader: &'a RunReader,
+    run_reader: &'a ExperimentRun,
     index: usize,
 }
 
@@ -218,7 +218,7 @@ impl<'a> Iterator for RunReaderIter<'a> {
         }
     }
 }
-impl<'a> IntoIterator for &'a RunReader {
+impl<'a> IntoIterator for &'a ExperimentRun {
     type Item = Observation;
     type IntoIter = RunReaderIter<'a>;
 
@@ -239,7 +239,7 @@ mod tests {
         let tmp_run = setup_run_dir();
         let runs_dir = tmp_run.path().to_path_buf();
 
-        let run_reader = RunReader::parse(&runs_dir).unwrap();
+        let run_reader = ExperimentRun::parse(&runs_dir).unwrap();
         let mut run_iter = run_reader.iter();
 
         // iterate over runs, should work
@@ -261,7 +261,7 @@ mod tests {
 
         // iterator is created, but no observations
         let run_reader =
-            RunReader::parse(&series.join(SERIES_RUNS_DIR).join(TEST_RUN_REP_DIR0)).unwrap();
+            ExperimentRun::parse(&series.join(SERIES_RUNS_DIR).join(TEST_RUN_REP_DIR0)).unwrap();
         let mut run_iter = run_reader.iter();
         println!("{run_iter:?}");
         assert!(run_iter.next().is_none());
@@ -273,7 +273,7 @@ mod tests {
         let run_dir = tmp.path().to_path_buf();
 
         // Should not panic, but log a warning
-        let run_reader = RunReader::parse(&run_dir).unwrap();
+        let run_reader = ExperimentRun::parse(&run_dir).unwrap();
         let mut iter = run_reader.iter();
 
         let obs = iter.next().unwrap();
