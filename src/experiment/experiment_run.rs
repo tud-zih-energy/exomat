@@ -1,5 +1,5 @@
 use super::experiment_traits::FileReader;
-use crate::experiment::out_file::{Observation, OutList};
+use crate::experiment::out_file::{Observation, OutFile, OutList};
 use crate::harness::env::Environment;
 use crate::helper::archivist::find_all_files;
 use crate::helper::errors::{Error, Result};
@@ -7,7 +7,6 @@ use crate::helper::fs_names::*;
 
 use log::warn;
 use std::collections::HashMap;
-use std::fs::read_to_string;
 use std::path::PathBuf;
 
 /// Container for an Experiment Run
@@ -32,7 +31,13 @@ impl ExperimentRun {
     /// The returned Vec may be empty.
     pub fn get_var(&self, var: &str) -> Option<&Vec<String>> {
         match &self.out_files {
-            Some(out) => out.get(var),
+            Some(out) => {
+                if let Some(outfile) = out.get_outfile(var) {
+                    Some(outfile.values())
+                } else {
+                    None
+                }
+            }
             None => None,
         }
     }
@@ -49,13 +54,13 @@ impl ExperimentRun {
         self.out_files = new_out
     }
 
-    /// Generates a RunReader from `envlist`.
+    /// Generates a RunReader from `outlist`.
     ///
     /// Sets an empty Environemnt.
-    pub fn from_out_list_unchecked(envlist: &OutList) -> Self {
+    pub fn from_out_list_unchecked(outlist: &OutList) -> Self {
         ExperimentRun {
             env: Environment::new(),
-            out_files: Some(envlist.clone()),
+            out_files: Some(outlist.clone()),
         }
     }
 
@@ -69,19 +74,22 @@ impl ExperimentRun {
         // there are out_files
         if let Some(out_files) = &self.out_files {
             let mut observation: Observation = HashMap::new();
-            for (var, vals) in out_files {
+            for outfile in out_files.iter() {
                 // no values recorded
-                if vals.is_empty() {
-                    observation.insert(var.to_string(), String::from("NA"));
+                if outfile.is_empty() {
+                    observation.insert(outfile.var_name().clone(), String::from("NA"));
                     // index is not in range
-                } else if index >= vals.len() {
+                } else if index >= outfile.value_count() {
                     return Err(Error::IndexOutOfRange {
                         index,
-                        limit: vals.len(),
+                        limit: outfile.value_count(),
                     });
                     // everything worked, get value
                 } else {
-                    observation.insert(var.to_string(), vals[index].to_string());
+                    observation.insert(
+                        outfile.var_name().clone(),
+                        outfile.values()[index].to_string(),
+                    );
                 }
             }
 
@@ -124,73 +132,66 @@ impl FileReader for ExperimentRun {
         });
 
         // read out files
-        let mut out: OutList = HashMap::new();
-        let prefix = "out_";
+        let mut out_list: OutList = OutList::default();
         let contained_files = find_all_files(&dir)?;
-        for file in contained_files.iter().filter_map(|file| {
-            file.file_name()
-                .and_then(|name| name.to_str())
-                .filter(|name| name.starts_with(prefix))
-                .map(|_| file)
-        }) {
-            // parse variable name from out file
-            let var_name = file_name_string(file)
-                .strip_prefix(prefix)
-                .unwrap()
-                .to_string();
-            if var_name.is_empty() {
-                return Err(Error::Empty(
-                    "variable name (prefix out_ alone is not permitted)".to_string(),
-                ));
-            }
 
-            // warn if out file shadows env var
-            if env.contains_env_var(&var_name) {
-                warn!(
-                    "in {}: out_{var_name} shadows input environment variable ${var_name}",
-                    dir.display()
-                );
-            }
+        for file in contained_files {
+            match OutFile::parse(&file) {
+                Err(Error::Empty(e)) => return Err(Error::Empty(e)), // this means the name is invalid
+                Err(_) => continue,
+                Ok(outfile) => {
+                    // warn if out file shadows env var
+                    if env.contains_env_var(outfile.var_name()) {
+                        warn!(
+                            "in {}: out_{} shadows input environment variable ${}",
+                            outfile.var_name(),
+                            dir.display(),
+                            outfile.var_name(),
+                        );
+                    }
 
-            // read content
-            let new_val = read_to_string(file)?
-                .trim()
-                .split("\n")
-                .map(|v| v.to_string())
-                .collect();
+                    // extend existing outlist
+                    if out_list.contains(&outfile) {
+                        let to_extend = out_list
+                            .iter_mut()
+                            .find(|f| f.var_name() == outfile.var_name())
+                            .expect("Could not locate out file to append to");
 
-            if out.contains_key(&var_name) {
-                let val = out
-                    .get_mut(&var_name)
-                    .expect("Could not update output list");
-                val.extend(new_val);
-            } else {
-                out.insert(var_name, new_val);
+                        to_extend.extend_values(outfile.values());
+                    } else {
+                        out_list.push(outfile);
+                    }
+                }
             }
         }
 
         // balance values
-        let out_balanced = match out.is_empty() {
+        let out_balanced = match out_list.is_empty() {
             true => None,
             false => {
-                let max_length = out.values().map(|value| value.len()).max().unwrap_or(1);
+                let max_length = out_list
+                    .iter()
+                    .map(|out| out.value_count())
+                    .max()
+                    .unwrap_or(1);
 
                 // for each variable
-                for (var, vals) in out.iter_mut() {
-                    if vals.len() == 1 && max_length > 1 {
-                        // Cannot use Vec::repeat() here, because String does not implement the Copy Trait >:(
-                        let to_extend = max_length - vals.len();
-                        vals.extend(vec![vals[0].clone(); to_extend]);
+                for outfile in out_list.iter_mut() {
+                    let len = outfile.value_count();
+
+                    if len == 1 && max_length > 1 {
+                        let to_extend = max_length - len;
+                        outfile.repeat(0, to_extend);
 
                         // We got multiple values for var, check if it has the same number of rows as the
                         // other columns
-                    } else if vals.len() != max_length {
+                    } else if len != max_length {
                         return Err(Error::EnvError {
-                                        reason: format!("Mismatched number of values for {var} {}, other value in {} has {max_length}", vals.len(), dir.display())});
+                                        reason: format!("Mismatched number of values for {} {len}, other value in {} has {max_length}", outfile.var_name(), dir.display())});
                     }
                 }
 
-                Some(out)
+                Some(out_list)
             }
         };
 
