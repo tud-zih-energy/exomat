@@ -1,4 +1,5 @@
 use super::experiment_run::ExperimentRun;
+use super::experiment_traits::FileReader;
 use crate::experiment::out_file::OutList;
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
@@ -24,41 +25,6 @@ impl ExperimentSeries {
             series_reader: self,
             index: 0,
         }
-    }
-
-    /// Parses an Experiment Series into a SeriesReader object.
-    ///
-    /// If `out_$NAME` is found in one experiment run directory, but not in another, a "NA"
-    /// will be added to the list of values.
-    ///
-    /// ### Error
-    /// - Returns a `ReaderError` if any RunReader failed to parse
-    pub fn parse(series: &PathBuf) -> Result<Self> {
-        // find all run dirs
-        let runs: Vec<ExperimentRun> = find_run_repetitions(&series.join(SERIES_RUNS_DIR))
-            .iter()
-            .map(|run| {
-                ExperimentRun::parse(run).map_err(|e| Error::ReaderError {
-                    dir: run.display().to_string(),
-                    reason: e.to_string(),
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        // read log files
-        let stdout_log = Self::read_log(&series.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG));
-        let stderr_log = Self::read_log(&series.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG));
-        let exomat_log = Self::read_log(&series.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG));
-
-        let mut reader = ExperimentSeries {
-            runs,
-            stdout_log,
-            stderr_log,
-            exomat_log,
-        };
-
-        reader.fill_missing_keys();
-        Ok(reader)
     }
 
     /// Returns the list of Experiment Runs.
@@ -339,6 +305,46 @@ impl ExperimentSeries {
             Ok(log) => Some(log),
             Err(_) => None,
         }
+    }
+}
+
+// ========================== Reader ==========================
+impl FileReader for ExperimentSeries {
+    type Item = ExperimentSeries;
+
+    /// Parses an Experiment Series into a SeriesReader object.
+    ///
+    /// If `out_$NAME` is found in one experiment run directory, but not in another, a "NA"
+    /// will be added to the list of values.
+    ///
+    /// ### Error
+    /// - Returns a `ReaderError` if any RunReader failed to parse
+    fn parse(dir: &PathBuf) -> Result<Self::Item> {
+        // find all run dirs
+        let runs: Vec<ExperimentRun> = find_run_repetitions(&dir.join(SERIES_RUNS_DIR))
+            .iter()
+            .map(|run| {
+                ExperimentRun::parse(run).map_err(|e| Error::ReaderError {
+                    dir: run.display().to_string(),
+                    reason: e.to_string(),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        // read log files
+        let stdout_log = Self::read_log(&dir.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG));
+        let stderr_log = Self::read_log(&dir.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG));
+        let exomat_log = Self::read_log(&dir.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG));
+
+        let mut reader = ExperimentSeries {
+            runs,
+            stdout_log,
+            stderr_log,
+            exomat_log,
+        };
+
+        reader.fill_missing_keys();
+        Ok(reader)
     }
 }
 
