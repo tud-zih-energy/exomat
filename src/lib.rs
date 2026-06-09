@@ -4,6 +4,16 @@ pub mod harness {
     pub mod skeleton;
     pub mod table;
 }
+
+pub mod experiment {
+    pub mod experiment_run;
+    pub mod experiment_series;
+    pub mod experiment_source;
+    pub mod out_file;
+
+    pub use experiment_run::ExperimentRun;
+    pub use experiment_series::ExperimentSeries;
+}
 pub mod helper {
     pub mod archivist;
     pub mod errors;
