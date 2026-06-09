@@ -2,98 +2,16 @@
 
 use chrono::Local;
 use log::{debug, info};
-use std::{
-    fs::OpenOptions,
-    io::Write,
-    os::unix::fs::OpenOptionsExt,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use crate::duplicate_log_to_file;
+use crate::experiment::{ExperimentSource, FileWriter};
 use crate::harness::env::{exomat_environment::append_exomat_envs, ExomatEnvironment};
 use crate::helper::archivist::{
     copy_harness_dir, copy_harness_file, create_harness_dir, create_harness_file,
 };
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
-
-/// Creates an empty experiment source folder.
-///
-/// The folder will be created with the following content:
-/// ```notest
-/// exp_source_dir
-///   |-> .exomat_source
-///   |-> SRC_TEMPLATE_DIR/
-///   | \-> SRC_RUN_FILE [content: src/harness/run.sh.template]
-///   \-> SRC_ENV_DIR/
-///     \-> SRC_ENV_FILE [EMPTY]
-/// ```
-///
-/// ## Errors
-/// - Returns an `HarnessCreateError` if any entry of the list above could not be created.
-///
-/// ## Example
-/// ```
-/// use exomat::harness::skeleton::create_source_directory;
-/// use exomat::helper::fs_names::*;
-///
-/// use std::path::PathBuf;
-/// use tempfile::TempDir;
-/// use faccess::PathExt;
-///
-/// // read run.sh template before changing pwd
-/// assert!(PathBuf::from("src/harness/run.sh.template").is_file());
-/// let template = std::fs::read_to_string(PathBuf::from("src/harness/run.sh.template")).unwrap();
-///
-/// // create base tempdir, to act as parent
-/// let tmpdir = TempDir::new().unwrap();
-/// let tmpdir = tmpdir.path();
-/// std::env::set_current_dir(&tmpdir).unwrap();
-///
-/// // create experiment source dir (relative to current dir)
-/// let exp_source = PathBuf::from("FooSource");
-/// create_source_directory(&exp_source).unwrap();
-///
-/// assert!(&tmpdir.join("FooSource").is_dir());
-/// assert!(exp_source.join(SRC_ENV_DIR).is_dir());
-/// assert!(exp_source.join(SRC_ENV_DIR).join(SRC_ENV_FILE).is_file());
-/// assert!(exp_source.join(SRC_TEMPLATE_DIR).is_dir());
-/// assert!(exp_source.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE).is_file());
-///
-/// // new run.sh contains template, is executable
-/// let run_file = PathBuf::from(&exp_source.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE));
-/// let run = std::fs::read_to_string(&run_file).unwrap();
-/// assert_eq!(run, template);
-/// assert!(&run_file.executable());
-/// ```
-pub fn create_source_directory(exp_src_dir: &PathBuf) -> Result<()> {
-    create_harness_dir(exp_src_dir)?;
-    create_harness_file(&exp_src_dir.join(MARKER_SRC))?;
-
-    create_harness_dir(&exp_src_dir.join(SRC_ENV_DIR))?;
-    create_harness_file(&exp_src_dir.join(SRC_ENV_DIR).join(SRC_ENV_FILE))?;
-    create_harness_dir(&exp_src_dir.join(SRC_TEMPLATE_DIR))?;
-
-    let run_file_path = &exp_src_dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE);
-
-    // create default run.sh as executable
-    let mut run_file = OpenOptions::new()
-        .mode(0o775)
-        .write(true)
-        .create_new(true)
-        .open(run_file_path)
-        .map_err(|e| Error::HarnessCreateError {
-            entry: run_file_path.to_str().unwrap().to_string(),
-            reason: e.to_string(),
-        })?;
-
-    // write default content to run.sh
-    let template_runfile_bytes = include_bytes!("run.sh.template");
-    run_file.write_all(template_runfile_bytes)?;
-
-    info!("Experiment harness created under {}", exp_src_dir.display());
-    Ok(())
-}
 
 /// Creates and populates a new experiment series directory.
 ///
@@ -280,7 +198,8 @@ pub fn build_run_directory(
 
 /// entrypoint for skeleton binary
 pub fn main(exp_src_dir: &PathBuf) -> Result<()> {
-    create_source_directory(exp_src_dir)?;
+    let src = ExperimentSource::new();
+    src.persist(exp_src_dir)?;
 
     println!();
     println!("next steps:");
@@ -310,9 +229,9 @@ mod tests {
         let tmpdir = TempDir::new().unwrap();
         let tmpdir = tmpdir.path().to_path_buf();
 
-        assert!(create_source_directory(&tmpdir).is_ok());
+        assert!(main(&tmpdir).is_ok());
         assert!(matches!(
-            create_source_directory(&tmpdir),
+            main(&tmpdir),
             Err(Error::HarnessCreateError {
                 entry: _,
                 reason: _
@@ -328,7 +247,7 @@ mod tests {
             std::env::set_current_dir(&tmpdir).unwrap();
 
             let with_parents = PathBuf::from_str("foo/bar").unwrap();
-            assert!(create_source_directory(&with_parents).is_ok());
+            assert!(main(&with_parents).is_ok());
             assert!(PathBuf::from_str("foo").unwrap().exists());
             assert!(PathBuf::from_str("foo/bar").unwrap().exists());
 
@@ -411,7 +330,7 @@ mod tests {
             //create experiment source dir
             let exp_source = tmpdir.join("FooSource");
             let exp_series = tmpdir.join("foo");
-            create_source_directory(&exp_source).unwrap();
+            main(&exp_source).unwrap();
 
             // create series dir (next to exp_source, named "foo", is not a trial run)
             build_series_directory(&exp_source, &exp_series).unwrap();

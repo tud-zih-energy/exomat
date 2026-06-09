@@ -2,8 +2,9 @@ use super::fs_names::*;
 use std::fs::OpenOptions;
 use std::{io::Write, path::PathBuf};
 
+use crate::experiment::{ExperimentSource, FileWriter};
 use crate::harness::env::ExomatEnvironment;
-use crate::harness::skeleton::{build_series_directory, create_source_directory};
+use crate::harness::skeleton::build_series_directory;
 
 /// helper to create a `run.sh` file in an experiment source directory.
 ///
@@ -38,7 +39,8 @@ pub fn populate_src_with_series(
     let source = base.join(src_name);
     let series = base.join(series_name);
 
-    create_source_directory(&source).unwrap();
+    let src = ExperimentSource::new();
+    src.persist(&source).unwrap();
     build_series_directory(&source, &series).unwrap();
 
     let default_env = source.join(SRC_ENV_DIR).join(SRC_ENV_FILE);
