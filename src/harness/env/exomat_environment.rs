@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use crate::harness::env::environment::Environment;
 use crate::helper::errors::Result;
 
+#[derive(Debug, Clone)]
 pub struct ExomatEnvironment {
     pub exp_src_dir: PathBuf,
     pub repetition: u64,
