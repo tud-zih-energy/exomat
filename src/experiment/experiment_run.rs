@@ -20,6 +20,7 @@ pub enum RunStatus {
 /// Container for an Experiment Run
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExperimentRun {
+    run_sh: String,
     env: Environment,
     out_files: Option<OutList>,
     status: RunStatus,
@@ -68,6 +69,7 @@ impl ExperimentRun {
     /// Sets an empty Environemnt.
     pub fn from_out_list_unchecked(outlist: &OutList) -> Self {
         ExperimentRun {
+            run_sh: String::new(),
             env: Environment::new(),
             out_files: Some(outlist.clone()),
             status: RunStatus::Ready,
@@ -141,6 +143,9 @@ impl FileReader for ExperimentRun {
             Environment::new()
         });
 
+        // read out_file
+        let run_sh = std::fs::read_to_string(&dir.join(RUN_RUN_FILE))?;
+
         // read out files
         let mut out_list: OutList = OutList::default();
         let contained_files = find_all_files(&dir)?;
@@ -206,6 +211,7 @@ impl FileReader for ExperimentRun {
         };
 
         Ok(ExperimentRun {
+            run_sh,
             env: env,
             out_files: out_balanced,
             status: RunStatus::Unknown,
