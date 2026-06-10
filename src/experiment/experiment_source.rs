@@ -2,7 +2,7 @@ use log::{info, warn};
 use std::{fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt, path::PathBuf};
 
 use crate::experiment::{FileReader, FileWriter};
-use crate::harness::env::EnvironmentContainer;
+use crate::harness::env::{EnvironmentContainer, ExomatEnvironment};
 use crate::helper::archivist::{create_harness_dir, create_harness_file};
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
@@ -12,6 +12,7 @@ use crate::helper::fs_names::*;
 pub struct ExperimentSource {
     run_sh: String,
     envs: EnvironmentContainer,
+    exomat_envs: ExomatEnvironment,
 }
 
 impl ExperimentSource {
@@ -19,11 +20,32 @@ impl ExperimentSource {
         ExperimentSource {
             run_sh: String::new(),
             envs: EnvironmentContainer::new(),
+            exomat_envs: ExomatEnvironment::new(&PathBuf::new(), 0),
+        }
+    }
+
+    pub fn from(
+        run_sh: String,
+        envs: EnvironmentContainer,
+        exomat_envs: ExomatEnvironment,
+    ) -> Self {
+        Self {
+            run_sh,
+            envs,
+            exomat_envs,
         }
     }
 
     pub fn get_envs(&self) -> &EnvironmentContainer {
         &self.envs
+    }
+
+    pub fn name(&self) -> String {
+        file_name_string(&self.exomat_envs.exp_src_dir)
+    }
+
+    pub fn location(&self) -> &PathBuf {
+        &self.exomat_envs.exp_src_dir
     }
 }
 
@@ -32,10 +54,20 @@ impl FileReader for ExperimentSource {
     type Item = ExperimentSource;
 
     fn parse(dir: &PathBuf) -> Result<Self::Item> {
+        let exomat_envs = ExomatEnvironment::new(
+            &dir.to_path_buf()
+                .canonicalize()
+                .expect("Could not resole Source path"),
+            0,
+        );
         let run_sh = std::fs::read_to_string(&dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE))?;
         let envs = EnvironmentContainer::from_files(&dir.join(SRC_ENV_DIR))?;
 
-        Ok(Self { run_sh, envs })
+        Ok(Self {
+            run_sh,
+            envs,
+            exomat_envs,
+        })
     }
 }
 
