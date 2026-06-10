@@ -9,11 +9,20 @@ use log::warn;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum RunStatus {
+    Unknown,
+    Ready,
+    Success,
+    Fail(String),
+}
+
 /// Container for an Experiment Run
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExperimentRun {
     env: Environment,
     out_files: Option<OutList>,
+    status: RunStatus,
 }
 
 impl ExperimentRun {
@@ -61,6 +70,7 @@ impl ExperimentRun {
         ExperimentRun {
             env: Environment::new(),
             out_files: Some(outlist.clone()),
+            status: RunStatus::Ready,
         }
     }
 
@@ -198,6 +208,7 @@ impl FileReader for ExperimentRun {
         Ok(ExperimentRun {
             env: env,
             out_files: out_balanced,
+            status: RunStatus::Unknown,
         })
     }
 }
