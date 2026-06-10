@@ -1,4 +1,5 @@
 use super::experiment_run::ExperimentRun;
+use super::experiment_source::ExperimentSource;
 use super::out_file::{OutFile, OutList};
 use super::{CsvWriter, FileReader};
 use crate::helper::errors::{Error, Result};
@@ -11,6 +12,8 @@ use std::path::{Path, PathBuf};
 /// Container for an Experiment Series
 #[derive(Debug, Clone)]
 pub struct ExperimentSeries {
+    source: ExperimentSource,
+    path: PathBuf,
     runs: Vec<ExperimentRun>,
     stdout_log: Option<String>,
     stderr_log: Option<String>,
@@ -254,6 +257,8 @@ impl ExperimentSeries {
             .collect();
 
         ExperimentSeries {
+            source: ExperimentSource::new(),
+            path: PathBuf::new(),
             runs: runs,
             stdout_log: None,
             stderr_log: None,
@@ -300,6 +305,8 @@ impl FileReader for ExperimentSeries {
         let exomat_log = Self::read_log(&dir.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG));
 
         let mut reader = ExperimentSeries {
+            source: ExperimentSource::new(),
+            path: dir.to_path_buf(),
             runs,
             stdout_log,
             stderr_log,
