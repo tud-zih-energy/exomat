@@ -1,11 +1,21 @@
-use super::experiment_run::ExperimentRun;
-use super::experiment_source::ExperimentSource;
-use super::out_file::{OutFile, OutList};
-use super::{CsvWriter, FileReader};
-use crate::helper::errors::{Error, Result};
-use crate::helper::fs_names::*;
+use crate::duplicate_log_to_file;
+use crate::experiment::{
+    experiment_run::ExperimentRun,
+    experiment_source::ExperimentSource,
+    out_file::{OutFile, OutList},
+    CsvWriter, FileReader, FileWriter,
+};
+use crate::harness::env::Environment;
+use crate::helper::{
+    archivist::{copy_harness_dir, create_harness_dir, create_harness_file},
+    errors::{Error, Result},
+    fs_names::*,
+};
 
+use chrono::Local;
 use csv::Writer;
+use log::{debug, info, trace};
+use rand::seq::SliceRandom;
 use std::fs::read_to_string;
 use std::path::{Path, PathBuf};
 
@@ -13,7 +23,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone)]
 pub struct ExperimentSeries {
     source: ExperimentSource,
-    path: PathBuf,
+    path: Option<PathBuf>,
     runs: Vec<ExperimentRun>,
     stdout_log: Option<String>,
     stderr_log: Option<String>,
@@ -21,12 +31,39 @@ pub struct ExperimentSeries {
 }
 
 impl ExperimentSeries {
+    pub fn from_source(source: &ExperimentSource) -> Self {
+        Self {
+            source: source.clone(),
+            path: None,
+            runs: Vec::new(),
+            stdout_log: None,
+            stderr_log: None,
+            exomat_log: None,
+        }
+    }
+
     /// Immutable iteration
     pub fn iter<'a>(&'a self) -> SeriesReaderIter<'a> {
         SeriesReaderIter {
             series_reader: self,
             index: 0,
         }
+    }
+
+    pub fn repetition_count(&self) -> u64 {
+        self.source.repetitions() * self.source.get_envs().environment_count()
+    }
+
+    pub fn experiment_name(&self) -> String {
+        self.source.name()
+    }
+
+    pub fn exomat_envs(&self) -> Environment {
+        self.source.exomat_envs()
+    }
+
+    pub fn run_script(&self) -> &str {
+        self.source.run_script()
     }
 
     /// Returns the list of Experiment Runs.
@@ -135,6 +172,51 @@ impl ExperimentSeries {
         } else {
             false
         }
+    }
+
+    pub fn generate_runs(&mut self) -> Result<()> {
+        for environment in self.shuffled_environments() {
+            let run = ExperimentRun::new(self.source.run_script(), &environment);
+            trace!("Created run: {:?}", run);
+
+            self.runs.push(run);
+        }
+
+        Ok(())
+    }
+
+    /// Build the filepath to a new series directory.
+    ///
+    /// Generates either a trial run location, or a new name in the PWD.
+    ///
+    /// The name will be derived from the experiment name and the current date and time.
+    pub fn generate_series_filepath(exp_source: &Path) -> Result<PathBuf> {
+        let format = format!("{}-%Y-%m-%d-%H-%M-%S", file_name_string(exp_source));
+        let dirname = PathBuf::from(Local::now().format(&format).to_string());
+        Ok(std::env::current_dir()?
+            .canonicalize()?
+            .join(&dirname)
+            .to_path_buf())
+    }
+
+    /// Compiles a list of all repetition for each environment, then suffles said list.
+    ///
+    /// The shuffled list is then sorted by repetition, so that all n-repetitions run
+    /// before all n+1-repetitions.
+    fn shuffled_environments(&self) -> Vec<Environment> {
+        let mut running_order = vec![];
+
+        for env in self.source.get_envs().to_env_list() {
+            for rep in 0..self.repetition_count() {
+                // include the repetition in a tuple, so that it can be sorted correctly later
+                running_order.push((env, rep));
+            }
+        }
+
+        running_order.shuffle(&mut rand::rng());
+        running_order.sort_by(|a, b| (a.1).cmp(&b.1));
+
+        running_order.iter().map(|item| item.0.to_owned()).collect()
     }
 
     /// Adds missing out_ files to each RunReader.
@@ -246,6 +328,15 @@ impl ExperimentSeries {
         self.runs.len()
     }
 
+    /// helper, that returns the content of a file if it is readable.
+    /// Otherwise returns `None`
+    fn read_log(path: &PathBuf) -> Option<String> {
+        match read_to_string(path) {
+            Ok(log) => Some(log),
+            Err(_) => None,
+        }
+    }
+
     /// Parses a SeriesReader from multiple OutLists (Test helper)
     ///
     /// One OutList represents the out_files of one RunReader.
@@ -258,7 +349,7 @@ impl ExperimentSeries {
 
         ExperimentSeries {
             source: ExperimentSource::new(),
-            path: PathBuf::new(),
+            path: None,
             runs: runs,
             stdout_log: None,
             stderr_log: None,
@@ -306,7 +397,7 @@ impl FileReader for ExperimentSeries {
 
         let mut reader = ExperimentSeries {
             source: ExperimentSource::new(),
-            path: dir.to_path_buf(),
+            path: Some(dir.to_path_buf()),
             runs,
             stdout_log,
             stderr_log,
