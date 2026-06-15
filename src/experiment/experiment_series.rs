@@ -66,9 +66,32 @@ impl ExperimentSeries {
         self.source.run_script()
     }
 
+    pub fn append_to_out_log(&mut self, stdout: String) {
+        match &mut self.stdout_log {
+            None => self.stdout_log = Some(stdout),
+            Some(log) => log.push_str(&stdout),
+        }
+    }
+
+    pub fn append_to_err_log(&mut self, stderr: String) {
+        match &mut self.stderr_log {
+            None => self.stderr_log = Some(stderr),
+            Some(log) => log.push_str(&stderr),
+        }
+    }
+
+    pub fn err_log(&self) -> &Option<String> {
+        &self.stderr_log
+    }
+
     /// Returns the list of Experiment Runs.
     pub fn get_runs(&self) -> &Vec<ExperimentRun> {
         &self.runs
+    }
+
+    /// Returns the list of Experiment Runs.
+    pub fn get_runs_mut(&mut self) -> &mut Vec<ExperimentRun> {
+        &mut self.runs
     }
 
     /// Returns a list of all keys present in the recorded RunReader in an arbitrary order.

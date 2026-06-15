@@ -27,6 +27,7 @@ pub struct ExperimentRun {
     env: Environment,
     out_files: Option<OutList>,
     status: RunStatus,
+    location: Option<PathBuf>,
 }
 
 impl ExperimentRun {
@@ -41,6 +42,7 @@ impl ExperimentRun {
             env: environment.clone(),
             out_files: None,
             status: RunStatus::Ready,
+            location: None,
         }
     }
 
@@ -94,6 +96,7 @@ impl ExperimentRun {
             env: Environment::new(),
             out_files: Some(outlist.clone()),
             status: RunStatus::Ready,
+            location: None,
         }
     }
 
@@ -133,12 +136,128 @@ impl ExperimentRun {
             Err(Error::Empty(String::from("No Observations found")))
         }
     }
+
+    /// Produce log output based on exit_status and err_log content.
+    ///
+    /// - exit_status:
+    ///    - **success**  : log info
+    ///    - **failed**   : log error (don't evaluate err_log after)
+    /// - err_log:
+    ///    - **empty**    : log info
+    ///    - **not empty**: log warning
+    ///
+    /// ## Errors
+    /// - Returns a HarnessRunError if `exit_status` shows a failure
+    fn log_run_result(
+        &self,
+        run_name: &str,
+        exit_status: std::process::ExitStatus,
+        err_log: &String,
+    ) -> Result<()> {
+        if exit_status.success() {
+            info!("{run_name} finished successfully with {exit_status}");
+
+            if err_log.is_empty() {
+                info!("{run_name} did not produce stderr output");
+            } else {
+                warn!("{run_name} produced stderr output");
+            }
+        } else {
+            error!("{run_name} finished with non-zero {exit_status}");
+
+            // fail fast in case of unsuccessful run
+            return Err(Error::HarnessRunError {
+                experiment: run_name.to_string(),
+                err: err_log.clone(),
+            });
+        }
+
+        Ok(())
+    }
 }
+
+use log::{error, info, trace};
+use std::process::{Command, Stdio};
 
 // ========================== Runner ==========================
 impl Runner for ExperimentRun {
-    fn execute(&self) -> Result<()> {
-        todo!()
+    /// Executes [RUN_RUN_FILE] script found in `run_folder`.
+    ///
+    /// 1. read envs from `run_folder/RUN_ENV_FILE`
+    /// 2. add `exomat_envs` (overwrites envs with the same name)
+    /// 3. run `run_folder/RUN_RUN_FILE` with these envs
+    /// 4. log run results
+    ///     - Appends any stderr/stdout output into their respective log file in the
+    ///       parent series directory of `run_folder`.
+    ///     - Exomat output will **not** automatically be duplicated to the log file
+    ///       by calling this function.
+    ///
+    /// ## Errors and Panics
+    /// - Returns a `HarnessRunrror` if [RUN_RUN_FILE] could not be executed
+    /// - panics if there is no [RUN_RUN_FILE] in `run_folder`
+    /// - panics if there is no [RUN_ENV_FILE] in `run_folder`
+    fn execute(&mut self, exp_name: String) -> Result<(String, String)> {
+        // assert!(
+        //     self.join(RUN_RUN_FILE).is_file(),
+        //     "Missing run.sh in experiment run directory"
+        // );
+
+        // assert!(
+        //     run_folder.join(RUN_ENV_FILE).is_file(),
+        //     "Missing environment.env in experiment run directory"
+        // );
+
+        if self.location.is_none() {
+            return Err(Error::HarnessRunError {
+                experiment: exp_name,
+                err: String::from("Experiment Run has not been serialized yet. Cannot execute."),
+            });
+        }
+        let run_folder = self.location.as_ref().unwrap().canonicalize().unwrap();
+
+        trace!(
+            "{exp_name}: Starting execution of {}",
+            run_folder.file_stem().unwrap().to_str().unwrap()
+        );
+
+        // execute command with envs and collect any output in child
+        let run = Command::new(&self.run_sh)
+            .stderr(Stdio::piped())
+            .stdout(Stdio::piped())
+            .envs(self.env.to_env_map())
+            .current_dir(&run_folder)
+            .output()
+            .map_err(|e| Error::HarnessRunError {
+                experiment: exp_name.to_string(),
+                err: e.to_string(),
+            })?;
+
+        trace!("{exp_name}: Finished run {}", run_folder.display());
+
+        // write to logs
+        let stdout = String::from_utf8(run.stdout).map_err(|e| Error::HarnessRunError {
+            experiment: exp_name.clone(),
+            err: e.to_string(),
+        })?;
+        let stderr = String::from_utf8(run.stderr).map_err(|e| Error::HarnessRunError {
+            experiment: exp_name.clone(),
+            err: e.to_string(),
+        })?;
+
+        // set run status
+        match run.status.success() {
+            true => self.status = RunStatus::Success,
+            false => self.status = RunStatus::Fail(run.status.to_string()),
+        };
+
+        // write to console
+        self.log_run_result(
+            run_folder.file_stem().unwrap().to_str().unwrap(),
+            run.status,
+            &stderr,
+        )?;
+
+        Ok((stdout, stderr))
     }
 }
 
@@ -205,6 +324,8 @@ impl FileWriter for ExperimentRun {
         let run_file = create_harness_file(&dir.join(RUN_RUN_FILE))?;
         std::fs::write(run_file, &self.run_sh)?;
         self.env.to_file(&dir.join(RUN_ENV_FILE))?;
+
+        self.location = Some(dir.to_path_buf());
 
         Ok(())
     }
@@ -311,6 +432,7 @@ impl FileReader for ExperimentRun {
             env: env,
             out_files: out_balanced,
             status: RunStatus::Unknown,
+            location: Some(dir.to_path_buf()),
         })
     }
 }

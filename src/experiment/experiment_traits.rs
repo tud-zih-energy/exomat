@@ -16,5 +16,5 @@ pub trait FileReader {
 }
 
 pub trait Runner {
-    fn execute(&self) -> Result<()>;
+    fn execute(&mut self, exp_name: String) -> Result<(String, String)>;
 }
