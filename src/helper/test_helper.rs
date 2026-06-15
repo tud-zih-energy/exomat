@@ -2,9 +2,8 @@ use super::fs_names::*;
 use std::fs::OpenOptions;
 use std::{io::Write, path::PathBuf};
 
-use crate::experiment::{ExperimentSource, FileWriter};
+use crate::experiment::{ExperimentSeries, ExperimentSource, FileWriter};
 use crate::harness::env::ExomatEnvironment;
-use crate::harness::skeleton::build_series_directory;
 
 /// helper to create a `run.sh` file in an experiment source directory.
 ///
@@ -35,18 +34,18 @@ pub fn populate_src_with_series(
     base: &PathBuf,
     src_name: &str,
     series_name: &str,
-) -> (PathBuf, PathBuf, PathBuf, ExomatEnvironment) {
+) -> (ExperimentSource, ExperimentSeries) {
     let source = base.join(src_name);
     let series = base.join(series_name);
 
-    let src = ExperimentSource::new();
+    let mut src = ExperimentSource::new();
+    src.set_exomat_envs(ExomatEnvironment::new(&source, 1));
     src.persist(&source).unwrap();
-    build_series_directory(&source, &series).unwrap();
 
-    let default_env = source.join(SRC_ENV_DIR).join(SRC_ENV_FILE);
-    let exomat_env = ExomatEnvironment::new(&source, 1);
+    let mut ser = ExperimentSeries::from_source(&src);
+    ser.persist(&series).unwrap();
 
-    (source, series, default_env, exomat_env)
+    (src, ser)
 }
 /// Checks if the given string contains either one or the other
 pub fn contains_either(string: &String, one: &str, other: &str) -> bool {
