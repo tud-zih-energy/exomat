@@ -100,7 +100,7 @@ fn execute_exp_repetitions(
     info!("Starting experiment runs for {}", series.experiment_name());
     trace!("exomat envs are: {:?}", series.exomat_envs());
 
-    series.generate_runs()?;
+    series.generate_runs();
     for mut run in series.iter() {
         trace!("Using envs: {:?}", run.environment());
         run.execute(series.experiment_name())?;

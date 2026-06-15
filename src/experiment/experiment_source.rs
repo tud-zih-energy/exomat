@@ -18,7 +18,7 @@ pub struct ExperimentSource {
 impl ExperimentSource {
     pub fn new() -> Self {
         ExperimentSource {
-            run_sh: String::new(),
+            run_sh: include_str!("../harness/run.sh.template").to_string(),
             envs: EnvironmentContainer::new(),
             exomat_envs: ExomatEnvironment::new(&PathBuf::new(), 0),
         }
