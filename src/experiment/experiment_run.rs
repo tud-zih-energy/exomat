@@ -493,7 +493,7 @@ mod tests {
             populate_src_with_series(&tmpdir.to_path_buf(), "FooSource", "FooSeries");
 
         // create Experiment Run in ser, equals to one repetition of one environment)
-        ser.generate_runs().unwrap();
+        ser.generate_runs();
         assert_eq!(ser.repetition_count(), 1);
         ser.persist(&tmpdir.to_path_buf()).unwrap();
 
@@ -518,7 +518,7 @@ mod tests {
             repetition: 15,
         });
         let mut ser = ExperimentSeries::from_source(&src);
-        ser.generate_runs().unwrap();
+        ser.generate_runs();
         assert_eq!(ser.repetition_count(), 15);
         ser.persist(&tmpdir.to_path_buf()).unwrap();
 
@@ -536,7 +536,7 @@ mod tests {
         let (src, mut ser) =
             populate_src_with_series(&tmpdir.to_path_buf(), "FooSource", "FooSeries");
 
-        ser.generate_runs().unwrap();
+        ser.generate_runs();
         assert_eq!(ser.repetition_count(), 1);
 
         // check contents of env files

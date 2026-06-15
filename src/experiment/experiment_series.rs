@@ -197,15 +197,19 @@ impl ExperimentSeries {
         }
     }
 
-    pub fn generate_runs(&mut self) -> Result<()> {
-        for environment in self.shuffled_environments() {
-            let run = ExperimentRun::new(self.source.run_script(), &environment);
-            trace!("Created run: {:?}", run);
-
+    pub fn generate_runs(&mut self) {
+        if self.source.get_envs().to_env_list().is_empty() {
+            let run = ExperimentRun::new(self.source.run_script(), &Environment::new());
             self.runs.push(run);
-        }
+        } else {
+            for environment in self.shuffled_environments() {
+                let run = ExperimentRun::new(self.source.run_script(), &environment);
+                println!("Created run: {:?}", run);
+                trace!("Created run: {:?}", run);
 
-        Ok(())
+                self.runs.push(run);
+            }
+        }
     }
 
     /// Build the filepath to a new series directory.
