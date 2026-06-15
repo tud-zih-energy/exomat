@@ -135,6 +135,81 @@ impl ExperimentRun {
     }
 }
 
+// ========================== Runner ==========================
+impl Runner for ExperimentRun {
+    fn execute(&self) -> Result<()> {
+        todo!()
+    }
+}
+
+// ========================== Writer ==========================
+impl FileWriter for ExperimentRun {
+    /// Creates a ready-to-use experiment run folder for **one interation** with **one environment**
+    /// of an experiment.
+    ///
+    /// ### Note: `env_file` is used to deduce the `{env}` part of the new experiment run directory name.
+    /// ###       `exomat_environment` is used to get the `{it}` part.
+    ///
+    /// The new directory will be created in the given `series_folder` under [SERIES_RUNS_DIR]`/run_[env]_rep[repetition]`.
+    /// This will result in the following structure:
+    /// ```notest
+    /// series_folder
+    ///   |-> ...
+    ///   \-> runs/
+    ///     |-> ...
+    ///     \-> run_{env}_rep{it}/
+    ///       |-> .exomat_run
+    ///       |-> RUN_RUN_FILE     (copy of SRC_RUN_FILE)
+    ///       \-> RUN_ENV_FILE     (copy of env_file)
+    /// ```
+    ///
+    /// If no Errors occured, the path to the created experiment run folder will be returned.
+    ///
+    /// ## Errors and Panics
+    /// - Returns a `HarnessCreateError` if there is no [SERIES_RUNS_DIR] found inside `series_folder`
+    /// - Returns a `HarnessCreateError` if any file or directory could not be created or copied
+    /// - Panics if `it_format_length` is 0
+    fn persist(&mut self, dir: &PathBuf) -> Result<()> {
+        // assert!(it_format_length > 0, "repetition format cannot be 0");
+
+        // // unwrap here, because this should never fail and if it does it's your fault
+        // let env_name = &env_file.file_stem().unwrap().to_str().unwrap();
+
+        // let run = format!(
+        //     "run_{}_rep{:0length$}",
+        //     env_name,
+        //     exomat_environment.repetition,
+        //     length = it_format_length,
+        // );
+
+        // get path to runs/, return error if it does not exist
+        // let runs_dir = match series_folder.join(SERIES_RUNS_DIR).is_dir() {
+        //     true => series_folder.join(SERIES_RUNS_DIR),
+        //     false => {
+        //         return Err(Error::HarnessCreateError {
+        //             entry: run,
+        //             reason: format!(
+        //                 "{} dir does not exist in {}",
+        //                 SERIES_RUNS_DIR,
+        //                 series_folder.display()
+        //             ),
+        //         })
+        //     }
+        // };
+
+        // let run = create_harness_dir(&runs_dir.join(run))?;
+
+        create_harness_file(&dir.join(MARKER_RUN))?;
+
+        // copy ruh.sh and [env].env to runs_dir
+        let run_file = create_harness_file(&dir.join(RUN_RUN_FILE))?;
+        std::fs::write(run_file, &self.run_sh)?;
+        self.env.to_file(&dir.join(RUN_ENV_FILE))?;
+
+        Ok(())
+    }
+}
+
 // ========================== Reader ==========================
 impl FileReader for ExperimentRun {
     type Item = ExperimentRun;

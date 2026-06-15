@@ -14,3 +14,7 @@ pub trait FileReader {
 
     fn parse(dir: &PathBuf) -> Result<Self::Item>;
 }
+
+pub trait Runner {
+    fn execute(&self) -> Result<()>;
+}
