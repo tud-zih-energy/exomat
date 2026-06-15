@@ -181,6 +181,7 @@ pub mod tests {
     use super::*;
 
     use faccess::PathExt;
+    use rusty_fork::rusty_fork_test;
     use std::fs::read_to_string;
     use std::path::PathBuf;
     use tempfile::TempDir;
@@ -196,7 +197,7 @@ pub mod tests {
 
         // create experiment source dir (relative to current dir)
         let src_path = tmpdir.join("FooSource");
-        let src = ExperimentSource::new();
+        let mut src = ExperimentSource::new();
 
         src.persist(&src_path).unwrap();
 
@@ -216,7 +217,42 @@ pub mod tests {
     }
 
     #[test]
-    fn persist_source_custom() {}
+    fn test_create_source_multiple_times() {
+        let tmpdir = TempDir::new().unwrap();
+        let tmpdir = tmpdir.path().to_path_buf();
+
+        let mut src = ExperimentSource::new();
+        assert!(src.persist(&tmpdir).is_ok());
+        assert!(src.persist(&tmpdir).is_err());
+    }
+
+    #[test]
+    fn persist_source_custom() {
+        todo!()
+    }
+
+    rusty_fork_test! {
+        #[test]
+        fn test_create_source_missing_parents() {
+            let tmpdir = TempDir::new().unwrap();
+            let tmpdir = tmpdir.path().to_path_buf();
+            std::env::set_current_dir(&tmpdir).unwrap();
+
+            let with_parents = PathBuf::from("foo/bar");
+            assert!(!PathBuf::from("foo").exists());
+            assert!(!PathBuf::from("foo/bar").exists());
+
+            let mut src = ExperimentSource::new();
+            assert!(src.persist(&with_parents).is_ok());
+
+            assert!(PathBuf::from("foo").exists());
+            assert!(PathBuf::from("foo/bar").exists());
+
+            // template is ONLY in foo/bar
+            assert!(PathBuf::from("foo/bar/envs").exists());
+            assert!(!PathBuf::from("foo/envs").exists());
+        }
+    }
 }
 
 // TODO: move tests from skeleton
