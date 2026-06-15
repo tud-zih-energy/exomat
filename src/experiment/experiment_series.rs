@@ -356,14 +356,102 @@ impl ExperimentSeries {
             exomat_log: None,
         }
     }
+}
 
-    /// helper, that returns the content of a file if it is readable.
-    /// Otherwise returns `None`
-    fn read_log(path: &PathBuf) -> Option<String> {
-        match read_to_string(path) {
-            Ok(log) => Some(log),
-            Err(_) => None,
+// ========================== Writer ==========================
+impl FileWriter for ExperimentSeries {
+    /// Creates and populates a new experiment series directory.
+    ///
+    /// The new directory will have this structure:
+    /// ```notest
+    /// SERIES_DIR
+    ///   |-> .exomat_series
+    ///   |-> .src/
+    ///   | |-> .exomat_source_cp  [replaces .exomat_source]
+    ///   | \-> [copy of experiment source directory, read-only]
+    ///   \-> runs/
+    ///     |-> stdout.log [EMPTY]
+    ///     |-> stderr.log [EMPTY]
+    ///     \-> exomat.log [EMPTY]
+    /// ```
+    /// > Note: This example assumes values for [SERIES_SRC_DIR], [SERIES_RUNS_DIR], [SERIES_STDERR_LOG],
+    /// > [SERIES_STDOUT_LOG], [SERIES_EXOMAT_LOG]. The names in the actual file structure might
+    /// > differ, depending on the values of them.
+    ///
+    /// This function will not overwrite an existing series directory.
+    ///
+    /// Once the log files have been created any log output by exomat will be duplicated
+    /// to them.
+    ///
+    /// ## Errors and Panics
+    /// - Returns a `HarnessCreateError` if there is an experiment series directory
+    ///   called `series_name` in the same directory
+    /// - Panics if `exp_source` could not be read
+    fn persist(&mut self, dir: &PathBuf) -> Result<()> {
+        debug!(
+            "attempting to build series directory from {}",
+            self.source.location().display()
+        );
+
+        debug!("checking if is dir");
+        if !self.source.location().is_dir() {
+            return Err(Error::HarnessRunError {
+                experiment: self.source.location().display().to_string(),
+                err: "is not directory".to_string(),
+            });
         }
+
+        debug!("checking if source dir marker exists");
+        if !self.source.location().join(MARKER_SRC).is_file() {
+            return Err(Error::HarnessRunError {
+                experiment: self.source.location().display().to_string(),
+                err: "is not an experiment source directory".to_string(),
+            });
+        }
+
+        // check if series dir is valid
+        fn is_child_dir_of_of(maybe_child: &Path, parent: &Path) -> Result<bool> {
+            let parent = parent.canonicalize()?;
+
+            Ok(maybe_child
+                .ancestors()
+                .any(|ancestor| match ancestor.canonicalize() {
+                    Ok(ancestor) => ancestor == parent,
+                    Err(_) => false, // dir does not exist -> is certainly not parent
+                }))
+        }
+
+        debug!("checking if creating series inside of experiment (would be forbidden)");
+        if is_child_dir_of_of(dir, self.source.location())? {
+            // log full paths to debug, but let error be handled (i.e. reported as error) outside
+            debug!("refusing to build series dir inside of experiment dir, experiment dir: {}, to-be-created series dir: {}",
+               self.source.location().display(),
+               dir.display());
+            return Err(Error::HarnessRunError {
+                experiment: self.source.location().display().to_string(),
+                err: "can not generate output inside of experiment dir".to_string(),
+            });
+        }
+
+        let src = create_harness_dir(&dir.join(SERIES_SRC_DIR))?;
+        let runs = create_harness_dir(&dir.join(SERIES_RUNS_DIR))?;
+
+        let _ = create_harness_file(&dir.join(MARKER_SERIES))?;
+        let _ = create_harness_file(&runs.join(SERIES_STDOUT_LOG))?;
+        let _ = create_harness_file(&runs.join(SERIES_STDERR_LOG))?;
+        let exomat_log = create_harness_file(&runs.join(SERIES_EXOMAT_LOG))?;
+
+        duplicate_log_to_file(&exomat_log);
+
+        // copy exp_source/template to src and replace marker
+        copy_harness_dir(self.source.location(), &src)?;
+        std::fs::remove_file(src.join(MARKER_SRC))?;
+        create_harness_file(&src.join(MARKER_SRC_CP))?;
+
+        info!("Created new experiment series dir at {}", dir.display());
+        self.path = Some(dir.to_path_buf());
+
+        Ok(())
     }
 }
 
