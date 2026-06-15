@@ -2,22 +2,11 @@
 
 use chrono::Local;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use log::{error, info, trace, warn};
-use rand::seq::SliceRandom;
-use std::{
-    fs::OpenOptions,
-    io::Read,
-    path::{Path, PathBuf},
-    process::{Command, Stdio},
-};
+use log::{info, trace};
+use std::path::PathBuf;
 
-use strip_ansi::strip_ansi;
-
-use super::env::{fetch_environment_files, Environment, ExomatEnvironment};
-use super::skeleton::{build_run_directory, build_series_directory};
-use crate::experiment::{ExperimentSeries, FileReader};
-use crate::helper::errors::{Error, Result};
-use crate::helper::fs_names::*;
+use crate::experiment::{ExperimentSeries, ExperimentSource, FileReader, FileWriter, Runner};
+use crate::helper::errors::Result;
 
 /// Creates an experiment series/run directory for the given `experiment`.
 /// Then executes the `run.sh` file for this experiment and dumps the output in
@@ -30,20 +19,15 @@ use crate::helper::fs_names::*;
 ///
 /// Wrapper around `build_series_directory` and `execute_exp_repetitions`.
 pub fn experiment(
-    experiment: &PathBuf,
-    repetitions: u64,
+    experiment: &ExperimentSource,
     output: PathBuf,
     log_progress_handler: MultiProgress,
     is_trial: bool,
 ) -> Result<()> {
-    build_series_directory(experiment, &output)?;
-    execute_exp_repetitions(
-        experiment,
-        &output,
-        repetitions,
-        log_progress_handler,
-        is_trial,
-    )
+    let mut series = ExperimentSeries::from_source(&experiment);
+    series.persist(&output)?;
+
+    execute_exp_repetitions(&mut series, log_progress_handler, is_trial)
 }
 
 /// Creates an experiment series/run directory for the given `experiment`.
@@ -51,32 +35,17 @@ pub fn experiment(
 /// output/errors/results.
 ///
 /// The new experiment series directory will be created as a tempdir.
-pub fn trial(experiment: &PathBuf, log_progress_handler: MultiProgress) -> Result<()> {
-    let exp_name = file_name_string(&experiment.canonicalize().unwrap());
-
-    if experiment.display().to_string() == "." {
-        return Err(Error::HarnessRunError {
-            experiment: exp_name,
-            err: "Cannot start experiment run from the experiment source folder.".to_string(),
-        });
-    }
-
+pub fn trial(experiment: &ExperimentSource, log_progress_handler: MultiProgress) -> Result<()> {
     let format = &Local::now()
         .format("exomat_trial-%Y-%m-%d-%H-%M-%S")
         .to_string();
-
     let trial_dir_path = std::env::temp_dir().join(format);
+    let trial = experiment.to_trial_source()?;
 
     crate::disable_console_log();
 
     // run experiment once
-    let res = self::experiment(
-        experiment,
-        1,
-        trial_dir_path.clone(),
-        log_progress_handler,
-        true,
-    );
+    let res = self::experiment(&trial, trial_dir_path.clone(), log_progress_handler, true);
 
     // flush exomat log
     spdlog::default_logger().flush();
@@ -84,7 +53,7 @@ pub fn trial(experiment: &PathBuf, log_progress_handler: MultiProgress) -> Resul
     // gather results
     let reader = ExperimentSeries::parse(&trial_dir_path)?;
     assert!(reader.is_valid_trial());
-    reader.print_report(&exp_name, &res);
+    reader.print_report(&trial.name(), &res);
 
     res
 }
@@ -97,27 +66,25 @@ pub fn trial(experiment: &PathBuf, log_progress_handler: MultiProgress) -> Resul
 /// This functions assumes that `build_series_directory` has been called before it.
 /// Otherwise it will fail, because the files it expects to be there are not.
 fn execute_exp_repetitions(
-    exp_source_dir: &Path,
-    exp_series_dir: &Path,
-    repetitions: u64,
+    series: &mut ExperimentSeries,
     log_progress_handler: MultiProgress,
     is_trial: bool,
 ) -> Result<()> {
-    let length = repetitions.to_string().len();
-    let envs = fetch_environment_files(&exp_source_dir.join(SRC_ENV_DIR)).ok_or_else(|| {
-        Error::HarnessRunError {
-            experiment: exp_source_dir.display().to_string(),
-            err: format!(
-                "No environments found in {}",
-                exp_source_dir.join(SRC_ENV_DIR).display()
-            ),
-        }
-    })?;
+    // let length = repetitions.to_string().len();
+    // let envs = fetch_environment_files(&exp_source_dir.join(SRC_ENV_DIR)).ok_or_else(|| {
+    //     Error::HarnessRunError {
+    //         experiment: exp_source_dir.display().to_string(),
+    //         err: format!(
+    //             "No environments found in {}",
+    //             exp_source_dir.join(SRC_ENV_DIR).display()
+    //         ),
+    //     }
+    // })?;
 
     let prog_bar = if is_trial {
         ProgressBar::new(1)
     } else {
-        ProgressBar::new(repetitions * envs.len() as u64)
+        ProgressBar::new(series.repetition_count() as u64)
     };
 
     prog_bar.set_style(
@@ -130,21 +97,13 @@ fn execute_exp_repetitions(
     let prog_bar = log_progress_handler.add(prog_bar);
     prog_bar.tick(); // show on 0th repetition
 
-    info!("Starting experiment runs for {}", exp_source_dir.display());
+    info!("Starting experiment runs for {}", series.experiment_name());
+    trace!("exomat envs are: {:?}", series.exomat_envs());
 
-    let running_order: Vec<(&PathBuf, u64)> = shuffle_experiments(&envs, &repetitions);
-    for (environment, rep) in running_order {
-        let exomat_envs = ExomatEnvironment::new(&exp_source_dir.to_path_buf(), rep);
-        trace!("exomat envs are: {:?}", exomat_envs.to_environment_full());
-
-        let run_folder = build_run_directory(exp_series_dir, &environment, &exomat_envs, length)?;
-        trace!("Using envs: {:?}", Environment::from_file(&environment)?);
-
-        run_experiment(
-            &file_name_string(exp_source_dir),
-            &run_folder,
-            &exomat_envs.to_environment_full(),
-        )?;
+    series.generate_runs()?;
+    for mut run in series.iter() {
+        trace!("Using envs: {:?}", run.environment());
+        run.execute(series.experiment_name())?;
 
         // update progress
         prog_bar.inc(1);
@@ -159,151 +118,17 @@ fn execute_exp_repetitions(
     Ok(())
 }
 
-/// Compiles a list of all repetition for each environment, then suffles said list.
-///
-/// The shuffled list is then sorted by repetition, so that all n-repetitions run
-/// before all n+1-repetitions.
-fn shuffle_experiments<'a>(
-    environments: &'a Vec<PathBuf>,
-    repetition_count: &'a u64,
-) -> Vec<(&'a PathBuf, u64)> {
-    let mut running_order = vec![];
-
-    for env in environments {
-        for rep in 0..*repetition_count {
-            running_order.push((env, rep));
-        }
-    }
-
-    running_order.shuffle(&mut rand::rng());
-    running_order.sort_by(|a, b| (a.1).cmp(&b.1));
-
-    return running_order;
-}
-
-/// Executes [RUN_RUN_FILE] script found in `run_folder`.
-///
-/// 1. read envs from `run_folder/RUN_ENV_FILE`
-/// 2. add `exomat_envs` (overwrites envs with the same name)
-/// 3. run `run_folder/RUN_RUN_FILE` with these envs
-/// 4. log run results
-///     - Appends any stderr/stdout output into their respective log file in the
-///       parent series directory of `run_folder`.
-///     - Exomat output will **not** automatically be duplicated to the log file
-///       by calling this function.
-///
-/// ## Errors and Panics
-/// - Returns a `HarnessRunrror` if [RUN_RUN_FILE] could not be executed
-/// - panics if there is no [RUN_RUN_FILE] in `run_folder`
-/// - panics if there is no [RUN_ENV_FILE] in `run_folder`
-fn run_experiment(exp_name: &str, run_folder: &Path, exomat_envs: &Environment) -> Result<()> {
-    assert!(
-        run_folder.join(RUN_RUN_FILE).is_file(),
-        "Missing run.sh in experiment run directory"
-    );
-
-    assert!(
-        run_folder.join(RUN_ENV_FILE).is_file(),
-        "Missing environment.env in experiment run directory"
-    );
-
-    // This loads all existing process environment variables, plus the variables
-    // found in `run_folder/RUN_ENV_FILE`.
-    // Then adds the reserved exomat variables, without persisting them in a file.
-    let mut envs = Environment::from_file_with_load(&run_folder.join(RUN_ENV_FILE))?;
-    envs.extend_envs(exomat_envs);
-
-    let out_log = OpenOptions::new()
-        .append(true)
-        .open(run_folder.parent().unwrap().join(SERIES_STDOUT_LOG))?;
-
-    let err_log = OpenOptions::new()
-        .append(true)
-        .open(run_folder.parent().unwrap().join(SERIES_STDERR_LOG))?;
-
-    trace!(
-        "{exp_name}: Starting execution of {}",
-        run_folder.file_stem().unwrap().to_str().unwrap()
-    );
-
-    let run_folder_absolute = &run_folder.canonicalize().unwrap();
-
-    // execute command with envs and collect any output in child
-    let run = Command::new(run_folder_absolute.join(RUN_RUN_FILE))
-        .stderr(Stdio::from(err_log))
-        .stdout(Stdio::from(out_log))
-        .envs(envs.to_env_map())
-        .current_dir(run_folder_absolute)
-        .output()
-        .map_err(|e| Error::HarnessRunError {
-            experiment: exp_name.to_string(),
-            err: e.to_string(),
-        })?;
-
-    trace!("{exp_name}: Finished run {}", run_folder.display());
-
-    // open file again, but in read-only mode
-    log_run_result(
-        run_folder.file_stem().unwrap().to_str().unwrap(),
-        run.status,
-        &mut OpenOptions::new()
-            .read(true)
-            .open(run_folder.parent().unwrap().join(SERIES_STDERR_LOG))?,
-    )
-}
-
-/// Produce log output based on exit_status and err_log content.
-///
-/// - exit_status:
-///    - **success**  : log info
-///    - **failed**   : log error (don't evaluate err_log after)
-/// - err_log:
-///    - **empty**    : log info
-///    - **not empty**: log warning
-///
-/// ## Errors
-/// - Returns a HarnessRunError if `exit_status` shows a failure
-fn log_run_result(
-    run_name: &str,
-    exit_status: std::process::ExitStatus,
-    err_log: &mut std::fs::File,
-) -> Result<()> {
-    // read stderr
-    let mut stderr = String::new();
-    err_log.read_to_string(&mut stderr)?;
-
-    if exit_status.success() {
-        info!("{run_name} finished successfully with {exit_status}");
-
-        if stderr.is_empty() {
-            info!("{run_name} did not produce stderr output");
-        } else {
-            warn!("{run_name} produced stderr output");
-        }
-    } else {
-        error!("{run_name} finished with non-zero {exit_status}");
-
-        // fail fast in case of unsuccessful run
-        return Err(Error::HarnessRunError {
-            experiment: run_name.to_string(),
-            err: String::from(strip_ansi(&stderr).trim()),
-        });
-    }
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use rusty_fork::rusty_fork_test;
     use std::path::PathBuf;
     use tempfile::TempDir;
 
-    use super::super::skeleton::{build_run_directory, build_series_directory};
     use super::*;
-    use crate::experiment::{ExperimentSource, FileWriter};
-    use crate::harness::env::ExomatEnvironment;
-    use crate::helper::test_helper::{create_file_at, place_filled_run_in, read_log};
+    use crate::experiment::{ExperimentRun, ExperimentSource, FileWriter};
+    use crate::harness::env::{Environment, EnvironmentContainer, ExomatEnvironment};
+    use crate::helper::fs_names::*;
+    use crate::helper::test_helper::read_log;
 
     rusty_fork_test! {
         #[test]
@@ -317,24 +142,19 @@ mod tests {
             let exp_source = exp_source.path().to_path_buf();
             std::env::set_current_dir(&exp_source).unwrap();
 
-            let src = ExperimentSource::new();
+            // write something in run.sh
+            let mut src = ExperimentSource::new();
+            src.set_run_script(format!("echo $EXP_SRC_DIR\necho $EXP_SRC_DIR >> out_file"));
+            src.set_exomat_envs(ExomatEnvironment::new(&exp_source, 0));
             src.persist(&exp_source).unwrap();
 
-            // write something in run.sh
-            place_filled_run_in(&exp_source, "EXP_SRC_DIR");
-
             let series = series_dir_handle.path();
-            build_series_directory(&exp_source, series).unwrap();
-
-            let exomat_envs = ExomatEnvironment::new(&exp_source, 0);
-            let default_env = series
-                .join(SERIES_SRC_DIR)
-                .join(SRC_ENV_DIR)
-                .join(SRC_ENV_FILE);
+            let mut ser = ExperimentSeries::from_source(&src);
+            ser.persist(&series.to_path_buf()).unwrap();
 
             // create run dir and run experiment
-            let run = build_run_directory(series, &default_env, &exomat_envs, 1).unwrap();
-            run_experiment(&file_name_string(&exp_source), &run, &exomat_envs.to_environment_full()).unwrap();
+            let mut run = ExperimentRun::new(&src.run_script(), &Environment::new());
+            run.execute(src.name()).unwrap();
 
             let out_log = read_log(series.to_path_buf(), SERIES_STDOUT_LOG);
             let err_log = read_log(series.to_path_buf(), SERIES_STDERR_LOG);
@@ -353,19 +173,20 @@ mod tests {
             let out_name = "ExpOutput";
 
             // build basic experiment
-            crate::harness::skeleton::main(&PathBuf::from(exp_name)).unwrap();
-
             // Write something to run.sh that uses env var
-            place_filled_run_in(&tmpdir.join(exp_name), "FOO");
-
             // make multiple .env files that set $FOO to different values
-            create_file_at(&tmpdir.join(exp_name).join(SRC_ENV_DIR).join("0.env"), "FOO=BAR");
-            create_file_at(&tmpdir.join(exp_name).join(SRC_ENV_DIR).join("m.env"), "FOO=Z");
+            let mut src = ExperimentSource::new();
+            src.set_run_script(format!("echo $FOO\necho $FOO >> out_file"));
+            src.set_envs(EnvironmentContainer::from_env_list(vec![
+                Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())]),
+                Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())]),
+            ]));
+
+            src.persist(&tmpdir.join(exp_name)).unwrap();
 
             // run experiment and check logs
             experiment(
-                &PathBuf::from(exp_name.to_string()),
-                1,
+                &src,
                 PathBuf::from(out_name),
                 MultiProgress::new(), // empty
                 false
@@ -393,20 +214,19 @@ mod tests {
             let tmpdir = TempDir::new().unwrap();
             let tmpdir = tmpdir.path().to_path_buf();
             std::env::set_current_dir(&tmpdir).unwrap();
-            let exp_name = "SomeExperiment";
 
             // build basic experiment
-            crate::harness::skeleton::main(&PathBuf::from(exp_name)).unwrap();
-
             // Write something to run.sh that uses env var
-            place_filled_run_in(&tmpdir.join(exp_name), "FOO");
-
             // make multiple .env files that set $FOO to different values
-            create_file_at(&tmpdir.join(exp_name).join("envs").join("0.env"), "FOO=BAR");
-            create_file_at(&tmpdir.join(exp_name).join("envs").join("m.env"), "FOO=Z");
+            let mut src = ExperimentSource::new();
+            src.set_run_script(format!("echo $FOO\necho $FOO >> out_file"));
+            src.set_envs(EnvironmentContainer::from_env_list(vec![
+                Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())]),
+                Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())]),
+            ]));
 
             // no error
-            trial(&PathBuf::from(exp_name), MultiProgress::new()).unwrap();
+            trial(&src, MultiProgress::new()).unwrap();
         }
     }
 }
