@@ -1,4 +1,4 @@
-use super::experiment_traits::{FileReader, FileWriter};
+use super::experiment_traits::{FileReader, FileWriter, Runner};
 use crate::experiment::out_file::{Observation, OutFile, OutList};
 use crate::harness::env::{Environment, ExomatEnvironment};
 
@@ -352,7 +352,96 @@ impl<'a> IntoIterator for &'a ExperimentRun {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::experiment::{ExperimentRun, ExperimentSeries, FileWriter};
+    use crate::harness::env::Environment;
     use crate::helper::test_fixtures::{setup_run_dir, setup_run_dir_shadow, setup_series_no_out};
+    use crate::helper::test_helper::populate_src_with_series;
+
+    use faccess::PathExt;
+    use tempfile::TempDir;
+
+    #[test]
+    fn build_run_directory_simple() {
+        // create base tempdir, to act as parent
+        let tmpdir = TempDir::new().unwrap();
+        let tmpdir = tmpdir.path();
+
+        // create an experiment source, and an experiment series
+        let (mut src, mut ser) =
+            populate_src_with_series(&tmpdir.to_path_buf(), "FooSource", "FooSeries");
+
+        // create Experiment Run in ser, equals to one repetition of one environment)
+        ser.generate_runs().unwrap();
+        assert_eq!(ser.repetition_count(), 1);
+        ser.persist(&tmpdir.to_path_buf()).unwrap();
+
+        let runs_dir = tmpdir.join("FooSeries").join(SERIES_RUNS_DIR);
+        let run_dir = runs_dir.join("run_0_rep1");
+        assert!(run_dir.is_dir());
+        assert!(run_dir.join(RUN_ENV_FILE).is_file());
+        assert!(run_dir.join(RUN_RUN_FILE).is_file());
+        assert!(run_dir.join(RUN_RUN_FILE).executable());
+
+        // check that exomat envs are included
+        let envs = Environment::from_file(&run_dir.join(RUN_ENV_FILE)).unwrap();
+        assert_eq!(envs.get_env_val("REPETITION"), Some(&String::from("1")));
+        assert_eq!(
+            envs.get_env_val("EXP_SRC_DIR"),
+            Some(&src.location().display().to_string())
+        );
+
+        // set repetition to something higher, to get leading zeros in directory names
+        src.set_exomat_envs(ExomatEnvironment {
+            exp_src_dir: src.location().to_path_buf(),
+            repetition: 15,
+        });
+        let mut ser = ExperimentSeries::from_source(&src);
+        ser.generate_runs().unwrap();
+        assert_eq!(ser.repetition_count(), 15);
+        ser.persist(&tmpdir.to_path_buf()).unwrap();
+
+        assert!(!runs_dir.join("run_0_rep00").is_dir());
+        assert!(runs_dir.join("run_0_rep01").is_dir());
+        assert!(runs_dir.join("run_0_rep15").is_dir());
+        assert!(!runs_dir.join("run_0_rep16").is_dir());
+    }
+
+    #[test]
+    fn test_internal_envs_not_in_files() {
+        // set up source/series/run dir
+        let tmpdir = TempDir::new().unwrap();
+        let tmpdir = tmpdir.path();
+        let (src, mut ser) =
+            populate_src_with_series(&tmpdir.to_path_buf(), "FooSource", "FooSeries");
+
+        ser.generate_runs().unwrap();
+        assert_eq!(ser.repetition_count(), 1);
+
+        // check contents of env files
+        let src_env =
+            Environment::from_file(&src.location().join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE))
+                .unwrap();
+        let run_env = Environment::from_file(
+            &tmpdir
+                .join("FooSeries")
+                .join(SERIES_RUNS_DIR)
+                .join("run_0_rep1")
+                .join(RUN_ENV_FILE),
+        )
+        .unwrap();
+
+        // exomat variable, never serialized
+        assert!(!src_env.contains_env_var("EXP_SRC_DIR"));
+        assert!(!run_env.contains_env_var("EXP_SRC_DIR"));
+
+        // exomat variable, serialized
+        assert!(!src_env.contains_env_var("REPETITION"));
+        assert!(run_env.contains_env_var("REPETITION"));
+
+        // user variable, always serialized
+        assert!(src_env.contains_env_var("FOO"));
+        assert!(run_env.contains_env_var("FOO"));
+    }
 
     #[test]
     fn runreader_iter_working() {
