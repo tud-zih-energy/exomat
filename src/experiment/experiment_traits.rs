@@ -6,7 +6,7 @@ pub trait CsvWriter {
 }
 
 pub trait FileWriter {
-    fn persist(&self, dir: &PathBuf) -> Result<()>;
+    fn persist(&mut self, dir: &PathBuf) -> Result<()>;
 }
 
 pub trait FileReader {

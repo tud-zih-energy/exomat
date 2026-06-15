@@ -1,9 +1,12 @@
-use super::experiment_traits::FileReader;
+use super::experiment_traits::{FileReader, FileWriter};
 use crate::experiment::out_file::{Observation, OutFile, OutList};
-use crate::harness::env::Environment;
-use crate::helper::archivist::find_all_files;
-use crate::helper::errors::{Error, Result};
-use crate::helper::fs_names::*;
+use crate::harness::env::{Environment, ExomatEnvironment};
+
+use crate::helper::{
+    archivist::{create_harness_file, find_all_files},
+    errors::{Error, Result},
+    fs_names::*,
+};
 
 use log::warn;
 use std::collections::HashMap;
@@ -27,12 +30,30 @@ pub struct ExperimentRun {
 }
 
 impl ExperimentRun {
+    pub fn new(run_sh: &str, environment: &Environment) -> Self {
+        // assert that all exomat env vars are added
+        assert!(ExomatEnvironment::RESERVED_ENV_VARS
+            .iter()
+            .all(|k| environment.contains_env_var(k)));
+
+        Self {
+            run_sh: run_sh.to_string(),
+            env: environment.clone(),
+            out_files: None,
+            status: RunStatus::Ready,
+        }
+    }
+
     /// Immutable iteration
     pub fn iter<'a>(&'a self) -> ExperimentRunIter<'a> {
         ExperimentRunIter {
             run_reader: self,
             index: 0,
         }
+    }
+
+    pub fn environment(&self) -> &Environment {
+        &self.env
     }
 
     /// Returns the content of an out_ file `out_[var]`

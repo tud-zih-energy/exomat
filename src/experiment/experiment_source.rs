@@ -2,7 +2,7 @@ use log::{info, warn};
 use std::{fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt, path::PathBuf};
 
 use crate::experiment::{FileReader, FileWriter};
-use crate::harness::env::{EnvironmentContainer, ExomatEnvironment};
+use crate::harness::env::{Environment, EnvironmentContainer, ExomatEnvironment};
 use crate::helper::archivist::{create_harness_dir, create_harness_file};
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
@@ -36,6 +36,30 @@ impl ExperimentSource {
         }
     }
 
+    pub fn to_trial_source(&self) -> Result<Self> {
+        if self.location().display().to_string() == "." {
+            return Err(Error::HarnessRunError {
+                experiment: self.name(),
+                err: "Cannot start experiment run from the experiment source folder.".to_string(),
+            });
+        };
+
+        let env = self
+            .envs
+            .to_env_list()
+            .first()
+            .expect("Cannot access Environment list");
+
+        Ok(Self {
+            run_sh: self.run_sh.clone(),
+            envs: EnvironmentContainer::from_env_list(vec![env.clone()]),
+            exomat_envs: ExomatEnvironment {
+                exp_src_dir: self.location().to_path_buf(),
+                repetition: 1,
+            },
+        })
+    }
+
     pub fn get_envs(&self) -> &EnvironmentContainer {
         &self.envs
     }
@@ -44,8 +68,32 @@ impl ExperimentSource {
         file_name_string(&self.exomat_envs.exp_src_dir)
     }
 
+    pub fn exomat_envs(&self) -> Environment {
+        self.exomat_envs.to_environment_full()
+    }
+
+    pub fn repetitions(&self) -> &u64 {
+        &self.exomat_envs.repetition
+    }
+
     pub fn location(&self) -> &PathBuf {
         &self.exomat_envs.exp_src_dir
+    }
+
+    pub fn run_script(&self) -> &str {
+        &self.run_sh
+    }
+
+    pub fn set_run_script(&mut self, script: String) {
+        self.run_sh = script;
+    }
+
+    pub fn set_envs(&mut self, envs: EnvironmentContainer) {
+        self.envs = envs;
+    }
+
+    pub fn set_exomat_envs(&mut self, exomat_envs: ExomatEnvironment) {
+        self.exomat_envs = exomat_envs;
     }
 }
 
@@ -87,7 +135,7 @@ impl FileWriter for ExperimentSource {
     ///
     /// ## Errors
     /// - Returns an `HarnessCreateError` if any entry of the list above could not be created.
-    fn persist(&self, dir: &PathBuf) -> Result<()> {
+    fn persist(&mut self, dir: &PathBuf) -> Result<()> {
         create_harness_dir(dir)?;
         create_harness_file(&dir.join(MARKER_SRC))?;
 
