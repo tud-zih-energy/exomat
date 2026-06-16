@@ -18,7 +18,10 @@ pub fn place_filled_run_in(exp_src: &PathBuf, out_env: &str) {
 
 /// helper that reads a file at `[location]/[SERIES_RUNS_DIR]/[log_name]`
 pub fn read_log(location: PathBuf, log_name: &str) -> String {
-    std::fs::read_to_string(location.join(SERIES_RUNS_DIR).join(log_name)).unwrap()
+    std::fs::read_to_string(location.join(SERIES_RUNS_DIR).join(log_name))
+        .unwrap()
+        .trim()
+        .to_string()
 }
 
 /// helper to create a file at `location` with content `content`

@@ -16,7 +16,7 @@ use chrono::Local;
 use csv::Writer;
 use log::{debug, info, trace};
 use rand::seq::SliceRandom;
-use std::fs::read_to_string;
+use std::fs::{read_to_string, write};
 use std::path::{Path, PathBuf};
 
 /// Container for an Experiment Series
@@ -25,22 +25,26 @@ pub struct ExperimentSeries {
     source: ExperimentSource,
     path: Option<PathBuf>,
     runs: Vec<ExperimentRun>,
-    stdout_log: Option<String>,
-    stderr_log: Option<String>,
-    exomat_log: Option<String>,
+    stdout_log: String,
+    stderr_log: String,
+    exomat_log: String,
 }
 
 impl ExperimentSeries {
     pub fn from_source(source: &ExperimentSource) -> Result<Self> {
+        println!(
+            "generating Series of source \"{}\"",
+            source.location().display()
+        );
         let location = Self::generate_series_filepath(source.location())?;
 
         Ok(Self {
             source: source.clone(),
             path: Some(location),
             runs: Vec::new(),
-            stdout_log: None,
-            stderr_log: None,
-            exomat_log: None,
+            stdout_log: String::new(),
+            stderr_log: String::new(),
+            exomat_log: String::new(),
         })
     }
 
@@ -69,10 +73,7 @@ impl ExperimentSeries {
     }
 
     pub fn append_to_out_log(&mut self, stdout: String) {
-        match &mut self.stdout_log {
-            None => self.stdout_log = Some(stdout),
-            Some(log) => log.push_str(&stdout),
-        }
+        self.stdout_log.push_str(&stdout)
     }
 
     pub fn location(&self) -> &Option<PathBuf> {
@@ -84,13 +85,10 @@ impl ExperimentSeries {
     }
 
     pub fn append_to_err_log(&mut self, stderr: String) {
-        match &mut self.stderr_log {
-            None => self.stderr_log = Some(stderr),
-            Some(log) => log.push_str(&stderr),
-        }
+        self.stderr_log.push_str(&stderr)
     }
 
-    pub fn err_log(&self) -> &Option<String> {
+    pub fn err_log(&self) -> &str {
         &self.stderr_log
     }
 
@@ -150,26 +148,23 @@ impl ExperimentSeries {
     /// [Foo] returned:
     /// Failed (reason: e)
     /// ```
-    pub fn print_report<T>(&self, exp_name: &str, run: &Result<T>) {
+    pub fn print_report<T>(&self, run: &Result<T>) {
         let mut eval_str = String::new();
-
-        let exomat = self.exomat_log.as_deref().unwrap_or("");
-        let stderr = self.stderr_log.as_deref().unwrap_or("");
-        let stdout = self.stdout_log.as_deref().unwrap_or("");
+        let exp_name = self.source.name();
 
         // append exomat
         eval_str.push_str(&format!("[{exp_name}] exomat:\n"));
-        eval_str.push_str(exomat);
+        eval_str.push_str(&self.exomat_log);
         eval_str.push_str("\n---\n");
 
         // append stdout
         eval_str.push_str(&format!("[{exp_name}] stdout:\n"));
-        eval_str.push_str(stdout);
+        eval_str.push_str(&self.stdout_log);
         eval_str.push_str("\n---\n");
 
         // append stderr
         eval_str.push_str(&format!("[{exp_name}] stderr:\n"));
-        eval_str.push_str(stderr);
+        eval_str.push_str(&self.stderr_log);
         eval_str.push_str("\n---\n");
 
         if self.runs_are_empty() {
@@ -396,10 +391,10 @@ impl ExperimentSeries {
 
     /// helper, that returns the content of a file if it is readable.
     /// Otherwise returns `None`
-    fn read_log(path: &PathBuf) -> Option<String> {
+    fn read_log(path: &PathBuf) -> String {
         match read_to_string(path) {
-            Ok(log) => Some(log),
-            Err(_) => None,
+            Ok(log) => log,
+            Err(_) => String::new(),
         }
     }
 
@@ -417,9 +412,9 @@ impl ExperimentSeries {
             source: ExperimentSource::new(),
             path: None,
             runs: runs,
-            stdout_log: None,
-            stderr_log: None,
-            exomat_log: None,
+            stdout_log: String::new(),
+            stderr_log: String::new(),
+            exomat_log: String::new(),
         }
     }
 }
@@ -598,6 +593,49 @@ impl CsvWriter for ExperimentSeries {
         wtr.flush().map_err(|e| Error::CsvError {
             reason: e.to_string(),
         })
+    }
+}
+
+// ========================== Runner ==========================
+use crate::experiment::Runner;
+impl Runner for ExperimentSeries {
+    type Item = ();
+
+    fn execute(&mut self, exp_name: &str) -> Result<Self::Item> {
+        let mut stdout = String::new();
+        let mut stderr = String::new();
+
+        for run in &mut self.runs {
+            let (out, err) = run.execute(exp_name)?;
+
+            stderr.push_str(&err);
+            stdout.push_str(&out);
+        }
+
+        self.append_to_err_log(stderr);
+        self.append_to_out_log(stdout);
+
+        if let Some(path) = self.path.clone() {
+            write(
+                path.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG),
+                &self.stdout_log,
+            )?;
+            write(
+                path.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG),
+                &self.stderr_log,
+            )?;
+            write(
+                path.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG),
+                &self.exomat_log,
+            )?;
+
+            Ok(())
+        } else {
+            Err(Error::HarnessRunError {
+                experiment: exp_name.to_string(),
+                err: "Experiment has been executed, but cannot write logs to file.".to_string(),
+            })
+        }
     }
 }
 

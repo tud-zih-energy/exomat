@@ -9,8 +9,11 @@ use crate::helper::{
 };
 
 use log::warn;
+use log::{error, info, trace};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::{fs::OpenOptions, os::unix::fs::OpenOptionsExt};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum RunStatus {
@@ -208,11 +211,10 @@ impl ExperimentRun {
     }
 }
 
-use log::{error, info, trace};
-use std::process::{Command, Stdio};
-
 // ========================== Runner ==========================
 impl Runner for ExperimentRun {
+    type Item = (String, String);
+
     /// Executes [RUN_RUN_FILE] script found in `run_folder`.
     ///
     /// 1. read envs from `run_folder/RUN_ENV_FILE`
@@ -228,35 +230,46 @@ impl Runner for ExperimentRun {
     /// - Returns a `HarnessRunrror` if [RUN_RUN_FILE] could not be executed
     /// - panics if there is no [RUN_RUN_FILE] in `run_folder`
     /// - panics if there is no [RUN_ENV_FILE] in `run_folder`
-    fn execute(&mut self, exp_name: String) -> Result<(String, String)> {
-        // assert!(
-        //     self.join(RUN_RUN_FILE).is_file(),
-        //     "Missing run.sh in experiment run directory"
-        // );
-
-        // assert!(
-        //     run_folder.join(RUN_ENV_FILE).is_file(),
-        //     "Missing environment.env in experiment run directory"
-        // );
-
+    fn execute(&mut self, exp_name: &str) -> Result<Self::Item> {
+        trace!("{exp_name}: Checking run directory {}", self.run_name);
         if self.location.is_none() {
             return Err(Error::HarnessRunError {
-                experiment: exp_name,
+                experiment: exp_name.to_string(),
                 err: String::from("Experiment Run has not been serialized yet. Cannot execute."),
             });
         }
-        let run_folder = self.location.as_ref().unwrap().canonicalize().unwrap();
 
-        trace!(
-            "{exp_name}: Starting execution of {}",
-            run_folder.file_stem().unwrap().to_str().unwrap()
-        );
+        let run_folder = self
+            .location
+            .as_ref()
+            .expect("Run location not accessable")
+            .canonicalize()
+            .unwrap();
+
+        if !run_folder.join(RUN_RUN_FILE).is_file() {
+            return Err(Error::HarnessRunError {
+                experiment: exp_name.to_string(),
+                err: String::from("Missing run.sh in experiment run directory"),
+            });
+        };
+
+        if !run_folder.join(RUN_ENV_FILE).is_file() {
+            return Err(Error::HarnessRunError {
+                experiment: exp_name.to_string(),
+                err: String::from("Missing environment.env in experiment run directory"),
+            });
+        };
+
+        let mut all_envs = self.exomat_env.to_environment_full();
+        all_envs.extend_envs(&self.env);
+
+        trace!("{exp_name}: Starting execution of {}", self.run_name);
 
         // execute command with envs and collect any output in child
-        let run = Command::new(&self.run_sh)
+        let run = Command::new(run_folder.join(RUN_RUN_FILE))
             .stderr(Stdio::piped())
             .stdout(Stdio::piped())
-            .envs(self.env.to_env_map())
+            .envs(all_envs.to_env_map())
             .current_dir(&run_folder)
             .output()
             .map_err(|e| Error::HarnessRunError {
@@ -267,14 +280,8 @@ impl Runner for ExperimentRun {
         trace!("{exp_name}: Finished run {}", run_folder.display());
 
         // write to logs
-        let stdout = String::from_utf8(run.stdout).map_err(|e| Error::HarnessRunError {
-            experiment: exp_name.clone(),
-            err: e.to_string(),
-        })?;
-        let stderr = String::from_utf8(run.stderr).map_err(|e| Error::HarnessRunError {
-            experiment: exp_name.clone(),
-            err: e.to_string(),
-        })?;
+        let stdout = String::from_utf8_lossy(&run.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&run.stderr).to_string();
 
         // set run status
         match run.status.success() {
@@ -352,8 +359,19 @@ impl FileWriter for ExperimentRun {
         create_harness_file(&dir.join(MARKER_RUN))?;
 
         // copy ruh.sh and [env].env to runs_dir
-        let run_file = create_harness_file(&dir.join(RUN_RUN_FILE))?;
-        std::fs::write(run_file, &self.run_sh)?;
+        // create default run.sh as executable
+        let run_file_path = &dir.join(RUN_RUN_FILE);
+        OpenOptions::new()
+            .mode(0o775)
+            .write(true)
+            .create_new(true)
+            .open(run_file_path)
+            .map_err(|e| Error::HarnessCreateError {
+                entry: run_file_path.to_str().unwrap().to_string(),
+                reason: e.to_string(),
+            })?;
+
+        std::fs::write(run_file_path, &self.run_sh)?;
 
         // write envs to file (including exomat envs)
         let mut serializable_envs = self.env.clone();
