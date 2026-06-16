@@ -891,14 +891,18 @@ mod tests {
         let reader = ExperimentSeries::parse(&dir).unwrap();
         let runs = reader.get_runs();
 
-        let expected0 =
-            OutList::from(vec![OutFile::from("empty", vec![String::from("")])]).unwrap();
-        let expected1 =
-            OutList::from(vec![OutFile::from("empty", vec![String::from("NA")])]).unwrap();
+        let expected_outlists = vec![
+            OutList::from(vec![OutFile::from("empty", vec![String::from("")])]).unwrap(),
+            OutList::from(vec![OutFile::from("empty", vec![String::from("NA")])]).unwrap(),
+        ];
 
         assert_eq!(reader.run_count(), 2);
-        assert!(runs.contains(&ExperimentRun::from_out_list_unchecked(&expected0)));
-        assert!(runs.contains(&ExperimentRun::from_out_list_unchecked(&expected1)));
+        for expected_outlist in expected_outlists {
+            let found = runs
+                .iter()
+                .any(|run| run.get_out_files().as_ref().unwrap() == &expected_outlist);
+            assert!(found, "Expected OutList not found in results");
+        }
     }
 
     #[rstest]
