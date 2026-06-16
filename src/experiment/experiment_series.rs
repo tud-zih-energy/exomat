@@ -215,7 +215,7 @@ impl ExperimentSeries {
         let mut run_list = Vec::new();
 
         if self.source.get_envs().is_empty() {
-            for rep in 1..=*self.source.repetitions() {
+            for rep in 0..*self.source.repetitions() {
                 let exomat_envs = ExomatEnvironment::new(self.source.location(), rep);
 
                 let run = ExperimentRun::new(
