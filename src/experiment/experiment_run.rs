@@ -489,16 +489,18 @@ mod tests {
         let tmpdir = tmpdir.path();
 
         // create an experiment source, and an experiment series
+        let src_name = "FooSource";
+        let ser_name = "FooSeries";
         let (mut src, mut ser) =
-            populate_src_with_series(&tmpdir.to_path_buf(), "FooSource", "FooSeries");
+            populate_src_with_series(&tmpdir.to_path_buf(), src_name, ser_name);
 
         // create Experiment Run in ser, equals to one repetition of one environment)
-        ser.generate_runs();
-        assert_eq!(ser.repetition_count(), 1);
-        ser.persist(&tmpdir.to_path_buf()).unwrap();
+        ser.generate_runs().unwrap();
+        assert_eq!(ser.get_runs().len(), 1);
+        ser.persist(&tmpdir.join(ser_name)).unwrap();
 
-        let runs_dir = tmpdir.join("FooSeries").join(SERIES_RUNS_DIR);
-        let run_dir = runs_dir.join("run_0_rep1");
+        let runs_dir = ser.location().as_ref().unwrap().join(SERIES_RUNS_DIR);
+        let run_dir = runs_dir.join("run_environment_rep1");
         assert!(run_dir.is_dir());
         assert!(run_dir.join(RUN_ENV_FILE).is_file());
         assert!(run_dir.join(RUN_RUN_FILE).is_file());
@@ -518,7 +520,7 @@ mod tests {
             repetition: 15,
         });
         let mut ser = ExperimentSeries::from_source(&src);
-        ser.generate_runs();
+        ser.generate_runs().unwrap();
         assert_eq!(ser.repetition_count(), 15);
         ser.persist(&tmpdir.to_path_buf()).unwrap();
 
@@ -536,16 +538,16 @@ mod tests {
         let (src, mut ser) =
             populate_src_with_series(&tmpdir.to_path_buf(), "FooSource", "FooSeries");
 
-        ser.generate_runs();
-        assert_eq!(ser.repetition_count(), 1);
+        ser.generate_runs().unwrap();
+        assert_eq!(ser.get_runs().len(), 1);
 
         // check contents of env files
         let src_env =
-            Environment::from_file(&src.location().join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE))
-                .unwrap();
+            Environment::from_file(&src.location().join(SRC_ENV_DIR).join(SRC_ENV_FILE)).unwrap();
         let run_env = Environment::from_file(
-            &tmpdir
-                .join("FooSeries")
+            &ser.location()
+                .as_ref()
+                .unwrap()
                 .join(SERIES_RUNS_DIR)
                 .join("run_0_rep1")
                 .join(RUN_ENV_FILE),
