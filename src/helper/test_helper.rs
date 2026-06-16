@@ -29,7 +29,7 @@ pub fn create_file_at(location: &PathBuf, content: &str) {
 
 /// generates an experiment source and an experiment series dir in `base`
 ///
-/// returns (source_path, series_path, default_env_path, exomat_envs)
+/// Only the source gets serialized.
 pub fn populate_src_with_series(
     base: &PathBuf,
     src_name: &str,
@@ -43,7 +43,7 @@ pub fn populate_src_with_series(
     src.persist(&source).unwrap();
 
     let mut ser = ExperimentSeries::from_source(&src);
-    ser.persist(&series).unwrap();
+    ser.set_location(series);
 
     (src, ser)
 }
