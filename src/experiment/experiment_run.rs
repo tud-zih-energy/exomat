@@ -561,7 +561,7 @@ mod tests {
         ser.persist(&tmpdir.join(ser_name)).unwrap();
 
         let runs_dir = ser.location().as_ref().unwrap().join(SERIES_RUNS_DIR);
-        let run_dir = runs_dir.join("run_0_rep1");
+        let run_dir = runs_dir.join("run_0_rep0");
         assert!(run_dir.is_dir());
         assert!(run_dir.join(RUN_ENV_FILE).is_file());
         assert!(run_dir.join(RUN_RUN_FILE).is_file());
@@ -569,7 +569,7 @@ mod tests {
 
         // check that exomat envs are included (or not)
         let envs = Environment::from_file(&run_dir.join(RUN_ENV_FILE)).unwrap();
-        assert_eq!(envs.get_env_val("REPETITION"), Some(&String::from("1")));
+        assert_eq!(envs.get_env_val("REPETITION"), Some(&String::from("0")));
         assert_eq!(envs.get_env_val("EXP_SRC_DIR"), None);
     }
 
@@ -593,22 +593,32 @@ mod tests {
         ser.persist(&tmpdir.to_path_buf()).unwrap();
 
         let runs_dir = ser.location().as_ref().unwrap().join(SERIES_RUNS_DIR);
-        assert!(!runs_dir.join("run_0_rep00").is_dir());
-        assert!(runs_dir.join("run_0_rep01").is_dir());
-        assert!(runs_dir.join("run_0_rep15").is_dir());
-        assert!(!runs_dir.join("run_0_rep16").is_dir());
+        assert!(runs_dir.join("run_0_rep00").is_dir());
+        assert!(runs_dir.join("run_0_rep14").is_dir());
+        assert!(!runs_dir.join("run_0_rep15").is_dir());
     }
 
     #[test]
     fn test_internal_envs_not_in_files() {
-        // set up source/series/run dir
         let tmpdir = TempDir::new().unwrap();
         let tmpdir = tmpdir.path();
-        let (src, mut ser) =
-            populate_src_with_series(&tmpdir.to_path_buf(), "FooSource", "FooSeries");
+        let source_name = "FooSource";
+        let series_name = "FooSeries";
 
+        // create a source with all needed envs set
+        let mut src = ExperimentSource::new();
+        src.set_exomat_envs(ExomatEnvironment::new(&tmpdir.join(source_name), 1));
+        src.set_envs(HashMap::from([(
+            PathBuf::from(SRC_ENV_FILE),
+            Environment::from_env_list(vec![("FOO".to_string(), "bar".to_string())]),
+        )]));
+        src.persist(&tmpdir.join(source_name)).unwrap();
+
+        // create a series based on this source
+        let mut ser = ExperimentSeries::from_source(&src).unwrap();
         ser.generate_runs().unwrap();
         assert_eq!(ser.get_runs().len(), 1);
+        ser.persist(&tmpdir.join(series_name)).unwrap();
 
         // check contents of env files
         let src_env =
@@ -618,7 +628,7 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .join(SERIES_RUNS_DIR)
-                .join("run_0_rep1")
+                .join("run_0_rep0")
                 .join(RUN_ENV_FILE),
         )
         .unwrap();
