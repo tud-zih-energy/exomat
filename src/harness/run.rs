@@ -53,7 +53,7 @@ pub fn trial(experiment: &ExperimentSource, log_progress_handler: MultiProgress)
     // gather results
     let reader = ExperimentSeries::parse(&trial_dir_path)?;
     assert!(reader.is_valid_trial());
-    reader.print_report(&trial.name(), &res);
+    reader.print_report(&res);
 
     res
 }
@@ -70,8 +70,7 @@ fn execute_exp_repetitions(
     log_progress_handler: MultiProgress,
     is_trial: bool,
 ) -> Result<()> {
-    // let length = repetitions.to_string().len();
-    // let envs = fetch_environment_files(&exp_source_dir.join(SRC_ENV_DIR)).ok_or_else(|| {
+    // if series
     //     Error::HarnessRunError {
     //         experiment: exp_source_dir.display().to_string(),
     //         err: format!(
@@ -103,7 +102,7 @@ fn execute_exp_repetitions(
     series.generate_runs()?;
     for mut run in series.iter() {
         trace!("Using envs: {:?}", run.environment());
-        run.execute(series.experiment_name())?;
+        run.execute(&series.experiment_name())?;
 
         // update progress
         prog_bar.inc(1);
@@ -136,30 +135,27 @@ mod tests {
         fn test_run() {
             // create base tempdir, to act as parent
             let tmpdir = TempDir::new().unwrap();
-            let series_dir_handle = TempDir::new().unwrap();
-
-            // create experiment source and series dir
-            let exp_source = TempDir::new_in(tmpdir.path()).unwrap();
-            let exp_source = exp_source.path().to_path_buf();
-            std::env::set_current_dir(&exp_source).unwrap();
+            let tmpdir = tmpdir.path().to_path_buf();
+            std::env::set_current_dir(&tmpdir).unwrap();
+            let exp_source = &tmpdir.join("TestSource");
+            let exp_series = &tmpdir.join("TestSeries");
 
             // write something in run.sh
             let mut src = ExperimentSource::new();
-            src.set_run_script(format!("echo $EXP_SRC_DIR\necho $EXP_SRC_DIR >> out_file"));
-            src.set_exomat_envs(ExomatEnvironment::new(&exp_source, 0));
+            src.set_run_script(format!("#!/bin/bash\necho $EXP_SRC_DIR\necho $EXP_SRC_DIR >> out_file"));
+            src.set_exomat_envs(ExomatEnvironment::new(&exp_source, 1));
             src.persist(&exp_source).unwrap();
 
-            let series = series_dir_handle.path();
             let mut ser = ExperimentSeries::from_source(&src).unwrap();
             ser.generate_runs().unwrap();
-            ser.persist(&series.to_path_buf()).unwrap();
+            ser.persist(&exp_series).unwrap();
 
-            // create run dir and run experiment
-            let mut runs = ser.get_runs().to_owned();
-            runs[0].execute(src.name()).unwrap();
+            // run experiment
+            assert_eq!(ser.get_runs().len(), 1);
+            ser.execute(&src.name()).unwrap();
 
-            let out_log = read_log(series.to_path_buf(), SERIES_STDOUT_LOG);
-            let err_log = read_log(series.to_path_buf(), SERIES_STDERR_LOG);
+            let out_log = read_log(exp_series.to_path_buf(), SERIES_STDOUT_LOG);
+            let err_log = read_log(exp_series.to_path_buf(), SERIES_STDERR_LOG);
 
             assert!(out_log.contains(&exp_source.canonicalize().unwrap().display().to_string()));
             assert!(err_log.is_empty());
@@ -178,7 +174,7 @@ mod tests {
             // Write something to run.sh that uses env var
             // make multiple .env files that set $FOO to different values
             let mut src = ExperimentSource::new();
-            src.set_run_script(format!("echo $FOO\necho $FOO >> out_file"));
+            src.set_run_script(format!("#!/bin/bash\necho $FOO\necho $FOO >> out_file"));
             src.set_envs(HashMap::from([
                 (PathBuf::from(TEST_RUN_REP_DIR0), Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())])),
                 (PathBuf::from(TEST_RUN_REP_DIR1), Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())])),
@@ -221,7 +217,7 @@ mod tests {
             // Write something to run.sh that uses env var
             // make multiple .env files that set $FOO to different values
             let mut src = ExperimentSource::new();
-            src.set_run_script(format!("echo $FOO\necho $FOO >> out_file"));
+            src.set_run_script(format!("#!/bin/bash\necho $FOO\necho $FOO >> out_file"));
             src.set_envs(HashMap::from([
                 (PathBuf::from(TEST_RUN_REP_DIR0),Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())])),
                 (PathBuf::from(TEST_RUN_REP_DIR1),Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())])),
