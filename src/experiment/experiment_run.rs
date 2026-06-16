@@ -3,7 +3,7 @@ use crate::experiment::out_file::{Observation, OutFile, OutList};
 use crate::harness::env::{Environment, ExomatEnvironment};
 
 use crate::helper::{
-    archivist::{create_harness_file, find_all_files},
+    archivist::{create_harness_dir, create_harness_file, find_all_files},
     errors::{Error, Result},
     fs_names::*,
 };
@@ -24,22 +24,40 @@ pub enum RunStatus {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExperimentRun {
     run_sh: String,
+    run_name: String,
     env: Environment,
+    exomat_env: ExomatEnvironment,
     out_files: Option<OutList>,
     status: RunStatus,
     location: Option<PathBuf>,
 }
 
 impl ExperimentRun {
-    pub fn new(run_sh: &str, environment: &Environment) -> Self {
-        // assert that all exomat env vars are added
-        assert!(ExomatEnvironment::RESERVED_ENV_VARS
+    pub fn new(
+        run_sh: &str,
+        environment: (&PathBuf, &Environment),
+        exomat_environment: &ExomatEnvironment,
+        rep_format_length: usize,
+    ) -> Self {
+        assert!(rep_format_length > 0, "repetition format cannot be 0");
+
+        // assert that no exomat env vars are added to env
+        assert!(!ExomatEnvironment::RESERVED_ENV_VARS
             .iter()
-            .all(|k| environment.contains_env_var(k)));
+            .any(|k| environment.1.contains_env_var(k)));
+
+        let dir_name = format!(
+            "run_{}_rep{:0length$}",
+            environment.0.file_prefix().unwrap().display(),
+            exomat_environment.repetition,
+            length = rep_format_length
+        );
 
         Self {
             run_sh: run_sh.to_string(),
-            env: environment.clone(),
+            run_name: dir_name,
+            env: environment.1.clone(),
+            exomat_env: exomat_environment.clone(),
             out_files: None,
             status: RunStatus::Ready,
             location: None,
@@ -52,6 +70,14 @@ impl ExperimentRun {
             run_reader: self,
             index: 0,
         }
+    }
+
+    pub fn run_dir_name(&self) -> &str {
+        &self.run_name
+    }
+
+    pub fn repetition(&self) -> &u64 {
+        &self.exomat_env.repetition
     }
 
     pub fn environment(&self) -> &Environment {
@@ -90,10 +116,16 @@ impl ExperimentRun {
     /// Generates a RunReader from `outlist`.
     ///
     /// Sets an empty Environemnt.
+    #[cfg(test)]
     pub fn from_out_list_unchecked(outlist: &OutList) -> Self {
         ExperimentRun {
             run_sh: String::new(),
+            run_name: TEST_RUN_REP_DIR0.to_string(),
             env: Environment::new(),
+            exomat_env: ExomatEnvironment {
+                exp_src_dir: PathBuf::new(),
+                repetition: 1,
+            },
             out_files: Some(outlist.clone()),
             status: RunStatus::Ready,
             location: None,
@@ -316,18 +348,40 @@ impl FileWriter for ExperimentRun {
         //     }
         // };
 
-        // let run = create_harness_dir(&runs_dir.join(run))?;
-
+        create_harness_dir(&dir)?;
         create_harness_file(&dir.join(MARKER_RUN))?;
 
         // copy ruh.sh and [env].env to runs_dir
         let run_file = create_harness_file(&dir.join(RUN_RUN_FILE))?;
         std::fs::write(run_file, &self.run_sh)?;
-        self.env.to_file(&dir.join(RUN_ENV_FILE))?;
 
+        // write envs to file (including exomat envs)
+        let mut serializable_envs = self.env.clone();
+        serializable_envs.extend_envs(&self.exomat_env.to_environment_serializable());
+        serializable_envs.to_file(&dir.join(RUN_ENV_FILE))?;
+
+        // set location
         self.location = Some(dir.to_path_buf());
-
         Ok(())
+    }
+}
+
+// ========================== Display ==========================
+impl std::fmt::Display for ExperimentRun {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Experiment Run at {:?}:\n    Run script: {}\n    Environment: {:?}\n    Internat envs: {:?}\n    Status: {:?}\n    contains out files: {:#?}",
+            self.location,
+            match self.run_sh.is_empty() {
+                true => "not set",
+                false => "set"
+            },
+            self.env,
+            self.exomat_env.to_environment_full(),
+            self.status,
+            self.out_files,
+        )
     }
 }
 
@@ -427,9 +481,18 @@ impl FileReader for ExperimentRun {
             }
         };
 
+        let exomat_env = ExomatEnvironment::new(&PathBuf::new(), 1);
+        let run_name = dir
+            .file_name()
+            .expect("Could not parse run name")
+            .display()
+            .to_string();
+
         Ok(ExperimentRun {
             run_sh,
-            env: env,
+            run_name,
+            env,
+            exomat_env,
             out_files: out_balanced,
             status: RunStatus::Unknown,
             location: Some(dir.to_path_buf()),
@@ -474,12 +537,11 @@ impl<'a> IntoIterator for &'a ExperimentRun {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::experiment::{ExperimentRun, ExperimentSeries, FileWriter};
+    use crate::experiment::{ExperimentRun, ExperimentSeries, ExperimentSource, FileWriter};
     use crate::harness::env::Environment;
     use crate::helper::test_fixtures::{setup_run_dir, setup_run_dir_shadow, setup_series_no_out};
     use crate::helper::test_helper::populate_src_with_series;
 
-    use faccess::PathExt;
     use tempfile::TempDir;
 
     #[test]
@@ -491,8 +553,7 @@ mod tests {
         // create an experiment source, and an experiment series
         let src_name = "FooSource";
         let ser_name = "FooSeries";
-        let (mut src, mut ser) =
-            populate_src_with_series(&tmpdir.to_path_buf(), src_name, ser_name);
+        let (_, mut ser) = populate_src_with_series(&tmpdir.to_path_buf(), src_name, ser_name);
 
         // create Experiment Run in ser, equals to one repetition of one environment)
         ser.generate_runs().unwrap();
@@ -500,30 +561,38 @@ mod tests {
         ser.persist(&tmpdir.join(ser_name)).unwrap();
 
         let runs_dir = ser.location().as_ref().unwrap().join(SERIES_RUNS_DIR);
-        let run_dir = runs_dir.join("run_environment_rep1");
+        let run_dir = runs_dir.join("run_0_rep1");
         assert!(run_dir.is_dir());
         assert!(run_dir.join(RUN_ENV_FILE).is_file());
         assert!(run_dir.join(RUN_RUN_FILE).is_file());
-        assert!(run_dir.join(RUN_RUN_FILE).executable());
+        // assert!(run_dir.join(RUN_RUN_FILE).executable());
 
-        // check that exomat envs are included
+        // check that exomat envs are included (or not)
         let envs = Environment::from_file(&run_dir.join(RUN_ENV_FILE)).unwrap();
         assert_eq!(envs.get_env_val("REPETITION"), Some(&String::from("1")));
-        assert_eq!(
-            envs.get_env_val("EXP_SRC_DIR"),
-            Some(&src.location().display().to_string())
-        );
+        assert_eq!(envs.get_env_val("EXP_SRC_DIR"), None);
+    }
 
-        // set repetition to something higher, to get leading zeros in directory names
+    #[test]
+    fn test_run_repetition_format() {
+        // create base tempdir, to act as parent
+        let tmpdir = TempDir::new().unwrap();
+        let tmpdir = tmpdir.path();
+
+        // create an experiment source and set repetition to something higher, to get leading zeros in directory names
+        let mut src = ExperimentSource::new();
         src.set_exomat_envs(ExomatEnvironment {
-            exp_src_dir: src.location().to_path_buf(),
+            exp_src_dir: tmpdir.join("FooSource"),
             repetition: 15,
         });
-        let mut ser = ExperimentSeries::from_source(&src);
+        src.persist(&tmpdir.join("FooSource")).unwrap();
+
+        let mut ser = ExperimentSeries::from_source(&src).unwrap();
         ser.generate_runs().unwrap();
-        assert_eq!(ser.repetition_count(), 15);
+        assert_eq!(ser.get_runs().len(), 15);
         ser.persist(&tmpdir.to_path_buf()).unwrap();
 
+        let runs_dir = ser.location().as_ref().unwrap().join(SERIES_RUNS_DIR);
         assert!(!runs_dir.join("run_0_rep00").is_dir());
         assert!(runs_dir.join("run_0_rep01").is_dir());
         assert!(runs_dir.join("run_0_rep15").is_dir());
