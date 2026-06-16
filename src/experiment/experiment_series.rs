@@ -5,7 +5,7 @@ use crate::experiment::{
     out_file::{OutFile, OutList},
     CsvWriter, FileReader, FileWriter,
 };
-use crate::harness::env::Environment;
+use crate::harness::env::{Environment, ExomatEnvironment};
 use crate::helper::{
     archivist::{copy_harness_dir, create_harness_dir, create_harness_file},
     errors::{Error, Result},
@@ -31,15 +31,17 @@ pub struct ExperimentSeries {
 }
 
 impl ExperimentSeries {
-    pub fn from_source(source: &ExperimentSource) -> Self {
-        Self {
+    pub fn from_source(source: &ExperimentSource) -> Result<Self> {
+        let location = Self::generate_series_filepath(source.location())?;
+
+        Ok(Self {
             source: source.clone(),
-            path: None,
+            path: Some(location),
             runs: Vec::new(),
             stdout_log: None,
             stderr_log: None,
             exomat_log: None,
-        }
+        })
     }
 
     /// Immutable iteration
@@ -51,14 +53,14 @@ impl ExperimentSeries {
     }
 
     pub fn repetition_count(&self) -> u64 {
-        self.source.repetitions() * self.source.get_envs().environment_count()
+        self.source.repetitions() * self.source.get_envs().len() as u64
     }
 
     pub fn experiment_name(&self) -> String {
         self.source.name()
     }
 
-    pub fn exomat_envs(&self) -> Environment {
+    pub fn exomat_envs(&self) -> &ExomatEnvironment {
         self.source.exomat_envs()
     }
 
@@ -71,6 +73,14 @@ impl ExperimentSeries {
             None => self.stdout_log = Some(stdout),
             Some(log) => log.push_str(&stdout),
         }
+    }
+
+    pub fn location(&self) -> &Option<PathBuf> {
+        &self.path
+    }
+
+    pub fn set_location(&mut self, new_path: PathBuf) {
+        self.path = Some(new_path)
     }
 
     pub fn append_to_err_log(&mut self, stderr: String) {
@@ -197,19 +207,44 @@ impl ExperimentSeries {
         }
     }
 
-    pub fn generate_runs(&mut self) {
-        if self.source.get_envs().to_env_list().is_empty() {
-            let run = ExperimentRun::new(self.source.run_script(), &Environment::new());
-            self.runs.push(run);
-        } else {
-            for environment in self.shuffled_environments() {
-                let run = ExperimentRun::new(self.source.run_script(), &environment);
-                println!("Created run: {:?}", run);
-                trace!("Created run: {:?}", run);
+    pub fn generate_runs(&mut self) -> Result<()> {
+        if self.path.is_none() {
+            return Err(Error::Empty(String::from("Series location not set")));
+        }
 
-                self.runs.push(run);
+        let mut run_list = Vec::new();
+
+        if self.source.get_envs().is_empty() {
+            for rep in 1..=*self.source.repetitions() {
+                let exomat_envs = ExomatEnvironment::new(self.source.location(), rep);
+
+                let run = ExperimentRun::new(
+                    self.source.run_script(),
+                    (&PathBuf::from(SRC_ENV_FILE), &Environment::new()),
+                    &exomat_envs,
+                    self.source.repetitions().to_string().len(),
+                );
+
+                // cannot edit self.runs directly here, beucase of the borrow checker :)
+                run_list.push(run);
+            }
+        } else {
+            for (environment, rep) in self.shuffled_environments() {
+                let exomat_envs = ExomatEnvironment::new(self.source.location(), rep);
+
+                let run = ExperimentRun::new(
+                    self.source.run_script(),
+                    environment.clone(),
+                    &exomat_envs,
+                    self.source.repetitions().to_string().len(),
+                );
+
+                run_list.push(run);
             }
         }
+
+        self.runs.extend(run_list);
+        Ok(())
     }
 
     /// Build the filepath to a new series directory.
@@ -230,20 +265,24 @@ impl ExperimentSeries {
     ///
     /// The shuffled list is then sorted by repetition, so that all n-repetitions run
     /// before all n+1-repetitions.
-    fn shuffled_environments(&self) -> Vec<Environment> {
+    fn shuffled_environments(&self) -> Vec<((&PathBuf, &Environment), u64)> {
         let mut running_order = vec![];
+        let max_rep = self.source.repetitions();
 
-        for env in self.source.get_envs().to_env_list() {
-            for rep in 0..self.repetition_count() {
+        println!("Randomizing environments...");
+        trace!("Randomizing environments...");
+        for rep in 0..*max_rep {
+            for env in self.source.get_envs() {
                 // include the repetition in a tuple, so that it can be sorted correctly later
                 running_order.push((env, rep));
+                println!("added repetition {rep} for env {env:?}");
             }
         }
 
         running_order.shuffle(&mut rand::rng());
         running_order.sort_by(|a, b| (a.1).cmp(&b.1));
 
-        running_order.iter().map(|item| item.0.to_owned()).collect()
+        running_order
     }
 
     /// Adds missing out_ files to each RunReader.
@@ -475,6 +514,11 @@ impl FileWriter for ExperimentSeries {
         std::fs::remove_file(src.join(MARKER_SRC))?;
         create_harness_file(&src.join(MARKER_SRC_CP))?;
 
+        // create runs if there are any to be created
+        for run in &mut self.runs {
+            run.persist(&runs.join(run.run_dir_name()))?;
+        }
+
         info!("Created new experiment series dir at {}", dir.display());
         self.path = Some(dir.to_path_buf());
 
@@ -554,6 +598,28 @@ impl CsvWriter for ExperimentSeries {
         wtr.flush().map_err(|e| Error::CsvError {
             reason: e.to_string(),
         })
+    }
+}
+
+// ========================== Display ==========================
+impl std::fmt::Display for ExperimentSeries {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Experiment Series \"{}\" ({:?}):\n    Run script: {}\n    Environments: {:?}\n    Internat envs: {:?}\n    Stdout log: {:?}\n    Stderr log: {:?}\n    Exomat log: {:?}\n    contains runs: {}",
+            self.source.name(),
+            self.path,
+            match self.run_script().is_empty() {
+                true => "not set",
+                false => "set"
+            },
+            self.source.get_envs(),
+            self.exomat_envs().to_environment_full(),
+            self.stdout_log,
+            self.stderr_log,
+            self.exomat_log,
+            self.runs.iter().map(|run| format!("{run}")).collect::<Vec<String>>().join("\n----\n"),
+        )
     }
 }
 
@@ -666,7 +732,7 @@ mod tests {
             source.persist(&exp_source).unwrap();
 
             // create series dir (next to exp_source, named "foo", is not a trial run)
-            let mut series = ExperimentSeries::from_source(&source);
+            let mut series = ExperimentSeries::from_source(&source).unwrap();
             series.persist(&exp_series).unwrap();
 
             assert!(tmpdir.join("foo").is_dir());

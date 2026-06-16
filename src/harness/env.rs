@@ -222,7 +222,7 @@ fn to_env_list(old_list: &Vec<Vec<String>>) -> Result<EnvList> {
 /// ## Errors and Panics
 /// - Panics if `from` could not be read
 /// - Returns an `EnvError` if something went wrong during the deserialization of envs
-fn get_existing_environments_by_fname(from: &PathBuf) -> Result<EnvironmentLocationList> {
+pub fn get_existing_environments_by_fname(from: &PathBuf) -> Result<EnvironmentLocationList> {
     let mut envs: EnvironmentLocationList = HashMap::new();
 
     // if there are .env files present, read existing vars from them

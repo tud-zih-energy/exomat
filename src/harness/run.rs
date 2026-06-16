@@ -24,7 +24,7 @@ pub fn experiment(
     log_progress_handler: MultiProgress,
     is_trial: bool,
 ) -> Result<()> {
-    let mut series = ExperimentSeries::from_source(&experiment);
+    let mut series = ExperimentSeries::from_source(&experiment)?;
     series.persist(&output)?;
 
     execute_exp_repetitions(&mut series, log_progress_handler, is_trial)
@@ -100,7 +100,7 @@ fn execute_exp_repetitions(
     info!("Starting experiment runs for {}", series.experiment_name());
     trace!("exomat envs are: {:?}", series.exomat_envs());
 
-    series.generate_runs();
+    series.generate_runs()?;
     for mut run in series.iter() {
         trace!("Using envs: {:?}", run.environment());
         run.execute(series.experiment_name())?;
@@ -121,12 +121,13 @@ fn execute_exp_repetitions(
 #[cfg(test)]
 mod tests {
     use rusty_fork::rusty_fork_test;
+    use std::collections::HashMap;
     use std::path::PathBuf;
     use tempfile::TempDir;
 
     use super::*;
-    use crate::experiment::{ExperimentRun, ExperimentSource, FileWriter};
-    use crate::harness::env::{Environment, EnvironmentContainer, ExomatEnvironment};
+    use crate::experiment::{ExperimentSource, FileWriter};
+    use crate::harness::env::{Environment, ExomatEnvironment};
     use crate::helper::fs_names::*;
     use crate::helper::test_helper::read_log;
 
@@ -149,12 +150,13 @@ mod tests {
             src.persist(&exp_source).unwrap();
 
             let series = series_dir_handle.path();
-            let mut ser = ExperimentSeries::from_source(&src);
+            let mut ser = ExperimentSeries::from_source(&src).unwrap();
+            ser.generate_runs().unwrap();
             ser.persist(&series.to_path_buf()).unwrap();
 
             // create run dir and run experiment
-            let mut run = ExperimentRun::new(&src.run_script(), &Environment::new());
-            run.execute(src.name()).unwrap();
+            let mut runs = ser.get_runs().to_owned();
+            runs[0].execute(src.name()).unwrap();
 
             let out_log = read_log(series.to_path_buf(), SERIES_STDOUT_LOG);
             let err_log = read_log(series.to_path_buf(), SERIES_STDERR_LOG);
@@ -177,9 +179,9 @@ mod tests {
             // make multiple .env files that set $FOO to different values
             let mut src = ExperimentSource::new();
             src.set_run_script(format!("echo $FOO\necho $FOO >> out_file"));
-            src.set_envs(EnvironmentContainer::from_env_list(vec![
-                Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())]),
-                Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())]),
+            src.set_envs(HashMap::from([
+                (PathBuf::from(TEST_RUN_REP_DIR0), Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())])),
+                (PathBuf::from(TEST_RUN_REP_DIR1), Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())])),
             ]));
 
             src.persist(&tmpdir.join(exp_name)).unwrap();
@@ -203,7 +205,7 @@ mod tests {
             assert!(stdout_log.contains("BAR"));
 
             // take one out_file and check its content
-            let output = read_log(tmpdir.join(out_name), "run_0_rep0/out_file");
+            let output = read_log(tmpdir.join(out_name), format!("{TEST_RUN_REP_DIR0}/out_file").as_str());
             assert_eq!(output.lines().count(), 1);
             assert!(output.contains("BAR"));
         }
@@ -220,9 +222,9 @@ mod tests {
             // make multiple .env files that set $FOO to different values
             let mut src = ExperimentSource::new();
             src.set_run_script(format!("echo $FOO\necho $FOO >> out_file"));
-            src.set_envs(EnvironmentContainer::from_env_list(vec![
-                Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())]),
-                Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())]),
+            src.set_envs(HashMap::from([
+                (PathBuf::from(TEST_RUN_REP_DIR0),Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())])),
+                (PathBuf::from(TEST_RUN_REP_DIR1),Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())])),
             ]));
 
             // no error
