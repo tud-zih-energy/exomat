@@ -188,6 +188,8 @@ impl FileWriter for ExperimentSource {
         run_file.write_all(run_sh_bytes)?;
 
         info!("Experiment harness created under {}", dir.display());
+
+        self.exomat_envs.exp_src_dir = dir.to_path_buf();
         Ok(())
     }
 }
