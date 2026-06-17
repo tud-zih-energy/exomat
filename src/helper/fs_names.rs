@@ -37,5 +37,9 @@ pub const TEST_RUN_REP_DIR3: &str = "run_y_rep4";
 /// ## Panics
 /// - panics if file `ends` with "." or "..".
 pub fn file_name_string(file: &Path) -> String {
-    file.file_name().unwrap().to_str().unwrap().to_string()
+    file.file_name()
+        .expect(&format!("Could not get filename for {}", file.display()))
+        .to_str()
+        .expect(&format!("Could stringify filename for {}", file.display()))
+        .to_string()
 }

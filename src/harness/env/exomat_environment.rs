@@ -30,7 +30,10 @@ impl ExomatEnvironment {
             String::from("EXP_SRC_DIR"),
             self.exp_src_dir
                 .canonicalize()
-                .unwrap()
+                .expect(&format!(
+                    "EXP_SRC_DIR is no dir ({})",
+                    self.exp_src_dir.display()
+                ))
                 .display()
                 .to_string(),
         )])));

@@ -44,7 +44,7 @@ impl ExperimentSource {
     pub fn to_trial_source(&self) -> Result<Self> {
         if self.location().display().to_string() == "." {
             return Err(Error::HarnessRunError {
-                experiment: self.name(),
+                experiment: self.name()?,
                 err: "Cannot start experiment run from the experiment source folder.".to_string(),
             });
         };
@@ -73,8 +73,15 @@ impl ExperimentSource {
         &self.envs
     }
 
-    pub fn name(&self) -> String {
-        file_name_string(&self.exomat_envs.exp_src_dir)
+    pub fn name(&self) -> Result<String> {
+        if self.exomat_envs.exp_src_dir == PathBuf::new() {
+            warn!("Run cannot determine it's source.");
+            Err(Error::Empty(
+                "EXP_SRC_DIR not set in Experiment Source".to_string(),
+            ))
+        } else {
+            Ok(file_name_string(&self.exomat_envs.exp_src_dir))
+        }
     }
 
     pub fn exomat_envs(&self) -> &ExomatEnvironment {

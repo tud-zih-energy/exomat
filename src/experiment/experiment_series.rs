@@ -60,7 +60,7 @@ impl ExperimentSeries {
         self.source.repetitions() * self.source.get_envs().len() as u64
     }
 
-    pub fn experiment_name(&self) -> String {
+    pub fn experiment_name(&self) -> Result<String> {
         self.source.name()
     }
 
@@ -90,6 +90,10 @@ impl ExperimentSeries {
 
     pub fn err_log(&self) -> &str {
         &self.stderr_log
+    }
+
+    pub fn include_source(&mut self, source: &ExperimentSource) {
+        self.source = source.clone()
     }
 
     /// Returns the list of Experiment Runs.
@@ -148,9 +152,9 @@ impl ExperimentSeries {
     /// [Foo] returned:
     /// Failed (reason: e)
     /// ```
-    pub fn print_report<T>(&self, run: &Result<T>) {
+    pub fn print_report<T>(&self, run: &Result<T>) -> Result<()> {
         let mut eval_str = String::new();
-        let exp_name = self.source.name();
+        let exp_name = self.source.name()?;
 
         // append exomat
         eval_str.push_str(&format!("[{exp_name}] exomat:\n"));
@@ -188,18 +192,7 @@ impl ExperimentSeries {
         }
 
         print!("{eval_str}");
-    }
-
-    /// Checks if the SeriesReader contains a valid trial run.
-    ///
-    /// Currently checks:
-    /// - run repetitions == 1
-    pub fn is_valid_trial(&self) -> bool {
-        if self.run_count() == 1 {
-            true
-        } else {
-            false
-        }
+        Ok(())
     }
 
     pub fn generate_runs(&mut self) -> Result<()> {
@@ -384,11 +377,6 @@ impl ExperimentSeries {
         }
     }
 
-    /// Returns the number of runs recorded (Test helper)
-    fn run_count(&self) -> usize {
-        self.runs.len()
-    }
-
     /// helper, that returns the content of a file if it is readable.
     /// Otherwise returns `None`
     fn read_log(path: &PathBuf) -> String {
@@ -396,6 +384,32 @@ impl ExperimentSeries {
             Ok(log) => log,
             Err(_) => String::new(),
         }
+    }
+
+    /// Checks if the SeriesReader contains a valid trial run.
+    ///
+    /// Currently checks:
+    /// - run repetitions == 1
+    /// - REPETITION == 1
+    #[cfg(test)]
+    fn is_valid_trial(&self) -> bool {
+        if self.run_count() == 1 && self.exomat_envs().repetition == 1 {
+            true
+        } else {
+            println!(
+                "not a valid trial:\n {:?} ({})\n {:?}",
+                self.runs,
+                self.run_count(),
+                self.source.exomat_envs()
+            );
+            false
+        }
+    }
+
+    /// Returns the number of runs recorded (Test helper)
+    #[cfg(test)]
+    fn run_count(&self) -> usize {
+        self.runs.len()
     }
 
     /// Parses a SeriesReader from multiple OutLists (Test helper)
@@ -439,7 +453,7 @@ impl LogWriter for ExperimentSeries {
             Ok(())
         } else {
             Err(Error::HarnessRunError {
-                experiment: self.experiment_name(),
+                experiment: self.experiment_name()?,
                 err: "Experiment has been executed, but cannot write logs to file.".to_string(),
             })
         }
@@ -628,7 +642,7 @@ impl std::fmt::Display for ExperimentSeries {
         write!(
             f,
             "Experiment Series \"{}\" ({:?}):\n    Run script: {}\n    Environments: {:?}\n    Internat envs: {:?}\n    Stdout log: {:?}\n    Stderr log: {:?}\n    Exomat log: {:?}\n    contains runs: {}",
-            self.source.name(),
+            self.source.name().unwrap_or("Unknown".to_string()),
             self.path,
             match self.run_script().is_empty() {
                 true => "not set",
