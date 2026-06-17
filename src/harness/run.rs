@@ -43,7 +43,7 @@ pub fn trial(experiment: &ExperimentSource, log_progress_handler: MultiProgress)
         .format("exomat_trial-%Y-%m-%d-%H-%M-%S")
         .to_string();
     let trial_dir_path = std::env::temp_dir().join(format);
-    let trial = experiment.to_trial_source()?;
+    let trial = experiment.to_trial_source();
 
     crate::disable_console_log();
 

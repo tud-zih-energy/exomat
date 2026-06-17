@@ -32,6 +32,13 @@ pub struct ExperimentSeries {
 
 impl ExperimentSeries {
     pub fn from_source(source: &ExperimentSource) -> Result<Self> {
+        if source.location().display().to_string() == "." {
+            return Err(Error::HarnessRunError {
+                experiment: source.name()?,
+                err: "Cannot start experiment run from the experiment source folder.".to_string(),
+            });
+        };
+
         println!(
             "generating Series of source \"{}\"",
             source.location().display()

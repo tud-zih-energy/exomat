@@ -37,14 +37,18 @@ impl ExperimentSource {
         }
     }
 
-    pub fn to_trial_source(&self) -> Result<Self> {
-        if self.location().display().to_string() == "." {
-            return Err(Error::HarnessRunError {
-                experiment: self.name()?,
-                err: "Cannot start experiment run from the experiment source folder.".to_string(),
-            });
-        };
-
+    /// Generates a valid trial source based on an ExperimentSource.
+    ///
+    /// The following default values are set:
+    /// - `run_sh`: copied
+    /// - `envs`: one random Environment from self.envs (or an empty Environment, if self.envs is empty)
+    /// - `exomat_envs`:
+    ///     - `exp_src_dir`: copied
+    ///     - `repetition`: 1
+    ///
+    /// ## Panics
+    /// - panics if the randomly chosen Environment is inaccessable
+    pub fn to_trial_source(&self) -> Self {
         let trial_env: EnvironmentLocationList = match self.envs.is_empty() {
             true => HashMap::from([(PathBuf::from(SRC_ENV_FILE), Environment::new())]),
             false => HashMap::from([self
@@ -55,14 +59,20 @@ impl ExperimentSource {
                 .expect("Cannot access Environment")]),
         };
 
-        Ok(Self {
+        info!(
+            "Created trial with environment \"{}\": {:?}",
+            trial_env.keys().take(1).next().unwrap().display(),
+            trial_env.values().take(1).next().unwrap()
+        );
+
+        Self {
             run_sh: self.run_sh.clone(),
             envs: trial_env,
             exomat_envs: ExomatEnvironment {
                 exp_src_dir: self.location().to_path_buf(),
                 repetition: 1,
             },
-        })
+        }
     }
 
     pub fn get_envs(&self) -> &EnvironmentLocationList {
