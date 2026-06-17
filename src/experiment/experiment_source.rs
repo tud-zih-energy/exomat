@@ -159,12 +159,25 @@ impl ExperimentSource {
 impl FileReader for ExperimentSource {
     type Item = ExperimentSource;
 
+    /// Create an ExperimentSource based on a directory.
+    ///
+    /// The following values are set:
+    /// - `run_sh`: content of `dir/[SRC_TEMPLATE_DIR]/[SRC_RUN_FILE]`
+    /// - `envs`: content of `dir/[SRC_ENV_DIR]`
+    /// - `exomat_envs`:
+    ///     - `exp_src_dir`: dir (absolute path)
+    ///     - `repetition`: 1
+    ///
+    /// ## Panics
+    /// - returns an `IoError` if the run script could not be read
+    /// - returns an `EnvError` if Environments could not be parsed
+    /// - panics if the absolute path of `dir` cannot be build
     fn parse(dir: &PathBuf) -> Result<Self::Item> {
         let exomat_envs = ExomatEnvironment::new(
             &dir.to_path_buf()
                 .canonicalize()
-                .expect("Could not resole Source path"),
-            0,
+                .expect("Could not resolve Source path"),
+            1,
         );
         let run_sh = std::fs::read_to_string(&dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE))?;
         let envs = get_existing_environments_by_fname(&dir.join(SRC_ENV_DIR))?;
@@ -179,20 +192,25 @@ impl FileReader for ExperimentSource {
 
 // ========================== Writer ==========================
 impl FileWriter for ExperimentSource {
-    /// Creates an experiment source folder.
+    /// Creates an experiment source folder from an ExperimentSource.
     ///
-    /// If nothing is set, the folder will be created with the following defaults:
     /// ```notest
-    /// exp_source_dir
+    /// dir
     ///   |-> .exomat_source
     ///   |-> SRC_TEMPLATE_DIR/
-    ///   | \-> SRC_RUN_FILE [content: src/harness/run.sh.template]
+    ///   | \-> SRC_RUN_FILE [executable, content: self.run_sh]
     ///   \-> SRC_ENV_DIR/
-    ///     \-> SRC_ENV_FILE [EMPTY]
+    ///     | # if self.envs.is_empty
+    ///     |-> SRC_ENV_FILE [EMPTY]
+    ///     | # else: one .env file for each environment in self.envs
+    ///     | # see EnvironmentContainer::serialize_environments()
+    ///     \-> ...
     /// ```
     ///
     /// ## Errors
-    /// - Returns an `HarnessCreateError` if any entry of the list above could not be created.
+    /// - returns an `HarnessCreateError` if any entry of the list above could not be created.
+    /// - returns an `IoError` if the run script could not be written
+    /// - returns an `EnvError` if Environment serialization failed
     fn persist(&mut self, dir: &PathBuf) -> Result<()> {
         create_harness_dir(dir)?;
         create_harness_file(&dir.join(MARKER_SRC))?;
