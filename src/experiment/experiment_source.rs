@@ -75,10 +75,19 @@ impl ExperimentSource {
         }
     }
 
-    pub fn get_envs(&self) -> &EnvironmentLocationList {
+    // ========================= getter ========================================
+
+    /// A reference to the map of Environments with their file names as keys
+    ///
+    /// Stores the content of `[experiment]/SRC_ENV_DIR/`
+    pub fn envs(&self) -> &EnvironmentLocationList {
         &self.envs
     }
 
+    /// Returns the directory name of the Experiment Source.
+    ///
+    /// ## Errors
+    /// - returns an `Empty`Error, if `exp_src_dir` is not set in exomat_envs
     pub fn name(&self) -> Result<String> {
         if self.exomat_envs.exp_src_dir == PathBuf::new() {
             warn!("Run cannot determine it's source.");
@@ -90,26 +99,42 @@ impl ExperimentSource {
         }
     }
 
+    /// A reference to the internal variables of this Experiment Source
     pub fn exomat_envs(&self) -> &ExomatEnvironment {
         &self.exomat_envs
     }
 
+    /// A reference to the number of repetitions the Experiment should execute
     pub fn repetitions(&self) -> &u64 {
         &self.exomat_envs.repetition
     }
 
+    /// Location of the Experiment Source in the Filesystem
+    ///
+    /// May be empty if the Experiment Source has not been persisted yet.
     pub fn location(&self) -> &PathBuf {
         &self.exomat_envs.exp_src_dir
     }
 
+    /// A reference to the run script this Experiment will execute.
+    ///
+    /// Stores the content of `[experiment]/SRC_TEMPLATE_DIR/SRC_RUN_FILE``
     pub fn run_script(&self) -> &str {
         &self.run_sh
     }
 
+    // ========================= setter ========================================
+
+    /// Replace the run script
     pub fn set_run_script(&mut self, script: String) {
+        //TODO: warn if script does not start with #!/bin/bash or similar
         self.run_sh = script;
     }
 
+    /// Replace envs
+    ///
+    /// ## Errors
+    /// - returns an `EnvError` if any key does not end with ".env"
     pub fn set_envs(&mut self, envs: EnvironmentLocationList) -> Result<()> {
         if let Some(invalid_env) = envs
             .keys()
@@ -124,6 +149,7 @@ impl ExperimentSource {
         Ok(())
     }
 
+    /// Replace internal exomat variables
     pub fn set_exomat_envs(&mut self, exomat_envs: ExomatEnvironment) {
         self.exomat_envs = exomat_envs;
     }
