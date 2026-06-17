@@ -215,36 +215,6 @@ pub mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn persist_source_default() {
-        let template = read_to_string(PathBuf::from("src/harness/run.sh.template")).unwrap();
-
-        // create base tempdir, to act as parent
-        let tmpdir = TempDir::new().unwrap();
-        let tmpdir = tmpdir.path();
-        std::env::set_current_dir(&tmpdir).unwrap();
-
-        // create experiment source dir (relative to current dir)
-        let src_path = tmpdir.join("FooSource");
-        let mut src = ExperimentSource::new();
-
-        src.persist(&src_path).unwrap();
-
-        assert!(&tmpdir.join("FooSource").is_dir());
-        assert!(src_path.join(SRC_ENV_DIR).is_dir());
-        assert!(src_path.join(SRC_ENV_DIR).join(SRC_ENV_FILE).is_file());
-        assert!(src_path.join(SRC_TEMPLATE_DIR).is_dir());
-
-        let run_file = PathBuf::from(&src_path.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE));
-
-        // new run.sh contains template, is executable
-        assert!(run_file.is_file());
-        let run = read_to_string(&run_file).unwrap();
-
-        assert_eq!(run, template);
-        assert!(&run_file.executable());
-    }
-
-    #[test]
     fn test_create_source_multiple_times() {
         let tmpdir = TempDir::new().unwrap();
         let tmpdir = tmpdir.path().to_path_buf();
@@ -254,12 +224,68 @@ pub mod tests {
         assert!(src.persist(&tmpdir).is_err());
     }
 
-    #[test]
-    fn persist_source_custom() {
-        todo!()
-    }
-
     rusty_fork_test! {
+        #[test]
+        fn persist_source_default() {
+            let template = read_to_string(PathBuf::from("src/harness/run.sh.template")).unwrap();
+
+            // create base tempdir, to act as parent
+            let tmpdir = TempDir::new().unwrap();
+            let tmpdir = tmpdir.path();
+            std::env::set_current_dir(&tmpdir).unwrap();
+
+            // create experiment source dir (relative to current dir)
+            let src_path = tmpdir.join("FooSource");
+            let mut src = ExperimentSource::new();
+
+            src.persist(&src_path).unwrap();
+
+            assert!(&tmpdir.join("FooSource").is_dir());
+            assert!(src_path.join(SRC_ENV_DIR).is_dir());
+            assert!(src_path.join(SRC_ENV_DIR).join(SRC_ENV_FILE).is_file());
+            assert!(src_path.join(SRC_TEMPLATE_DIR).is_dir());
+
+            let run_file = PathBuf::from(&src_path.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE));
+
+            // new run.sh contains template, is executable
+            assert!(run_file.is_file());
+            let run = read_to_string(&run_file).unwrap();
+
+            assert_eq!(run, template);
+            assert!(&run_file.executable());
+        }
+
+        #[test]
+        fn persist_source_custom() {
+            // create base tempdir, to act as parent
+            let tmpdir = TempDir::new().unwrap();
+            let tmpdir = tmpdir.path();
+            std::env::set_current_dir(&tmpdir).unwrap();
+
+            let custom_script = "!#/bin/bash\necho Something";
+
+            // create experiment source dir (relative to current dir)
+            let src_path = tmpdir.join("FooSource");
+            let mut src = ExperimentSource::new();
+
+            src.set_run_script(custom_script.to_string());
+            src.persist(&src_path).unwrap();
+
+            assert!(&tmpdir.join("FooSource").is_dir());
+            assert!(src_path.join(SRC_ENV_DIR).is_dir());
+            assert!(src_path.join(SRC_ENV_DIR).join(SRC_ENV_FILE).is_file());
+            assert!(src_path.join(SRC_TEMPLATE_DIR).is_dir());
+
+            let run_file = PathBuf::from(&src_path.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE));
+
+            // new run.sh contains template, is executable
+            assert!(run_file.is_file());
+            let run = read_to_string(&run_file).unwrap();
+
+            assert_eq!(run, custom_script);
+            assert!(&run_file.executable());
+        }
+
         #[test]
         fn test_create_source_missing_parents() {
             let tmpdir = TempDir::new().unwrap();
@@ -282,5 +308,3 @@ pub mod tests {
         }
     }
 }
-
-// TODO: move tests from skeleton
