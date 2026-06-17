@@ -3,7 +3,7 @@ use crate::experiment::{
     experiment_run::ExperimentRun,
     experiment_source::ExperimentSource,
     out_file::{OutFile, OutList},
-    CsvWriter, FileReader, FileWriter,
+    CsvWriter, FileReader, FileWriter, LogWriter,
 };
 use crate::harness::env::{Environment, ExomatEnvironment};
 use crate::helper::{
@@ -72,8 +72,8 @@ impl ExperimentSeries {
         self.source.run_script()
     }
 
-    pub fn append_to_out_log(&mut self, stdout: String) {
-        self.stdout_log.push_str(&stdout)
+    pub fn log_stdout(&mut self, stdout: String) {
+        self.stdout_log.push_str(&stdout);
     }
 
     pub fn location(&self) -> &Option<PathBuf> {
@@ -84,8 +84,8 @@ impl ExperimentSeries {
         self.path = Some(new_path)
     }
 
-    pub fn append_to_err_log(&mut self, stderr: String) {
-        self.stderr_log.push_str(&stderr)
+    pub fn log_stderr(&mut self, stderr: String) {
+        self.stderr_log.push_str(&stderr);
     }
 
     pub fn err_log(&self) -> &str {
@@ -420,6 +420,32 @@ impl ExperimentSeries {
 }
 
 // ========================== Writer ==========================
+impl LogWriter for ExperimentSeries {
+    fn persist_logs(&mut self) -> Result<()> {
+        if let Some(path) = self.path.clone() {
+            write(
+                path.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG),
+                &self.stdout_log,
+            )?;
+            write(
+                path.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG),
+                &self.stderr_log,
+            )?;
+            write(
+                path.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG),
+                &self.exomat_log,
+            )?;
+
+            Ok(())
+        } else {
+            Err(Error::HarnessRunError {
+                experiment: self.experiment_name(),
+                err: "Experiment has been executed, but cannot write logs to file.".to_string(),
+            })
+        }
+    }
+}
+
 impl FileWriter for ExperimentSeries {
     /// Creates and populates a new experiment series directory.
     ///
@@ -593,49 +619,6 @@ impl CsvWriter for ExperimentSeries {
         wtr.flush().map_err(|e| Error::CsvError {
             reason: e.to_string(),
         })
-    }
-}
-
-// ========================== Runner ==========================
-use crate::experiment::Runner;
-impl Runner for ExperimentSeries {
-    type Item = ();
-
-    fn execute(&mut self, exp_name: &str) -> Result<Self::Item> {
-        let mut stdout = String::new();
-        let mut stderr = String::new();
-
-        for run in &mut self.runs {
-            let (out, err) = run.execute(exp_name)?;
-
-            stderr.push_str(&err);
-            stdout.push_str(&out);
-        }
-
-        self.append_to_err_log(stderr);
-        self.append_to_out_log(stdout);
-
-        if let Some(path) = self.path.clone() {
-            write(
-                path.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG),
-                &self.stdout_log,
-            )?;
-            write(
-                path.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG),
-                &self.stderr_log,
-            )?;
-            write(
-                path.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG),
-                &self.exomat_log,
-            )?;
-
-            Ok(())
-        } else {
-            Err(Error::HarnessRunError {
-                experiment: exp_name.to_string(),
-                err: "Experiment has been executed, but cannot write logs to file.".to_string(),
-            })
-        }
     }
 }
 

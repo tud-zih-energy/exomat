@@ -389,7 +389,8 @@ impl std::fmt::Display for ExperimentRun {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Experiment Run at {:?}:\n    Run script: {}\n    Environment: {:?}\n    Internat envs: {:?}\n    Status: {:?}\n    contains out files: {:#?}",
+            "Experiment Run \"{}\" at {:?}:\n    Run script: {}\n    Environment: {:?}\n    Internat envs: {:?}\n    Status: {:?}\n    contains out files: {:#?}",
+            self.run_name,
             self.location,
             match self.run_sh.is_empty() {
                 true => "not set",
@@ -629,7 +630,8 @@ mod tests {
         src.set_envs(HashMap::from([(
             PathBuf::from(SRC_ENV_FILE),
             Environment::from_env_list(vec![("FOO".to_string(), "bar".to_string())]),
-        )]));
+        )]))
+        .unwrap();
         src.persist(&tmpdir.join(source_name)).unwrap();
 
         // create a series based on this source
