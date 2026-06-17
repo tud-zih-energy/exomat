@@ -5,7 +5,9 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{info, trace};
 use std::path::PathBuf;
 
-use crate::experiment::{ExperimentSeries, ExperimentSource, FileReader, FileWriter, Runner};
+use crate::experiment::{
+    ExperimentSeries, ExperimentSource, FileReader, FileWriter, LogWriter, Runner,
+};
 use crate::helper::errors::Result;
 
 /// Creates an experiment series/run directory for the given `experiment`.
@@ -25,6 +27,7 @@ pub fn experiment(
     is_trial: bool,
 ) -> Result<()> {
     let mut series = ExperimentSeries::from_source(&experiment)?;
+    series.generate_runs()?;
     series.persist(&output)?;
 
     execute_exp_repetitions(&mut series, log_progress_handler, is_trial)
@@ -83,7 +86,7 @@ fn execute_exp_repetitions(
     let prog_bar = if is_trial {
         ProgressBar::new(1)
     } else {
-        ProgressBar::new(series.repetition_count() as u64)
+        ProgressBar::new(series.repetition_count() as u64 + 1)
     };
 
     prog_bar.set_style(
@@ -99,10 +102,15 @@ fn execute_exp_repetitions(
     info!("Starting experiment runs for {}", series.experiment_name());
     trace!("exomat envs are: {:?}", series.exomat_envs());
 
-    series.generate_runs()?;
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+
     for mut run in series.iter() {
         trace!("Using envs: {:?}", run.environment());
-        run.execute(&series.experiment_name())?;
+
+        let (out, err) = run.execute(&series.experiment_name())?;
+        stderr.push_str(&err);
+        stdout.push_str(&out);
 
         // update progress
         prog_bar.inc(1);
@@ -113,6 +121,12 @@ fn execute_exp_repetitions(
         }
     }
 
+    info!("Serializing logs...");
+    series.log_stderr(stderr);
+    series.log_stdout(stdout);
+    series.persist_logs()?;
+
+    prog_bar.inc(1);
     prog_bar.finish();
     Ok(())
 }
@@ -125,7 +139,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::experiment::{ExperimentSource, FileWriter};
+    use crate::experiment::{ExperimentRun, ExperimentSource, FileWriter};
     use crate::harness::env::{Environment, ExomatEnvironment};
     use crate::helper::fs_names::*;
     use crate::helper::test_helper::read_log;
@@ -152,7 +166,12 @@ mod tests {
 
             // run experiment
             assert_eq!(ser.get_runs().len(), 1);
-            ser.execute(&src.name()).unwrap();
+            let run: &mut  ExperimentRun = ser.get_runs_mut().first_mut().unwrap();
+
+            let (out, err) = run.execute(exp_source.file_name().unwrap().to_str().unwrap()).unwrap();
+            ser.log_stderr(err);
+            ser.log_stdout(out);
+            ser.persist_logs().unwrap();
 
             let out_log = read_log(exp_series.to_path_buf(), SERIES_STDOUT_LOG);
             let err_log = read_log(exp_series.to_path_buf(), SERIES_STDERR_LOG);
@@ -176,9 +195,9 @@ mod tests {
             let mut src = ExperimentSource::new();
             src.set_run_script(format!("#!/bin/bash\necho $FOO\necho $FOO >> out_file"));
             src.set_envs(HashMap::from([
-                (PathBuf::from(TEST_RUN_REP_DIR0), Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())])),
-                (PathBuf::from(TEST_RUN_REP_DIR1), Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())])),
-            ]));
+                (PathBuf::from("0.env"), Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())])),
+                (PathBuf::from("1.env"), Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())])),
+            ])).unwrap();
 
             src.persist(&tmpdir.join(exp_name)).unwrap();
 
@@ -194,14 +213,14 @@ mod tests {
             let stderr_log = read_log(tmpdir.join(out_name), SERIES_STDERR_LOG);
             assert_eq!(stderr_log.lines().count(), 0);
 
-            // two lines for variable (inserted here), two lines for current time (part of run.sh template)
+            // two lines for variable
             let stdout_log = read_log(tmpdir.join(out_name), SERIES_STDOUT_LOG);
-            assert_eq!(dbg!(stdout_log.lines()).count(), 4);
+            assert_eq!(stdout_log.lines().count(), 2);
             assert!(stdout_log.contains("Z"));
             assert!(stdout_log.contains("BAR"));
 
             // take one out_file and check its content
-            let output = read_log(tmpdir.join(out_name), format!("{TEST_RUN_REP_DIR0}/out_file").as_str());
+            let output = read_log(tmpdir.join(out_name), format!("run_0_rep0/out_file").as_str());
             assert_eq!(output.lines().count(), 1);
             assert!(output.contains("BAR"));
         }
@@ -219,9 +238,9 @@ mod tests {
             let mut src = ExperimentSource::new();
             src.set_run_script(format!("#!/bin/bash\necho $FOO\necho $FOO >> out_file"));
             src.set_envs(HashMap::from([
-                (PathBuf::from(TEST_RUN_REP_DIR0),Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())])),
-                (PathBuf::from(TEST_RUN_REP_DIR1),Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())])),
-            ]));
+                (PathBuf::from("0.env"),Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())])),
+                (PathBuf::from("1.env"),Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())])),
+            ])).unwrap();
 
             // no error
             trial(&src, MultiProgress::new()).unwrap();

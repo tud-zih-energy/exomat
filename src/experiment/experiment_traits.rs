@@ -9,6 +9,10 @@ pub trait FileWriter {
     fn persist(&mut self, dir: &PathBuf) -> Result<()>;
 }
 
+pub trait LogWriter {
+    fn persist_logs(&mut self) -> Result<()>;
+}
+
 pub trait FileReader {
     type Item;
 

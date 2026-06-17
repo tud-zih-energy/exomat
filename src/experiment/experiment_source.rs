@@ -25,7 +25,7 @@ impl ExperimentSource {
         ExperimentSource {
             run_sh: include_str!("../harness/run.sh.template").to_string(),
             envs: HashMap::new(),
-            exomat_envs: ExomatEnvironment::new(&PathBuf::new(), 0),
+            exomat_envs: ExomatEnvironment::new(&PathBuf::new(), 1),
         }
     }
 
@@ -97,8 +97,18 @@ impl ExperimentSource {
         self.run_sh = script;
     }
 
-    pub fn set_envs(&mut self, envs: EnvironmentLocationList) {
+    pub fn set_envs(&mut self, envs: EnvironmentLocationList) -> Result<()> {
+        if let Some(invalid_env) = envs
+            .keys()
+            .find(|env_file_name| env_file_name.extension().unwrap() != "env")
+        {
+            return Err(Error::EnvError {
+                reason: format!("Invalid env file name at {}", invalid_env.display()),
+            });
+        }
+
         self.envs = envs;
+        Ok(())
     }
 
     pub fn set_exomat_envs(&mut self, exomat_envs: ExomatEnvironment) {
