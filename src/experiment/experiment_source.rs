@@ -21,23 +21,19 @@ pub struct ExperimentSource {
 }
 
 impl ExperimentSource {
+    /// Create a new Experiment Source.
+    ///
+    /// The following default values are set:
+    /// - `run_sh`: content of `harness/run.sh.template`
+    /// - `envs`: empty HashMap
+    /// - `exomat_envs`:
+    ///     - `exp_src_dir`: empty PathBuf
+    ///     - `repetition`: 1
     pub fn new() -> Self {
         ExperimentSource {
             run_sh: include_str!("../harness/run.sh.template").to_string(),
             envs: HashMap::new(),
             exomat_envs: ExomatEnvironment::new(&PathBuf::new(), 1),
-        }
-    }
-
-    pub fn from(
-        run_sh: String,
-        envs: EnvironmentLocationList,
-        exomat_envs: ExomatEnvironment,
-    ) -> Self {
-        Self {
-            run_sh,
-            envs,
-            exomat_envs,
         }
     }
 
