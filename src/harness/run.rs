@@ -54,9 +54,9 @@ pub fn trial(experiment: &ExperimentSource, log_progress_handler: MultiProgress)
     spdlog::default_logger().flush();
 
     // gather results
-    let reader = ExperimentSeries::parse(&trial_dir_path)?;
-    assert!(reader.is_valid_trial());
-    reader.print_report(&res);
+    let mut reader = ExperimentSeries::parse(&trial_dir_path)?;
+    reader.include_source(&trial);
+    reader.print_report(&res)?;
 
     res
 }
@@ -99,7 +99,7 @@ fn execute_exp_repetitions(
     let prog_bar = log_progress_handler.add(prog_bar);
     prog_bar.tick(); // show on 0th repetition
 
-    info!("Starting experiment runs for {}", series.experiment_name());
+    info!("Starting experiment runs for {}", series.experiment_name()?);
     trace!("exomat envs are: {:?}", series.exomat_envs());
 
     let mut stdout = String::new();
@@ -108,7 +108,7 @@ fn execute_exp_repetitions(
     for mut run in series.iter() {
         trace!("Using envs: {:?}", run.environment());
 
-        let (out, err) = run.execute(&series.experiment_name())?;
+        let (out, err) = run.execute(&series.experiment_name()?)?;
         stderr.push_str(&err);
         stdout.push_str(&out);
 
@@ -241,6 +241,7 @@ mod tests {
                 (PathBuf::from("0.env"),Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())])),
                 (PathBuf::from("1.env"),Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())])),
             ])).unwrap();
+            src.persist(&tmpdir.join("TestSource")).unwrap();
 
             // no error
             trial(&src, MultiProgress::new()).unwrap();
