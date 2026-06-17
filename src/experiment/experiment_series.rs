@@ -64,7 +64,7 @@ impl ExperimentSeries {
     }
 
     pub fn repetition_count(&self) -> u64 {
-        self.source.repetitions() * self.source.get_envs().len() as u64
+        self.source.repetitions() * self.source.envs().len() as u64
     }
 
     pub fn experiment_name(&self) -> Result<String> {
@@ -209,7 +209,7 @@ impl ExperimentSeries {
 
         let mut run_list = Vec::new();
 
-        if self.source.get_envs().is_empty() {
+        if self.source.envs().is_empty() {
             for rep in 0..*self.source.repetitions() {
                 let exomat_envs = ExomatEnvironment::new(self.source.location(), rep);
 
@@ -267,7 +267,7 @@ impl ExperimentSeries {
         println!("Randomizing environments...");
         trace!("Randomizing environments...");
         for rep in 0..*max_rep {
-            for env in self.source.get_envs() {
+            for env in self.source.envs() {
                 // include the repetition in a tuple, so that it can be sorted correctly later
                 running_order.push((env, rep));
                 println!("added repetition {rep} for env {env:?}");
@@ -655,7 +655,7 @@ impl std::fmt::Display for ExperimentSeries {
                 true => "not set",
                 false => "set"
             },
-            self.source.get_envs(),
+            self.source.envs(),
             self.exomat_envs().to_environment_full(),
             self.stdout_log,
             self.stderr_log,
