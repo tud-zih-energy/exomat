@@ -1,9 +1,8 @@
 use crate::duplicate_log_to_file;
 use crate::experiment::{
-    experiment_run::ExperimentRun,
-    experiment_source::ExperimentSource,
+    experiment_run::RunStatus,
     out_file::{OutFile, OutList},
-    CsvWriter, FileReader, FileWriter, LogWriter,
+    CsvWriter, ExperimentRun, ExperimentSource, FileReader, FileWriter, LogWriter,
 };
 use crate::harness::env::{Environment, ExomatEnvironment};
 use crate::helper::{
@@ -60,6 +59,26 @@ impl ExperimentSeries {
         SeriesReaderIter {
             series_reader: self,
             index: 0,
+        }
+    }
+
+    pub fn series_status(&self) -> String {
+        if let Some(reason) = self.runs.iter().find_map(|run| {
+            if let RunStatus::Fail(reason) = run.status() {
+                Some(reason.as_str())
+            } else {
+                None
+            }
+        }) {
+            format!("Failed. Reason: {}", reason)
+        } else if self
+            .runs
+            .iter()
+            .all(|run| matches!(run.status(), RunStatus::Success))
+        {
+            "Successful".to_string()
+        } else {
+            "Cannot determine run status.".to_string()
         }
     }
 
@@ -126,80 +145,6 @@ impl ExperimentSeries {
         keys.sort();
         keys.dedup();
         keys
-    }
-
-    /// Creates a ready-to-print String based on the given parameters.
-    ///
-    /// ## Example
-    /// Given the values:
-    /// - `exp_name = Foo`
-    /// - `run = Ok(_)`
-    ///
-    /// ```bash
-    /// [Foo] exomat:
-    /// [info] ...
-    /// ---
-    /// [Foo] stdout:
-    /// normal output
-    /// ---
-    /// [Foo] stderr:
-    ///
-    /// ---
-    /// [Foo] out_uptime.s: "1234"
-    /// [Foo] out_hello: "world"
-    /// ---
-    /// [Foo] returned:
-    /// Successful
-    /// ```
-    ///
-    /// An extra "\n" will be added to `stdout`, `stderr` and `exomat`.
-    ///
-    /// If `run = Err(e)`, the last lines will be:
-    /// ```bash
-    /// [Foo] returned:
-    /// Failed (reason: e)
-    /// ```
-    pub fn print_report<T>(&self, run: &Result<T>) -> Result<()> {
-        let mut eval_str = String::new();
-        let exp_name = self.source.name()?;
-
-        // append exomat
-        eval_str.push_str(&format!("[{exp_name}] exomat:\n"));
-        eval_str.push_str(&self.exomat_log);
-        eval_str.push_str("\n---\n");
-
-        // append stdout
-        eval_str.push_str(&format!("[{exp_name}] stdout:\n"));
-        eval_str.push_str(&self.stdout_log);
-        eval_str.push_str("\n---\n");
-
-        // append stderr
-        eval_str.push_str(&format!("[{exp_name}] stderr:\n"));
-        eval_str.push_str(&self.stderr_log);
-        eval_str.push_str("\n---\n");
-
-        if self.runs_are_empty() {
-            eval_str.push_str("[{exp_name}] created no output files\n")
-        } else {
-            if let Some(outfiles) = self.get_runs()[0].get_out_files() {
-                for out_file in outfiles.to_vec() {
-                    eval_str.push_str(&format!("[{exp_name}] {out_file}\n"));
-                }
-            } else {
-                eval_str.push_str("[{exp_name}] error reading output files\n")
-            }
-        }
-        eval_str.push_str("---\n");
-
-        // append overall success/failure report
-        eval_str.push_str(&format!("[{exp_name}] returned:\n"));
-        match run {
-            Ok(_) => eval_str.push_str("Successful\n"),
-            Err(e) => eval_str.push_str(&format!("Failed (reason: {e})\n")),
-        }
-
-        print!("{eval_str}");
-        Ok(())
     }
 
     pub fn generate_runs(&mut self) -> Result<()> {
@@ -646,21 +591,27 @@ impl CsvWriter for ExperimentSeries {
 // ========================== Display ==========================
 impl std::fmt::Display for ExperimentSeries {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let exp_name = self.source.name().map_err(|_| std::fmt::Error)?;
+
+        // change output based on outfiles
+        let outfiles = if self.runs_are_empty() {
+            "[{exp_name}] created no output files\n".to_string()
+        } else {
+            if let Some(outfiles) = self.get_runs()[0].get_out_files() {
+                let mut out = String::new();
+                for out_file in outfiles.to_vec() {
+                    out.push_str(&format!("[{exp_name}] {out_file}\n"));
+                }
+                out
+            } else {
+                "[{exp_name}] error reading output files\n".to_string()
+            }
+        };
+
         write!(
             f,
-            "Experiment Series \"{}\" ({:?}):\n    Run script: {}\n    Environments: {:?}\n    Internat envs: {:?}\n    Stdout log: {:?}\n    Stderr log: {:?}\n    Exomat log: {:?}\n    contains runs: {}",
-            self.source.name().unwrap_or("Unknown".to_string()),
-            self.path,
-            match self.run_script().is_empty() {
-                true => "not set",
-                false => "set"
-            },
-            self.source.envs(),
-            self.exomat_envs().to_environment_full(),
-            self.stdout_log,
-            self.stderr_log,
-            self.exomat_log,
-            self.runs.iter().map(|run| format!("{run}")).collect::<Vec<String>>().join("\n----\n"),
+            "[{exp_name}] exomat:\n{}\n---\n[{exp_name}] stdout:\n{}\n---\n[{exp_name}] stderr:\n{}\n---\n{}---\n[{exp_name}] returned:\n{}\n",
+            self.exomat_log, self.stdout_log, self.stderr_log, outfiles, self.series_status()
         )
     }
 }
