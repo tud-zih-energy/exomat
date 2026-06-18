@@ -13,7 +13,7 @@ use crate::helper::{
 
 use chrono::Local;
 use csv::Writer;
-use log::{debug, info, trace};
+use log::{debug, info, trace, warn};
 use rand::seq::SliceRandom;
 use std::fs::{read_to_string, write};
 use std::path::{Path, PathBuf};
@@ -75,6 +75,11 @@ impl ExperimentSeries {
         }
     }
 
+    /// Return a string describing the overall success of the Experiment Series
+    ///
+    /// - If any Experiment Run in self.runs failed, return `Failed. Reason: [...]`
+    /// - If all Experiment Runs were successful, return `Successful`
+    /// - If any Experiment Run has not been executed or its status in Unknown, return `Cannot determine run status`
     pub fn series_status(&self) -> String {
         if let Some(reason) = self.runs.iter().find_map(|run| {
             if let RunStatus::Fail(reason) = run.status() {
@@ -91,43 +96,59 @@ impl ExperimentSeries {
         {
             "Successful".to_string()
         } else {
-            "Cannot determine run status.".to_string()
+            "Cannot determine run status".to_string()
         }
     }
 
+    /// Generate Experiment Runs based on the current Experiment Series
+    ///
+    /// Every defined Environment will be used `self.source.repetitions()` times.
+    /// This means `self.source.repetitions() * self.envs.len()` Experiment Runs will be created.
+    ///
+    /// If no Environemnts are defined, an empty Environment will be used.
+    /// May create no Experiment Runs, depending on the given repetition number.
+    ///
+    /// ## Errors
+    /// - returns an `Empty` Error, if self.path is empty
     pub fn generate_runs(&mut self) -> Result<()> {
         if self.path.is_none() {
             return Err(Error::Empty(String::from("Series location not set")));
+        }
+
+        if *self.source.repetitions() > 1 {
+            warn!("Repetition set to less than 1. No Experiment Runs will be created.");
+        }
+
+        // helper
+        fn generate_run_from(
+            series: &ExperimentSeries,
+            env: (&PathBuf, &Environment),
+            repetition: u64,
+        ) -> ExperimentRun {
+            let exomat_envs = ExomatEnvironment::new(series.source.location(), repetition);
+
+            ExperimentRun::new(
+                series.source.run_script(),
+                env,
+                &exomat_envs,
+                series.source.repetitions().to_string().len(),
+            )
         }
 
         let mut run_list = Vec::new();
 
         if self.source.envs().is_empty() {
             for rep in 0..*self.source.repetitions() {
-                let exomat_envs = ExomatEnvironment::new(self.source.location(), rep);
-
-                let run = ExperimentRun::new(
-                    self.source.run_script(),
-                    (&PathBuf::from(SRC_ENV_FILE), &Environment::new()),
-                    &exomat_envs,
-                    self.source.repetitions().to_string().len(),
-                );
-
                 // cannot edit self.runs directly here, beucase of the borrow checker :)
-                run_list.push(run);
+                run_list.push(generate_run_from(
+                    &self,
+                    (&PathBuf::from(SRC_ENV_FILE), &Environment::new()),
+                    rep,
+                ));
             }
         } else {
             for (environment, rep) in self.shuffled_environments() {
-                let exomat_envs = ExomatEnvironment::new(self.source.location(), rep);
-
-                let run = ExperimentRun::new(
-                    self.source.run_script(),
-                    environment.clone(),
-                    &exomat_envs,
-                    self.source.repetitions().to_string().len(),
-                );
-
-                run_list.push(run);
+                run_list.push(generate_run_from(&self, environment, rep));
             }
         }
 
@@ -137,9 +158,10 @@ impl ExperimentSeries {
 
     /// Build the filepath to a new series directory.
     ///
-    /// Generates either a trial run location, or a new name in the PWD.
-    ///
     /// The name will be derived from the experiment name and the current date and time.
+    ///
+    /// ## Errors
+    /// - returns an `IoError` if the current directory is inaccessable
     pub fn generate_series_filepath(exp_source: &Path) -> Result<PathBuf> {
         let format = format!("{}-%Y-%m-%d-%H-%M-%S", file_name_string(exp_source));
         let dirname = PathBuf::from(Local::now().format(&format).to_string());
