@@ -87,6 +87,10 @@ impl ExperimentRun {
         &self.env
     }
 
+    pub fn status(&self) -> &RunStatus {
+        &self.status
+    }
+
     /// Returns the content of an out_ file `out_[var]`
     ///
     /// If there is no file with this name, `None` is returned.

@@ -56,7 +56,7 @@ pub fn trial(experiment: &ExperimentSource, log_progress_handler: MultiProgress)
     // gather results
     let mut reader = ExperimentSeries::parse(&trial_dir_path)?;
     reader.include_source(&trial);
-    reader.print_report(&res)?;
+    println!("{reader}");
 
     res
 }
