@@ -580,7 +580,7 @@ mod tests {
 
         // create Experiment Run in ser, equals to one repetition of one environment)
         ser.generate_runs().unwrap();
-        assert_eq!(ser.get_runs().len(), 1);
+        assert_eq!(ser.runs().len(), 1);
         ser.persist(&tmpdir.join(ser_name)).unwrap();
 
         let runs_dir = ser.location().as_ref().unwrap().join(SERIES_RUNS_DIR);
@@ -612,7 +612,7 @@ mod tests {
 
         let mut ser = ExperimentSeries::from_source(&src).unwrap();
         ser.generate_runs().unwrap();
-        assert_eq!(ser.get_runs().len(), 15);
+        assert_eq!(ser.runs().len(), 15);
         ser.persist(&tmpdir.to_path_buf()).unwrap();
 
         let runs_dir = ser.location().as_ref().unwrap().join(SERIES_RUNS_DIR);
@@ -641,7 +641,7 @@ mod tests {
         // create a series based on this source
         let mut ser = ExperimentSeries::from_source(&src).unwrap();
         ser.generate_runs().unwrap();
-        assert_eq!(ser.get_runs().len(), 1);
+        assert_eq!(ser.runs().len(), 1);
         ser.persist(&tmpdir.join(series_name)).unwrap();
 
         // check contents of env files

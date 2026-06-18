@@ -165,8 +165,8 @@ mod tests {
             ser.persist(&exp_series).unwrap();
 
             // run experiment
-            assert_eq!(ser.get_runs().len(), 1);
-            let run: &mut  ExperimentRun = ser.get_runs_mut().first_mut().unwrap();
+            assert_eq!(ser.runs().len(), 1);
+            let run: &mut  ExperimentRun = ser.runs_mut().first_mut().unwrap();
 
             let (out, err) = run.execute(exp_source.file_name().unwrap().to_str().unwrap()).unwrap();
             ser.log_stderr(err);
