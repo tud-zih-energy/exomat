@@ -30,6 +30,19 @@ pub struct ExperimentSeries {
 }
 
 impl ExperimentSeries {
+    /// Gernerate an Experiment Series based on source
+    ///
+    /// The ExperimentSeries will have the following values set:
+    /// - `source`: copy of source
+    /// - `path`: output of ExperimentSeries::generate_series_filepath()
+    /// - `runs`: empty Vector
+    /// - `stdout_log`: empty String
+    /// - `stderr_log`: empty String
+    /// - `exomat_log`: empty String
+    ///
+    /// ## Errors
+    /// - retruns a `HarnessRunError` if source.location is PWD
+    /// - returns an `IoError` if it cannot parse a valid Series name
     pub fn from_source(source: &ExperimentSource) -> Result<Self> {
         if source.location().display().to_string() == "." {
             return Err(Error::HarnessRunError {
@@ -38,7 +51,7 @@ impl ExperimentSeries {
             });
         };
 
-        println!(
+        info!(
             "generating Series of source \"{}\"",
             source.location().display()
         );
@@ -80,71 +93,6 @@ impl ExperimentSeries {
         } else {
             "Cannot determine run status.".to_string()
         }
-    }
-
-    pub fn repetition_count(&self) -> u64 {
-        self.source.repetitions() * self.source.envs().len() as u64
-    }
-
-    pub fn experiment_name(&self) -> Result<String> {
-        self.source.name()
-    }
-
-    pub fn exomat_envs(&self) -> &ExomatEnvironment {
-        self.source.exomat_envs()
-    }
-
-    pub fn run_script(&self) -> &str {
-        self.source.run_script()
-    }
-
-    pub fn log_stdout(&mut self, stdout: String) {
-        self.stdout_log.push_str(&stdout);
-    }
-
-    pub fn location(&self) -> &Option<PathBuf> {
-        &self.path
-    }
-
-    pub fn set_location(&mut self, new_path: PathBuf) {
-        self.path = Some(new_path)
-    }
-
-    pub fn log_stderr(&mut self, stderr: String) {
-        self.stderr_log.push_str(&stderr);
-    }
-
-    pub fn err_log(&self) -> &str {
-        &self.stderr_log
-    }
-
-    pub fn include_source(&mut self, source: &ExperimentSource) {
-        self.source = source.clone()
-    }
-
-    /// Returns the list of Experiment Runs.
-    pub fn get_runs(&self) -> &Vec<ExperimentRun> {
-        &self.runs
-    }
-
-    /// Returns the list of Experiment Runs.
-    pub fn get_runs_mut(&mut self) -> &mut Vec<ExperimentRun> {
-        &mut self.runs
-    }
-
-    /// Returns a list of all keys present in the recorded RunReader in an arbitrary order.
-    pub fn keys(&self) -> Vec<&str> {
-        let mut keys: Vec<&str> = self
-            .runs
-            .iter()
-            .filter_map(|run| run.get_out_files().as_ref())
-            .flat_map(|outlist| outlist.iter().map(|outfile| outfile.var_name().as_str()))
-            .collect();
-
-        // remove duplicate keys
-        keys.sort();
-        keys.dedup();
-        keys
     }
 
     pub fn generate_runs(&mut self) -> Result<()> {
@@ -200,6 +148,77 @@ impl ExperimentSeries {
             .join(&dirname)
             .to_path_buf())
     }
+
+    // ========================= getter ========================================
+
+    pub fn repetition_count(&self) -> u64 {
+        self.source.repetitions() * self.source.envs().len() as u64
+    }
+
+    pub fn experiment_name(&self) -> Result<String> {
+        self.source.name()
+    }
+
+    pub fn exomat_envs(&self) -> &ExomatEnvironment {
+        self.source.exomat_envs()
+    }
+
+    pub fn run_script(&self) -> &str {
+        self.source.run_script()
+    }
+
+    pub fn log_stdout(&mut self, stdout: String) {
+        self.stdout_log.push_str(&stdout);
+    }
+
+    pub fn err_log(&self) -> &str {
+        &self.stderr_log
+    }
+
+    pub fn location(&self) -> &Option<PathBuf> {
+        &self.path
+    }
+
+    /// Returns the list of Experiment Runs.
+    pub fn runs(&self) -> &Vec<ExperimentRun> {
+        &self.runs
+    }
+
+    /// Returns the list of Experiment Runs.
+    pub fn runs_mut(&mut self) -> &mut Vec<ExperimentRun> {
+        &mut self.runs
+    }
+
+    /// Returns a list of all keys present in the recorded RunReader in an arbitrary order.
+    pub fn keys(&self) -> Vec<&str> {
+        let mut keys: Vec<&str> = self
+            .runs
+            .iter()
+            .filter_map(|run| run.get_out_files().as_ref())
+            .flat_map(|outlist| outlist.iter().map(|outfile| outfile.var_name().as_str()))
+            .collect();
+
+        // remove duplicate keys
+        keys.sort();
+        keys.dedup();
+        keys
+    }
+
+    // ========================= setter ========================================
+
+    pub fn set_location(&mut self, new_path: PathBuf) {
+        self.path = Some(new_path)
+    }
+
+    pub fn log_stderr(&mut self, stderr: String) {
+        self.stderr_log.push_str(&stderr);
+    }
+
+    pub fn include_source(&mut self, source: &ExperimentSource) {
+        self.source = source.clone()
+    }
+
+    // ========================= helper ========================================
 
     /// Compiles a list of all repetition for each environment, then suffles said list.
     ///
@@ -412,6 +431,38 @@ impl LogWriter for ExperimentSeries {
     }
 }
 
+impl CsvWriter for ExperimentSeries {
+    /// Serializes it's content into `file`.
+    ///
+    /// If the no runs are found or all runs are empty, `file` will still be created.
+    ///
+    /// Uses the default CSV delimiter `,`. Any values containing it will be escaped using
+    /// `""`.
+    ///
+    /// ## Errors
+    /// - Returns a `CsvError` if something went wrong during the csv serialization
+    fn to_csv(&self, file: &PathBuf) -> Result<()> {
+        let mut wtr = Writer::from_path(file).map_err(|e| Error::CsvError {
+            reason: e.to_string(),
+        })?;
+
+        if !self.runs_are_empty() {
+            // turn self.runs into csv rows (contains header)
+            let content = self.to_csv_rows();
+
+            for row in content {
+                wtr.write_record(row).map_err(|e| Error::CsvError {
+                    reason: e.to_string(),
+                })?;
+            }
+        }
+
+        wtr.flush().map_err(|e| Error::CsvError {
+            reason: e.to_string(),
+        })
+    }
+}
+
 impl FileWriter for ExperimentSeries {
     /// Creates and populates a new experiment series directory.
     ///
@@ -555,39 +606,6 @@ impl FileReader for ExperimentSeries {
     }
 }
 
-// ========================== Writer ==========================
-impl CsvWriter for ExperimentSeries {
-    /// Serializes it's content into `file`.
-    ///
-    /// If the no runs are found or all runs are empty, `file` will still be created.
-    ///
-    /// Uses the default CSV delimiter `,`. Any values containing it will be escaped using
-    /// `""`.
-    ///
-    /// ## Errors
-    /// - Returns a `CsvError` if something went wrong during the csv serialization
-    fn to_csv(&self, file: &PathBuf) -> Result<()> {
-        let mut wtr = Writer::from_path(file).map_err(|e| Error::CsvError {
-            reason: e.to_string(),
-        })?;
-
-        if !self.runs_are_empty() {
-            // turn self.runs into csv rows (contains header)
-            let content = self.to_csv_rows();
-
-            for row in content {
-                wtr.write_record(row).map_err(|e| Error::CsvError {
-                    reason: e.to_string(),
-                })?;
-            }
-        }
-
-        wtr.flush().map_err(|e| Error::CsvError {
-            reason: e.to_string(),
-        })
-    }
-}
-
 // ========================== Display ==========================
 impl std::fmt::Display for ExperimentSeries {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -597,7 +615,7 @@ impl std::fmt::Display for ExperimentSeries {
         let outfiles = if self.runs_are_empty() {
             "[{exp_name}] created no output files\n".to_string()
         } else {
-            if let Some(outfiles) = self.get_runs()[0].get_out_files() {
+            if let Some(outfiles) = self.runs()[0].get_out_files() {
                 let mut out = String::new();
                 for out_file in outfiles.to_vec() {
                     out.push_str(&format!("[{exp_name}] {out_file}\n"));
@@ -783,7 +801,7 @@ mod tests {
         assert!(keys.contains(&"empty"));
         assert!(keys.len() == 1);
 
-        let content = series_reader.get_runs()[0].get_var(keys[0]);
+        let content = series_reader.runs()[0].get_var(keys[0]);
         assert!(content.is_some());
         assert_eq!(content.unwrap(), &vec![String::from("")]);
     }
@@ -871,7 +889,7 @@ mod tests {
 
         // key "empty" should be present, but without values
         assert_eq!(reader.run_count(), 1);
-        let res = &reader.get_runs()[0];
+        let res = &reader.runs()[0];
 
         assert!(res.get_var("empty") == Some(&vec![String::new()]));
     }
@@ -882,7 +900,7 @@ mod tests {
 
         // both runs recognized
         let reader = ExperimentSeries::parse(&dir).unwrap();
-        let runs = reader.get_runs();
+        let runs = reader.runs();
 
         let expected_outlists = vec![
             OutList::from(vec![OutFile::from("empty", vec![String::from("")])]).unwrap(),
@@ -904,7 +922,7 @@ mod tests {
         let reader = ExperimentSeries::parse(&dir).unwrap();
         assert_eq!(reader.run_count(), 1);
 
-        let res = &reader.get_runs()[0];
+        let res = &reader.runs()[0];
 
         assert!(res.get_var("some").is_some());
         assert!(res.get_var("some.txt").is_some());
@@ -926,7 +944,7 @@ mod tests {
 
         let reader = ExperimentSeries::parse(&dir).unwrap();
         assert_eq!(reader.run_count(), 1);
-        let res = &reader.get_runs()[0];
+        let res = &reader.runs()[0];
 
         // check content, order is important
         assert!(res.get_var("multi").is_some());
@@ -958,7 +976,7 @@ mod tests {
 
         let reader = ExperimentSeries::parse(&dir).unwrap();
         assert_eq!(reader.run_count(), 1);
-        let res = &reader.get_runs()[0];
+        let res = &reader.runs()[0];
 
         // check content
         assert!(res.get_var("multi").is_some());
@@ -1014,7 +1032,7 @@ mod tests {
 
         // both runs parsed
         let reader = ExperimentSeries::parse(&dir).unwrap();
-        let runs = reader.get_runs();
+        let runs = reader.runs();
 
         // check results
         let some0 = OutFile::from("some", vec![String::from("bar")]);
