@@ -173,30 +173,38 @@ impl ExperimentSeries {
 
     // ========================= getter ========================================
 
+    /// Returns the number of Experiment Run repetitions in this Experiment Series
+    ///
+    /// Calculated with the number of repetitions and the number of environments
     pub fn repetition_count(&self) -> u64 {
         self.source.repetitions() * self.source.envs().len() as u64
     }
 
+    /// Returns the Experiment name, taken from the Experiment Source of this Experiment Series
+    ///
+    /// For errors, see `ExperimentSource::name()`
     pub fn experiment_name(&self) -> Result<String> {
         self.source.name()
     }
 
+    /// Returns the internal exomat Environment of the Experiment Source of this Experiment Series
     pub fn exomat_envs(&self) -> &ExomatEnvironment {
         self.source.exomat_envs()
     }
 
+    /// Returns the run script of the Experiment Source of this Experiment Series
     pub fn run_script(&self) -> &str {
         self.source.run_script()
     }
 
-    pub fn log_stdout(&mut self, stdout: String) {
-        self.stdout_log.push_str(&stdout);
-    }
-
+    /// Retuns the content of the stderr log
     pub fn err_log(&self) -> &str {
         &self.stderr_log
     }
 
+    /// Returns the location in the filesystem of this Experiment Series
+    ///
+    /// Is `None` if the Series has not been serialized, this
     pub fn location(&self) -> &Option<PathBuf> {
         &self.path
     }
@@ -206,12 +214,12 @@ impl ExperimentSeries {
         &self.runs
     }
 
-    /// Returns the list of Experiment Runs.
+    /// Returns a mutable list of Experiment Runs.
     pub fn runs_mut(&mut self) -> &mut Vec<ExperimentRun> {
         &mut self.runs
     }
 
-    /// Returns a list of all keys present in the recorded RunReader in an arbitrary order.
+    /// Returns a list of all keys present in the Experiment Series in an arbitrary order.
     pub fn keys(&self) -> Vec<&str> {
         let mut keys: Vec<&str> = self
             .runs
@@ -228,21 +236,29 @@ impl ExperimentSeries {
 
     // ========================= setter ========================================
 
+    /// Updates the location of this Experiment Series.
     pub fn set_location(&mut self, new_path: PathBuf) {
         self.path = Some(new_path)
     }
 
+    /// Adds `stdout` to the stdout log
+    pub fn log_stdout(&mut self, stdout: String) {
+        self.stdout_log.push_str(&stdout);
+    }
+
+    /// Adds `stderr` to the stderr log
     pub fn log_stderr(&mut self, stderr: String) {
         self.stderr_log.push_str(&stderr);
     }
 
+    /// Updates the Experiment Source linked to this Experiment Series
     pub fn include_source(&mut self, source: &ExperimentSource) {
         self.source = source.clone()
     }
 
     // ========================= helper ========================================
 
-    /// Compiles a list of all repetition for each environment, then suffles said list.
+    /// Compiles a list of all repetitions for each environment, then suffles said list.
     ///
     /// The shuffled list is then sorted by repetition, so that all n-repetitions run
     /// before all n+1-repetitions.
@@ -250,13 +266,11 @@ impl ExperimentSeries {
         let mut running_order = vec![];
         let max_rep = self.source.repetitions();
 
-        println!("Randomizing environments...");
         trace!("Randomizing environments...");
         for rep in 0..*max_rep {
             for env in self.source.envs() {
                 // include the repetition in a tuple, so that it can be sorted correctly later
                 running_order.push((env, rep));
-                println!("added repetition {rep} for env {env:?}");
             }
         }
 
@@ -266,12 +280,11 @@ impl ExperimentSeries {
         running_order
     }
 
-    /// Adds missing out_ files to each RunReader.
+    /// Adds missing out_ files to each Experiment Run.
     ///
-    /// If a key is present in one RunReader but missing another, the key will be
+    /// If a key is present in one Experiment Run but missing another, the key will be
     /// added with "NA" as it's value.
     fn fill_missing_keys(&mut self) {
-        // add "NA" if a run is missing a key
         let keys: Vec<String> = self.keys().into_iter().map(|k| k.to_string()).collect();
 
         for run in self.runs.iter_mut() {
@@ -309,7 +322,7 @@ impl ExperimentSeries {
     /// ]
     /// ```
     fn to_csv_rows(&self) -> Vec<Vec<String>> {
-        // collect all rows as HashMap
+        // collect OutLists of all runs, add empty OutList if run does not have one
         let mut rows = OutList::default();
         for run in &self.runs {
             if let Some(out) = &run.get_out_files() {
@@ -323,10 +336,10 @@ impl ExperimentSeries {
         let mut rows_vec: Vec<Vec<String>> =
             vec![self.keys().iter().map(|k| k.to_string()).collect()];
 
-        // turn all data into one list
-        let val_len = rows.iter().map(|out| out.value_count()).max().unwrap_or(0);
+        let max_val_len = rows.iter().map(|out| out.value_count()).max().unwrap_or(0);
 
-        for i in 0..val_len {
+        // turn all data into one list
+        for i in 0..max_val_len {
             // (one entry = every ith element of each key)
             let mut row: Vec<String> = Vec::new();
 
@@ -352,7 +365,7 @@ impl ExperimentSeries {
 
     /// Checks if there is anything recorded in self.runs
     ///
-    /// Returns `true` if:
+    /// Returns `true` if any of this true:
     /// - there are no runs
     /// - there are runs, but none contain out_ files
     /// - there are runs with out_ files, but all out_ files are empty
@@ -370,8 +383,8 @@ impl ExperimentSeries {
         }
     }
 
-    /// helper, that returns the content of a file if it is readable.
-    /// Otherwise returns `None`
+    /// Returns the content of a file if it is readable.
+    /// Otherwise returns an empty String.
     fn read_log(path: &PathBuf) -> String {
         match read_to_string(path) {
             Ok(log) => log,
@@ -382,7 +395,7 @@ impl ExperimentSeries {
     /// Checks if the SeriesReader contains a valid trial run.
     ///
     /// Currently checks:
-    /// - run repetitions == 1
+    /// - run count == 1
     /// - REPETITION == 1
     #[cfg(test)]
     fn is_valid_trial(&self) -> bool {
@@ -428,6 +441,13 @@ impl ExperimentSeries {
 
 // ========================== Writer ==========================
 impl LogWriter for ExperimentSeries {
+    /// Writes the content of `stdout_log`, `stderr_log` and `exomat_log` to their
+    /// repective files in `self.path/SERIES_RUNS_DIR/`
+    ///
+    /// Files will be overwritten if they exist already and created new if they don't.
+    ///
+    /// ## Errors
+    /// - returns a `HarnessRunError` if logs could not be serialized
     fn persist_logs(&mut self) -> Result<()> {
         if let Some(path) = self.path.clone() {
             write(
@@ -486,27 +506,26 @@ impl CsvWriter for ExperimentSeries {
 }
 
 impl FileWriter for ExperimentSeries {
-    /// Creates and populates a new experiment series directory.
+    /// Serializes the Experiment Series into a directory.
     ///
     /// The new directory will have this structure:
     /// ```notest
     /// SERIES_DIR
     ///   |-> .exomat_series
-    ///   |-> .src/
+    ///   |-> [SERIES_SRC_DIR]
     ///   | |-> .exomat_source_cp  [replaces .exomat_source]
     ///   | \-> [copy of experiment source directory, read-only]
-    ///   \-> runs/
-    ///     |-> stdout.log [EMPTY]
-    ///     |-> stderr.log [EMPTY]
-    ///     \-> exomat.log [EMPTY]
+    ///   \-> [SERIES_RUNS_DIR]
+    ///     | |-> [run rep dir 1]
+    ///     | | \-> [see ExperimentRun::persist()]
+    ///     | \-> [run rep dir n...]
+    ///     |-> [SERIES_STDOUT_LOG]
+    ///     |-> [SERIES_STDERR_LOG]
+    ///     \-> [SERIES_EXOMAT_LOG]
     /// ```
-    /// > Note: This example assumes values for [SERIES_SRC_DIR], [SERIES_RUNS_DIR], [SERIES_STDERR_LOG],
-    /// > [SERIES_STDOUT_LOG], [SERIES_EXOMAT_LOG]. The names in the actual file structure might
-    /// > differ, depending on the values of them.
-    ///
     /// This function will not overwrite an existing series directory.
     ///
-    /// Once the log files have been created any log output by exomat will be duplicated
+    /// Once the exomat log has been created, any output by exomat will be duplicated
     /// to them.
     ///
     /// ## Errors and Panics
@@ -590,10 +609,7 @@ impl FileWriter for ExperimentSeries {
 impl FileReader for ExperimentSeries {
     type Item = ExperimentSeries;
 
-    /// Parses an Experiment Series into a SeriesReader object.
-    ///
-    /// If `out_$NAME` is found in one experiment run directory, but not in another, a "NA"
-    /// will be added to the list of values.
+    /// Parses an Experiment Series directory into an ExperimentSeries object.
     ///
     /// ### Error
     /// - Returns a `ReaderError` if any RunReader failed to parse
@@ -630,6 +646,7 @@ impl FileReader for ExperimentSeries {
 
 // ========================== Display ==========================
 impl std::fmt::Display for ExperimentSeries {
+    /// Prints a report of the Experiment output in this Experiment Series
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let exp_name = self.source.name().map_err(|_| std::fmt::Error)?;
 
