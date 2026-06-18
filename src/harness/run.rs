@@ -124,6 +124,10 @@ fn execute_exp_repetitions(
     info!("Serializing logs...");
     series.log_stderr(stderr);
     series.log_stdout(stdout);
+
+    spdlog::default_logger().flush();
+    crate::reset_logger(spdlog::default_logger().level_filter());
+
     series.persist_logs()?;
 
     prog_bar.inc(1);
