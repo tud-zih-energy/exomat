@@ -1,4 +1,4 @@
-use crate::duplicate_log_to_file;
+use crate::duplicate_log_to_pipe;
 use crate::experiment::{
     experiment_run::RunStatus,
     out_file::{OutFile, OutList},
@@ -15,18 +15,19 @@ use chrono::Local;
 use csv::Writer;
 use log::{debug, info, trace, warn};
 use rand::seq::SliceRandom;
-use std::fs::{read_to_string, write};
+use std::fs::{read_to_string, write, OpenOptions};
+use std::io::{PipeReader, Read};
 use std::path::{Path, PathBuf};
 
 /// Container for an Experiment Series
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ExperimentSeries {
     source: ExperimentSource,
     path: Option<PathBuf>,
     runs: Vec<ExperimentRun>,
     stdout_log: String,
     stderr_log: String,
-    exomat_log: String,
+    exomat_log: PipeReader,
 }
 
 impl ExperimentSeries {
@@ -63,7 +64,7 @@ impl ExperimentSeries {
             runs: Vec::new(),
             stdout_log: String::new(),
             stderr_log: String::new(),
-            exomat_log: String::new(),
+            exomat_log: duplicate_log_to_pipe()?,
         })
     }
 
@@ -428,13 +429,16 @@ impl ExperimentSeries {
             .map(|envlist| ExperimentRun::from_out_list_unchecked(&envlist))
             .collect();
 
+        let (rdr, wtr) = std::io::pipe().unwrap();
+        drop(wtr);
+
         ExperimentSeries {
             source: ExperimentSource::new(),
             path: None,
             runs: runs,
             stdout_log: String::new(),
             stderr_log: String::new(),
-            exomat_log: String::new(),
+            exomat_log: rdr,
         }
     }
 }
@@ -450,6 +454,11 @@ impl LogWriter for ExperimentSeries {
     /// - returns a `HarnessRunError` if logs could not be serialized
     fn persist_logs(&mut self) -> Result<()> {
         if let Some(path) = self.path.clone() {
+            crate::reset_logger(spdlog::default_logger().level_filter());
+            let mut buf = String::new();
+            let _ = &self.exomat_log.read_to_string(&mut buf)?;
+            self.exomat_log = duplicate_log_to_pipe()?;
+
             write(
                 path.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG),
                 &self.stdout_log,
@@ -458,10 +467,18 @@ impl LogWriter for ExperimentSeries {
                 path.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG),
                 &self.stderr_log,
             )?;
-            write(
-                path.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG),
-                &self.exomat_log,
-            )?;
+
+            // append to exomat log
+            let exomat_log_path = path.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG);
+            OpenOptions::new()
+                .append(true)
+                .open(&exomat_log_path)
+                .map_err(|e| Error::HarnessCreateError {
+                    entry: exomat_log_path.display().to_string(),
+                    reason: e.to_string(),
+                })?;
+
+            std::fs::write(&exomat_log_path, "{buf}")?;
 
             Ok(())
         } else {
@@ -577,16 +594,13 @@ impl FileWriter for ExperimentSeries {
                 err: "can not generate output inside of experiment dir".to_string(),
             });
         }
-
         let src = create_harness_dir(&dir.join(SERIES_SRC_DIR))?;
         let runs = create_harness_dir(&dir.join(SERIES_RUNS_DIR))?;
 
         let _ = create_harness_file(&dir.join(MARKER_SERIES))?;
         let _ = create_harness_file(&runs.join(SERIES_STDOUT_LOG))?;
         let _ = create_harness_file(&runs.join(SERIES_STDERR_LOG))?;
-        let exomat_log = create_harness_file(&runs.join(SERIES_EXOMAT_LOG))?;
-
-        duplicate_log_to_file(&exomat_log);
+        let _ = create_harness_file(&runs.join(SERIES_EXOMAT_LOG))?;
 
         // copy exp_source/template to src and replace marker
         copy_harness_dir(self.source.location(), &src)?;
@@ -628,7 +642,6 @@ impl FileReader for ExperimentSeries {
         // read log files
         let stdout_log = Self::read_log(&dir.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG));
         let stderr_log = Self::read_log(&dir.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG));
-        let exomat_log = Self::read_log(&dir.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG));
 
         let mut reader = ExperimentSeries {
             source: ExperimentSource::new(),
@@ -636,7 +649,7 @@ impl FileReader for ExperimentSeries {
             runs,
             stdout_log,
             stderr_log,
-            exomat_log,
+            exomat_log: duplicate_log_to_pipe()?,
         };
 
         reader.fill_missing_keys();
@@ -665,10 +678,21 @@ impl std::fmt::Display for ExperimentSeries {
             }
         };
 
+        let exomat_log = match &self.path {
+            Some(p) => {
+                let log = read_to_string(p.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG));
+                match log {
+                    Ok(l) => format!(":\n{l}"),
+                    Err(_) => " has not been serialized.".to_string(),
+                }
+            }
+            None => " not readable".to_string(),
+        };
+
         write!(
             f,
-            "[{exp_name}] exomat:\n{}\n---\n[{exp_name}] stdout:\n{}\n---\n[{exp_name}] stderr:\n{}\n---\n{}---\n[{exp_name}] returned:\n{}\n",
-            self.exomat_log, self.stdout_log, self.stderr_log, outfiles, self.series_status()
+            "[{exp_name}] exomat log{}\n---\n[{exp_name}] stdout:\n{}\n---\n[{exp_name}] stderr:\n{}\n---\n{}---\n[{exp_name}] returned:\n{}\n",
+            exomat_log, self.stdout_log, self.stderr_log, outfiles, self.series_status()
         )
     }
 }

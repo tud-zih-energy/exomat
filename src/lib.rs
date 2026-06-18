@@ -31,12 +31,14 @@ pub mod helper {
 
 use indicatif::MultiProgress;
 use indicatif_log_bridge::LogWrapper;
+use log::info;
 use spdlog::formatter::{pattern, PatternFormatter};
-use spdlog::sink::FileSink;
-use std::{path::PathBuf, sync::Arc};
+use spdlog::sink::WriteSink;
+use std::io::{pipe, PipeReader};
+use std::sync::Arc;
 
 use helper::archivist::find_marker_pwd;
-use helper::errors::Error;
+use helper::errors::{Error, Result};
 use helper::fs_names::*;
 
 /// Initializes logging for all severity levels from info and up.
@@ -71,25 +73,8 @@ use helper::fs_names::*;
 /// prog_bar.finish();
 /// ```
 pub fn activate_logging(verbosity: log::LevelFilter) -> MultiProgress {
-    // configure the logger, default logger does not work because it gets messed up
-    // when having multiple sinks with different level filters
-    let pattern = pattern!("[{date} {time}.{millisecond}] [{level}] {payload}{eol}");
-    let logger = spdlog::Logger::builder()
-        .level_filter(spdlog::LevelFilter::All)
-        .sink(Arc::new(
-            spdlog::sink::StdStreamSink::builder()
-                .formatter(Box::new(PatternFormatter::new(pattern)))
-                .level_filter(spdlog::LevelFilter::from(verbosity))
-                .std_stream(spdlog::sink::StdStream::Stdout)
-                .build()
-                .unwrap(),
-        ))
-        .build()
-        .unwrap();
-
     // configure the logger, init spdlog, log and log_bridge
-    spdlog::set_default_logger(Arc::new(logger));
-    spdlog::re_export::log::set_max_level(spdlog::re_export::log::LevelFilter::Trace);
+    reset_logger(spdlog::LevelFilter::from(verbosity));
 
     let multi = MultiProgress::new();
     let log_wrapper = LogWrapper::new(multi.clone(), spdlog::log_crate_proxy());
@@ -128,30 +113,59 @@ fn disable_console_log() {
 ///
 /// If the default logger was not initilized by `activate_logging()` before, this
 /// will not initialize the logger, so no messages will be written to the file.
-pub fn duplicate_log_to_file(log_file: &PathBuf) {
+pub fn duplicate_log_to_pipe() -> Result<PipeReader> {
+    info!("Started capture of exomat log");
+    let (rdr, wtr) = pipe()?;
     let pattern = pattern!("[{date} {time}.{millisecond}] [{level}] {payload}{eol}");
 
     // create logger that logs to log_file
     let new_logger = spdlog::default_logger()
         .fork_with(|new| {
-            let file_sink = Arc::new(
-                FileSink::builder()
+            let pipe_sink = Arc::new(
+                WriteSink::builder()
                     .formatter(Box::new(PatternFormatter::new(pattern)))
                     .level_filter(spdlog::LevelFilter::All)
-                    .path(log_file)
+                    .target(wtr)
                     .build()?,
             );
-            new.sinks_mut().push(file_sink);
+            new.sinks_mut().push(pipe_sink);
             Ok(())
         })
         .map_err(|e| Error::HarnessCreateError {
-            entry: log_file.display().to_string(),
+            entry: "Logger Sink".to_string(),
             reason: e.to_string(),
-        })
-        .expect("Could not create new logger: {e}");
+        })?;
 
     // update logger
     spdlog::set_default_logger(new_logger);
+
+    Ok(rdr)
+}
+
+/// Resets logger settings to the default logger used in exomat.
+pub fn reset_logger(verbosity: spdlog::LevelFilter) {
+    info!("Resetting logger; Exomat log may no longer be captured in file");
+
+    let pattern = pattern!("[{date} {time}.{millisecond}] [{level}] {payload}{eol}");
+
+    // configure the logger, default logger does not work because it gets messed up
+    // when having multiple sinks with different level filters
+    let logger = spdlog::Logger::builder()
+        .level_filter(spdlog::LevelFilter::All)
+        .sink(Arc::new(
+            spdlog::sink::StdStreamSink::builder()
+                .formatter(Box::new(PatternFormatter::new(pattern)))
+                .level_filter(spdlog::LevelFilter::from(verbosity))
+                .std_stream(spdlog::sink::StdStream::Stdout)
+                .build()
+                .unwrap(),
+        ))
+        .build()
+        .unwrap();
+
+    // configure the logger, init spdlog, log and log_bridge
+    spdlog::re_export::log::set_max_level(spdlog::re_export::log::LevelFilter::Trace);
+    let _ = spdlog::swap_default_logger(Arc::new(logger));
 }
 
 #[cfg(test)]
@@ -160,23 +174,20 @@ mod tests {
 
     use log::{error, info, trace, warn};
     use rusty_fork::rusty_fork_test;
-    use tempfile::NamedTempFile;
+    use std::io::Read;
 
     rusty_fork_test! {
 
         // this is in here to that logging is not enables for all following tests
         #[test]
-        fn log_to_file() {
-            let log = NamedTempFile::with_suffix("log").unwrap();
-            let log = log.path().to_path_buf();
-
+        fn log_to_pipe() {
             activate_logging(log::LevelFilter::Info);
             trace!("Trace on console");
             info!("Info on console");
             warn!("Warn on console");
             error!("Error on console");
 
-            duplicate_log_to_file(&log);
+            let mut rdr = duplicate_log_to_pipe().unwrap();
             trace!("Trace in file");
             info!("Info in file");
             warn!("Warn in file");
@@ -184,15 +195,18 @@ mod tests {
 
             // simulate program ending
             spdlog::default_logger().flush();
+            reset_logger(spdlog::default_logger().level_filter());
 
-            let file_content = std::fs::read_to_string(&log).unwrap();
-            print!("log: {file_content}\n");
+            let mut log = String::new();
+            rdr.read_to_string(&mut log).unwrap();
 
-            assert!(file_content.contains("Trace in file"));
-            assert!(file_content.contains("Info in file"));
-            assert!(file_content.contains("Warn in file"));
-            assert!(file_content.contains("Error in file"));
-            assert!(!file_content.contains("on console"));
+            println!("log: {log}");
+
+            assert!(log.contains("Trace in file"));
+            assert!(log.contains("Info in file"));
+            assert!(log.contains("Warn in file"));
+            assert!(log.contains("Error in file"));
+            assert!(!log.contains("on console"));
         }
     }
 }
