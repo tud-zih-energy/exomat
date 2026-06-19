@@ -631,7 +631,7 @@ impl FileReader for ExperimentSeries {
     /// ### Error
     /// - Returns a `ReaderError` if any RunReader failed to parse
     fn parse(exp_series_dir: &PathBuf) -> Result<Self::Item> {
-        // find all run dirs
+        debug!("looking for experiment runs");
         let runs: Vec<ExperimentRun> = find_run_repetitions(&exp_series_dir.join(SERIES_RUNS_DIR))
             .iter()
             .map(|run| {
@@ -642,7 +642,7 @@ impl FileReader for ExperimentSeries {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        // read log files
+        debug!("reading log files");
         let stdout_log =
             Self::read_log(&exp_series_dir.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG));
         let stderr_log =
@@ -657,6 +657,7 @@ impl FileReader for ExperimentSeries {
             exomat_log: duplicate_log_to_pipe()?,
         };
 
+        debug!("adding missing keys");
         reader.fill_missing_keys();
         Ok(reader)
     }
@@ -744,7 +745,7 @@ fn find_run_repetitions(runs_dir: &Path) -> Vec<PathBuf> {
 
     // return the empty vector if runs_dir does not exist
     if !runs_dir.is_dir() {
-        println!("runs dir empty");
+        trace!("no experiment runs found");
         return repetitions;
     }
 
@@ -767,7 +768,7 @@ fn find_run_repetitions(runs_dir: &Path) -> Vec<PathBuf> {
                 .unwrap()
                 .starts_with("run_")
             {
-                println!("found run: {}", entry.as_ref().unwrap().path().display());
+                trace!("found run: {}", entry.as_ref().unwrap().path().display());
                 repetitions.push(entry.unwrap().path());
             }
         }

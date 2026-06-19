@@ -9,7 +9,7 @@ use crate::helper::{
 };
 
 use log::warn;
-use log::{error, info, trace};
+use log::{debug, error, info, trace};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -59,9 +59,10 @@ impl ExperimentRun {
         exomat_environment: &ExomatEnvironment,
         rep_format_length: usize,
     ) -> Self {
+        debug!("checking format length");
         assert!(rep_format_length > 0, "repetition format cannot be 0");
 
-        // assert that no exomat env vars are added to env
+        debug!("checking envs for reserved env vars");
         assert!(!ExomatEnvironment::RESERVED_ENV_VARS
             .iter()
             .any(|k| environment.1.contains_env_var(k)));
@@ -174,11 +175,11 @@ impl ExperimentRun {
     /// - Returns an `IndexOutOfRange` Error if the index is out of range (unbelievable, I know)
     /// - Returns an `Empty` Error if there are no Observations, that can be returned
     fn get_observation(&self, index: usize) -> Result<Observation> {
-        // there are out_files
+        debug!("looking for out_ files");
         if let Some(out_files) = &self.out_files {
             let mut observation: Observation = HashMap::new();
             for outfile in out_files.iter() {
-                // no values recorded
+                debug!("checking if out_ file is empty");
                 if outfile.is_empty() {
                     observation.insert(outfile.var_name().clone(), String::from("NA"));
                     // index is not in range
@@ -196,6 +197,7 @@ impl ExperimentRun {
                 }
             }
 
+            debug!("observation found: {:?}", observation);
             Ok(observation)
 
         // no out_files in this run
@@ -265,6 +267,7 @@ impl Runner for ExperimentRun {
     /// - Returns a `HarnessRunrror` if there is no [RUN_ENV_FILE] in `run_folder`
     fn execute(&mut self, exp_name: &str) -> Result<Self::Item> {
         trace!("{exp_name}: Checking run directory {}", self.run_name);
+        debug!("checking if run has been serialized");
         let run_folder = self
             .location
             .as_ref()
@@ -275,6 +278,7 @@ impl Runner for ExperimentRun {
                 err: format!("Experiment Run has not been serialized yet: {e}"),
             })?;
 
+        debug!("checking if all files exist in run");
         for file in [RUN_ENV_FILE, RUN_ENV_FILE] {
             if !run_folder.join(file).is_file() {
                 return Err(Error::HarnessRunError {
@@ -284,6 +288,7 @@ impl Runner for ExperimentRun {
             };
         }
 
+        debug!("reading run environment");
         let mut all_envs = self.exomat_env.to_environment_full();
         all_envs.extend_envs(&self.env);
 
@@ -302,18 +307,16 @@ impl Runner for ExperimentRun {
             })?;
 
         trace!("{exp_name}: Finished run {}", run_folder.display());
-
-        // write to logs
+        debug!("reading logs");
         let stdout = String::from_utf8_lossy(&run.stdout).to_string();
         let stderr = String::from_utf8_lossy(&run.stderr).to_string();
 
-        // set run status
+        debug!("updating run status");
         match run.status.success() {
             true => self.status = RunStatus::Success,
             false => self.status = RunStatus::Fail(run.status.to_string()),
         };
 
-        // write to console
         self.log_run_result(
             run_folder.file_stem().unwrap().to_str().unwrap(),
             run.status,
@@ -355,8 +358,7 @@ impl FileWriter for ExperimentRun {
         create_harness_dir(&exp_run_dir)?;
         create_harness_file(&exp_run_dir.join(MARKER_RUN))?;
 
-        // copy ruh.sh and [env].env to runs_dir
-        // create default run.sh as executable
+        debug!("copy ruh.sh and [env].env to runs_dir");
         let run_file_path = &exp_run_dir.join(RUN_RUN_FILE);
         OpenOptions::new()
             .mode(0o775)
@@ -370,15 +372,15 @@ impl FileWriter for ExperimentRun {
 
         std::fs::write(run_file_path, &self.run_sh)?;
 
-        // write envs to file (including exomat envs)
+        debug!("write envs to file (including exomat envs)");
         let mut serializable_envs = self.env.clone();
         serializable_envs.extend_envs(&self.exomat_env.to_environment_serializable());
         serializable_envs.to_file(&exp_run_dir.join(RUN_ENV_FILE))?;
 
-        // set location
+        trace!("Persisted Experiment Run at {}", exp_run_dir.display());
+        debug!("update run location");
         self.location = Some(exp_run_dir.to_path_buf());
 
-        trace!("Persisted Experiment Run at {}", exp_run_dir.display());
         Ok(())
     }
 }
@@ -426,21 +428,21 @@ impl FileReader for ExperimentRun {
     ///
     /// This function might **Panic** if reading/writing failed.
     fn parse(exp_run_dir: &PathBuf) -> Result<Self::Item> {
-        // read env file
+        debug!("reading environment");
         let env = Environment::from_file(&exp_run_dir.join(RUN_ENV_FILE)).unwrap_or_else(|_| {
             warn!("No environment found in run {}", exp_run_dir.display());
             Environment::new()
         });
 
-        // read run script
+        debug!("reading run script");
         let run_sh = std::fs::read_to_string(&exp_run_dir.join(RUN_RUN_FILE))?;
 
-        // read out files
         trace!("Reading out_ files of Run {}", exp_run_dir.display());
         let mut out_list: OutList = OutList::default();
         let contained_files = find_all_files(&exp_run_dir)?;
 
         for file in contained_files {
+            debug!("checking file {}", file.display());
             match OutFile::parse(&file) {
                 Err(Error::Empty(e)) => return Err(Error::Empty(e)), // this means the name is invalid
                 Err(_) => continue,
@@ -501,6 +503,7 @@ impl FileReader for ExperimentRun {
             }
         };
 
+        debug!("creating exomat environment");
         let exomat_env = ExomatEnvironment::new(&PathBuf::new(), 1);
         let run_name = exp_run_dir
             .file_name()
