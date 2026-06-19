@@ -174,12 +174,14 @@ impl FileReader for ExperimentSource {
     /// - panics if the absolute path of `dir` cannot be build
     fn parse(exp_source_dir: &PathBuf) -> Result<Self::Item> {
         let exomat_envs = ExomatEnvironment::new(
-            &exp_source_dir.to_path_buf()
+            &exp_source_dir
+                .to_path_buf()
                 .canonicalize()
                 .expect("Could not resolve Source path"),
             1,
         );
-        let run_sh = std::fs::read_to_string(&exp_source_dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE))?;
+        let run_sh =
+            std::fs::read_to_string(&exp_source_dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE))?;
         let envs = get_existing_environments_by_fname(&exp_source_dir.join(SRC_ENV_DIR))?;
 
         Ok(Self {
@@ -254,7 +256,10 @@ impl FileWriter for ExperimentSource {
 
         run_file.write_all(run_sh_bytes)?;
 
-        info!("Experiment harness created under {}", exp_source_dir.display());
+        info!(
+            "Experiment harness created under {}",
+            exp_source_dir.display()
+        );
 
         self.exomat_envs.exp_src_dir = exp_source_dir.to_path_buf();
         Ok(())

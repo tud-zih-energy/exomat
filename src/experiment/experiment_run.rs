@@ -73,6 +73,7 @@ impl ExperimentRun {
             length = rep_format_length
         );
 
+        trace!("Created new Experiment Run \"{dir_name}\"");
         Self {
             run_sh: run_sh.to_string(),
             run_name: dir_name,
@@ -262,36 +263,26 @@ impl Runner for ExperimentRun {
     /// - Returns a `HarnessRunrror` if the script could not be executed
     /// - Returns a `HarnessRunrror` if there is no [RUN_RUN_FILE] in `run_folder`
     /// - Returns a `HarnessRunrror` if there is no [RUN_ENV_FILE] in `run_folder`
-    /// - panics if self.location is inacessable
     fn execute(&mut self, exp_name: &str) -> Result<Self::Item> {
         trace!("{exp_name}: Checking run directory {}", self.run_name);
-        if self.location.is_none() {
-            return Err(Error::HarnessRunError {
-                experiment: exp_name.to_string(),
-                err: String::from("Experiment Run has not been serialized yet. Cannot execute."),
-            });
-        }
-
         let run_folder = self
             .location
             .as_ref()
-            .expect("Run location not accessable")
+            .unwrap()
             .canonicalize()
-            .expect("Run location not accessable");
-
-        if !run_folder.join(RUN_RUN_FILE).is_file() {
-            return Err(Error::HarnessRunError {
+            .map_err(|e| Error::HarnessRunError {
                 experiment: exp_name.to_string(),
-                err: String::from("Missing run.sh in experiment run directory"),
-            });
-        };
+                err: format!("Experiment Run has not been serialized yet: {e}"),
+            })?;
 
-        if !run_folder.join(RUN_ENV_FILE).is_file() {
-            return Err(Error::HarnessRunError {
-                experiment: exp_name.to_string(),
-                err: String::from("Missing environment.env in experiment run directory"),
-            });
-        };
+        for file in [RUN_ENV_FILE, RUN_ENV_FILE] {
+            if !run_folder.join(file).is_file() {
+                return Err(Error::HarnessRunError {
+                    experiment: exp_name.to_string(),
+                    err: format!("Missing {file} in experiment run directory"),
+                });
+            };
+        }
 
         let mut all_envs = self.exomat_env.to_environment_full();
         all_envs.extend_envs(&self.env);
@@ -386,6 +377,8 @@ impl FileWriter for ExperimentRun {
 
         // set location
         self.location = Some(exp_run_dir.to_path_buf());
+
+        trace!("Persisted Experiment Run at {}", exp_run_dir.display());
         Ok(())
     }
 }
@@ -439,10 +432,11 @@ impl FileReader for ExperimentRun {
             Environment::new()
         });
 
-        // read out_file
+        // read run script
         let run_sh = std::fs::read_to_string(&exp_run_dir.join(RUN_RUN_FILE))?;
 
         // read out files
+        trace!("Reading out_ files of Run {}", exp_run_dir.display());
         let mut out_list: OutList = OutList::default();
         let contained_files = find_all_files(&exp_run_dir)?;
 
@@ -477,6 +471,7 @@ impl FileReader for ExperimentRun {
         }
 
         // balance values
+        trace!("Balancing out_ files of Run {}", exp_run_dir.display());
         let out_balanced = match out_list.is_empty() {
             true => None,
             false => {
