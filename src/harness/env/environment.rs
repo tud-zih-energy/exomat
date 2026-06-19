@@ -1,7 +1,7 @@
 //! Implementation of the Environment struct
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::helper::errors::{Error, Result};
 
@@ -9,6 +9,12 @@ use crate::helper::errors::{Error, Result};
 #[derive(Debug, Clone, PartialEq)]
 pub struct Environment {
     envs: HashMap<String, String>,
+}
+
+impl Default for Environment {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Environment {
@@ -90,7 +96,7 @@ impl Environment {
     /// // and it is actually loaded
     /// assert_eq!(dotenvy::var("TEST").unwrap(), "true");
     /// ```
-    pub fn from_file_with_load(env_file: &PathBuf) -> Result<Self> {
+    pub fn from_file_with_load(env_file: &Path) -> Result<Self> {
         dotenvy::from_path_override(env_file)?;
         Ok(Environment::from_environment_list(
             dotenvy::vars().collect(),
@@ -104,7 +110,7 @@ impl Environment {
     ///
     /// ## Errors
     /// - Returns an `EnvError` if writing failed
-    pub fn to_file(&self, file_path: &PathBuf) -> Result<()> {
+    pub fn to_file(&self, file_path: &Path) -> Result<()> {
         serde_envfile::to_file(file_path, &self.envs).map_err(|e| Error::EnvError {
             reason: e.to_string(),
         })

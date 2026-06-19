@@ -142,14 +142,14 @@ impl ExperimentSeries {
             for rep in 0..*self.source.repetitions() {
                 // cannot edit self.runs directly here, beucase of the borrow checker :)
                 run_list.push(generate_run_from(
-                    &self,
+                    self,
                     (&PathBuf::from(SRC_ENV_FILE), &Environment::new()),
                     rep,
                 ));
             }
         } else {
             for (environment, rep) in self.shuffled_environments() {
-                run_list.push(generate_run_from(&self, environment, rep));
+                run_list.push(generate_run_from(self, environment, rep));
             }
         }
 
@@ -276,7 +276,7 @@ impl ExperimentSeries {
         }
 
         running_order.shuffle(&mut rand::rng());
-        running_order.sort_by(|a, b| (a.1).cmp(&b.1));
+        running_order.sort_by_key(|a| a.1);
 
         running_order
     }
@@ -348,14 +348,8 @@ impl ExperimentSeries {
                 let outfile = rows
                     .iter()
                     .find(|outfile| outfile.var_name() == key)
-                    .expect(&format!("No outfile with name \"{}\" found", key));
-                row.push(
-                    outfile
-                        .values()
-                        .get(i)
-                        .cloned()
-                        .unwrap_or_else(|| String::new()),
-                );
+                    .unwrap_or_else(|| panic!("No outfile with name \"{}\" found", key));
+                row.push(outfile.values().get(i).cloned().unwrap_or_else(String::new));
             }
 
             rows_vec.push(row);
@@ -371,26 +365,12 @@ impl ExperimentSeries {
     /// - there are runs, but none contain out_ files
     /// - there are runs with out_ files, but all out_ files are empty
     fn runs_are_empty(&self) -> bool {
-        if self.runs.is_empty()
+        self.runs.is_empty()
             || self.runs.iter().all(|run| run.out_files().is_none())
             || self
                 .runs
                 .iter()
                 .all(|run| run.out_files().iter().all(|out| out.is_empty()))
-        {
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Returns the content of a file if it is readable.
-    /// Otherwise returns an empty String.
-    fn read_log(path: &PathBuf) -> String {
-        match read_to_string(path) {
-            Ok(log) => log,
-            Err(_) => String::new(),
-        }
     }
 
     /// Checks if the SeriesReader contains a valid trial run.
@@ -500,7 +480,7 @@ impl CsvWriter for ExperimentSeries {
     ///
     /// ## Errors
     /// - Returns a `CsvError` if something went wrong during the csv serialization
-    fn to_csv(&self, csv_file: &PathBuf) -> Result<()> {
+    fn to_csv(&self, csv_file: &Path) -> Result<()> {
         let mut wtr = Writer::from_path(csv_file).map_err(|e| Error::CsvError {
             reason: e.to_string(),
         })?;
@@ -549,7 +529,7 @@ impl FileWriter for ExperimentSeries {
     /// - Returns a `HarnessCreateError` if there is an experiment series directory
     ///   called `series_name` in the same directory
     /// - Panics if `exp_source` could not be read
-    fn persist(&mut self, exp_series_dir: &PathBuf) -> Result<()> {
+    fn persist(&mut self, exp_series_dir: &Path) -> Result<()> {
         debug!(
             "attempting to build series directory from {}",
             self.source.location().display()
@@ -630,7 +610,7 @@ impl FileReader for ExperimentSeries {
     ///
     /// ### Error
     /// - Returns a `ReaderError` if any RunReader failed to parse
-    fn parse(exp_series_dir: &PathBuf) -> Result<Self::Item> {
+    fn parse(exp_series_dir: &Path) -> Result<Self::Item> {
         debug!("looking for experiment runs");
         let runs: Vec<ExperimentRun> = find_run_repetitions(&exp_series_dir.join(SERIES_RUNS_DIR))
             .iter()
@@ -644,9 +624,11 @@ impl FileReader for ExperimentSeries {
 
         debug!("reading log files");
         let stdout_log =
-            Self::read_log(&exp_series_dir.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG));
+            read_to_string(exp_series_dir.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG))
+                .unwrap_or_default();
         let stderr_log =
-            Self::read_log(&exp_series_dir.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG));
+            read_to_string(exp_series_dir.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG))
+                .unwrap_or_default();
 
         let mut reader = ExperimentSeries {
             source: ExperimentSource::new(),
@@ -675,7 +657,7 @@ impl std::fmt::Display for ExperimentSeries {
         } else {
             if let Some(outfiles) = self.runs()[0].out_files() {
                 let mut out = String::new();
-                for out_file in outfiles.to_vec() {
+                for out_file in outfiles.iter() {
                     out.push_str(&format!("[{exp_name}] {out_file}\n"));
                 }
                 out

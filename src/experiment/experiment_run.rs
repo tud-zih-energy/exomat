@@ -11,7 +11,7 @@ use crate::helper::{
 use log::warn;
 use log::{debug, error, info, trace};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::{fs::OpenOptions, os::unix::fs::OpenOptionsExt};
 
@@ -221,7 +221,7 @@ impl ExperimentRun {
         &self,
         run_name: &str,
         exit_status: std::process::ExitStatus,
-        err_log: &String,
+        err_log: &str,
     ) -> Result<()> {
         if exit_status.success() {
             info!("{run_name} finished successfully with {exit_status}");
@@ -237,7 +237,7 @@ impl ExperimentRun {
             // fail fast in case of unsuccessful run
             return Err(Error::HarnessRunError {
                 experiment: run_name.to_string(),
-                err: err_log.clone(),
+                err: err_log.to_owned(),
             });
         }
 
@@ -354,8 +354,8 @@ impl FileWriter for ExperimentRun {
     /// - Returns a `HarnessCreateError` if there is no [SERIES_RUNS_DIR] found inside `series_folder`
     /// - Returns a `HarnessCreateError` if any file or directory could not be created or copied
     /// - Panics if `it_format_length` is 0
-    fn persist(&mut self, exp_run_dir: &PathBuf) -> Result<()> {
-        create_harness_dir(&exp_run_dir)?;
+    fn persist(&mut self, exp_run_dir: &Path) -> Result<()> {
+        create_harness_dir(&exp_run_dir.to_path_buf())?;
         create_harness_file(&exp_run_dir.join(MARKER_RUN))?;
 
         debug!("copy ruh.sh and [env].env to runs_dir");
@@ -427,7 +427,7 @@ impl FileReader for ExperimentRun {
     /// - unbalanced multiline out_ files
     ///
     /// This function might **Panic** if reading/writing failed.
-    fn parse(exp_run_dir: &PathBuf) -> Result<Self::Item> {
+    fn parse(exp_run_dir: &Path) -> Result<Self::Item> {
         debug!("reading environment");
         let env = Environment::from_file(&exp_run_dir.join(RUN_ENV_FILE)).unwrap_or_else(|_| {
             warn!("No environment found in run {}", exp_run_dir.display());
@@ -435,11 +435,11 @@ impl FileReader for ExperimentRun {
         });
 
         debug!("reading run script");
-        let run_sh = std::fs::read_to_string(&exp_run_dir.join(RUN_RUN_FILE))?;
+        let run_sh = std::fs::read_to_string(exp_run_dir.join(RUN_RUN_FILE))?;
 
         trace!("Reading out_ files of Run {}", exp_run_dir.display());
         let mut out_list: OutList = OutList::default();
-        let contained_files = find_all_files(&exp_run_dir)?;
+        let contained_files = find_all_files(exp_run_dir)?;
 
         for file in contained_files {
             debug!("checking file {}", file.display());
@@ -540,10 +540,7 @@ impl<'a> Iterator for ExperimentRunIter<'a> {
         let obs = self.run_reader.get_observation(self.index);
         self.index += 1;
 
-        match obs {
-            Ok(obs) => Some(obs),
-            Err(_) => None,
-        }
+        obs.ok()
     }
 }
 impl<'a> IntoIterator for &'a ExperimentRun {

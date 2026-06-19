@@ -1,6 +1,6 @@
 //! Container for internal exomat environment variables
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::harness::env::environment::Environment;
 use crate::helper::errors::Result;
@@ -15,7 +15,7 @@ impl ExomatEnvironment {
     pub fn new(exp_src_dir: &PathBuf, repetition: u64) -> Self {
         ExomatEnvironment {
             exp_src_dir: exp_src_dir.to_owned(),
-            repetition: repetition,
+            repetition,
         }
     }
 
@@ -30,10 +30,9 @@ impl ExomatEnvironment {
             String::from("EXP_SRC_DIR"),
             self.exp_src_dir
                 .canonicalize()
-                .expect(&format!(
-                    "EXP_SRC_DIR is no dir ({})",
-                    self.exp_src_dir.display()
-                ))
+                .unwrap_or_else(|_| {
+                    panic!("EXP_SRC_DIR is no dir ({})", self.exp_src_dir.display())
+                })
                 .display()
                 .to_string(),
         )])));
@@ -61,13 +60,10 @@ impl ExomatEnvironment {
 /// 1. Reads the environment from `env_path`
 /// 2. adds all envs from `exomat_environment.to_environment_serializable()`
 /// 3. serializes this back into `env_path`
-pub fn append_exomat_envs(
-    env_path: &PathBuf,
-    exomat_environment: &ExomatEnvironment,
-) -> Result<()> {
-    let mut old_env = Environment::from_file(&env_path)?;
+pub fn append_exomat_envs(env_path: &Path, exomat_environment: &ExomatEnvironment) -> Result<()> {
+    let mut old_env = Environment::from_file(env_path)?;
     let to_add = exomat_environment.to_environment_serializable();
 
     old_env.extend_envs(&to_add);
-    old_env.to_file(&env_path)
+    old_env.to_file(env_path)
 }
