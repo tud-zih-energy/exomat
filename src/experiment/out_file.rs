@@ -18,6 +18,12 @@ pub struct OutList {
 }
 
 impl OutList {
+    /// Creates a new OutList.
+    ///
+    /// Ensures all out_ file names are unique.
+    ///
+    /// ## Errors
+    /// - Returns a `ReaderError` if duplicate out_ file names are found
     pub fn from(out_files: Vec<OutFile>) -> Result<Self> {
         // Ensure all outfile names are unique
         let mut names = HashSet::new();
@@ -33,6 +39,9 @@ impl OutList {
         Ok(Self { out_files })
     }
 
+    /// Returns the length of the longest OutFile in out_files
+    ///
+    /// If the maximum length cannot be determined, 0 is returned.
     pub fn max_length(&self) -> usize {
         self.out_files
             .iter()
@@ -41,12 +50,14 @@ impl OutList {
             .unwrap_or(0)
     }
 
-    pub fn get_outfile(&self, var_name: &str) -> Option<&OutFile> {
+    /// Returns the out_ file, where out_file.name == var_name
+    pub fn outfile(&self, var_name: &str) -> Option<&OutFile> {
         self.out_files
             .iter()
             .find(|outfile| outfile.var_name() == var_name)
     }
 
+    /// Extends the list of out_ files
     pub fn extend_list(&mut self, new_list: &OutList) {
         self.out_files.extend(new_list.out_files.clone());
     }
@@ -66,6 +77,7 @@ impl DerefMut for OutList {
     }
 }
 
+/// Represents one out_ file in an Experiment Run
 #[derive(PartialEq, Clone, Debug)]
 pub struct OutFile {
     name: String,
@@ -73,6 +85,7 @@ pub struct OutFile {
 }
 
 impl OutFile {
+    /// Create a new out_ file
     pub fn from(name: &str, content: Vec<String>) -> Self {
         Self {
             name: name.to_string(),
@@ -80,18 +93,25 @@ impl OutFile {
         }
     }
 
+    /// Returns the name of the out_ file
     pub fn var_name(&self) -> &String {
         &self.name
     }
 
+    /// Returns the content of out_ files
     pub fn values(&self) -> &Vec<String> {
         &self.content
     }
 
+    /// Extends the content of this out_ file.
+    ///
+    /// One String in new_vals should represent one line of an out_ file.
+    /// It's not recommended to ignore this.
     pub fn extend_values(&mut self, new_vals: &Vec<String>) {
         self.content.extend(new_vals.clone())
     }
 
+    /// Copy the item at `index` `by` times at the end of the content list
     pub fn repeat(&mut self, index: usize, by: usize) {
         let value = self.content[index].clone();
 
@@ -99,10 +119,12 @@ impl OutFile {
         self.content.extend(vec![value; by]);
     }
 
+    /// Returns the length of self.content
     pub fn value_count(&self) -> usize {
         self.content.len()
     }
 
+    /// Convinience function to check if self.content is empty
     pub fn is_empty(&self) -> bool {
         self.content.is_empty()
     }
@@ -112,16 +134,22 @@ impl OutFile {
 impl FileReader for OutFile {
     type Item = OutFile;
 
-    fn parse(dir: &PathBuf) -> Result<Self::Item> {
-        if !dir.is_file() {
+    /// Parses the content of outfile into an OutFile object.
+    ///
+    /// ## Errors
+    /// - Returns a `ReaderError` if outfile is not a file
+    /// - Returns a `ReaderError` if outfile does not start with "out_"
+    /// - Returns an `Empty` Error if outfile has an invalid name
+    fn parse(outfile: &PathBuf) -> Result<Self::Item> {
+        if !outfile.is_file() {
             return Err(Error::ReaderError {
-                dir: dir.display().to_string(),
+                dir: outfile.display().to_string(),
                 reason: "Entry is not a file".to_string(),
             });
         }
 
         let prefix = "out_";
-        let file_name = file_name_string(dir);
+        let file_name = file_name_string(outfile);
 
         if file_name.starts_with(prefix) {
             // parse variable name from out file
@@ -133,7 +161,7 @@ impl FileReader for OutFile {
             }
 
             // read content
-            let values = read_to_string(dir)?
+            let values = read_to_string(outfile)?
                 .trim()
                 .split("\n")
                 .map(|v| v.to_string())
@@ -145,7 +173,7 @@ impl FileReader for OutFile {
             })
         } else {
             Err(Error::ReaderError {
-                dir: dir.display().to_string(),
+                dir: outfile.display().to_string(),
                 reason: "not an out file".to_string(),
             })
         }

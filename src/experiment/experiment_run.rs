@@ -121,7 +121,7 @@ impl ExperimentRun {
     pub fn out_var(&self, var: &str) -> Option<&Vec<String>> {
         match &self.out_files {
             Some(out) => {
-                if let Some(outfile) = out.get_outfile(var) {
+                if let Some(outfile) = out.outfile(var) {
                     Some(outfile.values())
                 } else {
                     None
