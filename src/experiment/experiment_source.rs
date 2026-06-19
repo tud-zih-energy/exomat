@@ -1,6 +1,7 @@
-use log::{info, warn};
+use log::{debug, info, warn};
 use std::{
-    collections::HashMap, fs::OpenOptions, io::Write, os::unix::fs::OpenOptionsExt, path::PathBuf,
+    collections::HashMap, fs::read_to_string, fs::OpenOptions, io::Write,
+    os::unix::fs::OpenOptionsExt, path::PathBuf,
 };
 
 use crate::experiment::{FileReader, FileWriter};
@@ -136,6 +137,7 @@ impl ExperimentSource {
     /// ## Errors
     /// - returns an `EnvError` if any key does not end with ".env"
     pub fn set_envs(&mut self, envs: EnvironmentLocationList) -> Result<()> {
+        debug!("checking env extension");
         if let Some(invalid_env) = envs
             .keys()
             .find(|env_file_name| env_file_name.extension().unwrap() != "env")
@@ -180,8 +182,7 @@ impl FileReader for ExperimentSource {
                 .expect("Could not resolve Source path"),
             1,
         );
-        let run_sh =
-            std::fs::read_to_string(&exp_source_dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE))?;
+        let run_sh = read_to_string(&exp_source_dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE))?;
         let envs = get_existing_environments_by_fname(&exp_source_dir.join(SRC_ENV_DIR))?;
 
         Ok(Self {
@@ -218,6 +219,7 @@ impl FileWriter for ExperimentSource {
         create_harness_file(&exp_source_dir.join(MARKER_SRC))?;
 
         // create envs if some are given, otherwise just create an empty env file
+        debug!("persisting env dir");
         create_harness_dir(&exp_source_dir.join(SRC_ENV_DIR))?;
         if self.envs.len() == 0 {
             create_harness_file(&exp_source_dir.join(SRC_ENV_DIR).join(SRC_ENV_FILE))?;
@@ -233,6 +235,7 @@ impl FileWriter for ExperimentSource {
         }
 
         // create run.sh as executable
+        debug!("persisting run script");
         create_harness_dir(&exp_source_dir.join(SRC_TEMPLATE_DIR))?;
         let run_file_path = &exp_source_dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE);
 
