@@ -172,15 +172,15 @@ impl FileReader for ExperimentSource {
     /// - returns an `IoError` if the run script could not be read
     /// - returns an `EnvError` if Environments could not be parsed
     /// - panics if the absolute path of `dir` cannot be build
-    fn parse(dir: &PathBuf) -> Result<Self::Item> {
+    fn parse(exp_source_dir: &PathBuf) -> Result<Self::Item> {
         let exomat_envs = ExomatEnvironment::new(
-            &dir.to_path_buf()
+            &exp_source_dir.to_path_buf()
                 .canonicalize()
                 .expect("Could not resolve Source path"),
             1,
         );
-        let run_sh = std::fs::read_to_string(&dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE))?;
-        let envs = get_existing_environments_by_fname(&dir.join(SRC_ENV_DIR))?;
+        let run_sh = std::fs::read_to_string(&exp_source_dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE))?;
+        let envs = get_existing_environments_by_fname(&exp_source_dir.join(SRC_ENV_DIR))?;
 
         Ok(Self {
             run_sh,
@@ -211,14 +211,14 @@ impl FileWriter for ExperimentSource {
     /// - returns an `HarnessCreateError` if any entry of the list above could not be created.
     /// - returns an `IoError` if the run script could not be written
     /// - returns an `EnvError` if Environment serialization failed
-    fn persist(&mut self, dir: &PathBuf) -> Result<()> {
-        create_harness_dir(dir)?;
-        create_harness_file(&dir.join(MARKER_SRC))?;
+    fn persist(&mut self, exp_source_dir: &PathBuf) -> Result<()> {
+        create_harness_dir(exp_source_dir)?;
+        create_harness_file(&exp_source_dir.join(MARKER_SRC))?;
 
         // create envs if some are given, otherwise just create an empty env file
-        create_harness_dir(&dir.join(SRC_ENV_DIR))?;
+        create_harness_dir(&exp_source_dir.join(SRC_ENV_DIR))?;
         if self.envs.len() == 0 {
-            create_harness_file(&dir.join(SRC_ENV_DIR).join(SRC_ENV_FILE))?;
+            create_harness_file(&exp_source_dir.join(SRC_ENV_DIR).join(SRC_ENV_FILE))?;
         } else {
             let envs = EnvironmentContainer::from_env_list(
                 self.envs
@@ -227,12 +227,12 @@ impl FileWriter for ExperimentSource {
                     .map(|(_, value)| value)
                     .collect::<Vec<Environment>>(),
             );
-            envs.serialize_environments(&dir.join(SRC_ENV_DIR))?;
+            envs.serialize_environments(&exp_source_dir.join(SRC_ENV_DIR))?;
         }
 
         // create run.sh as executable
-        create_harness_dir(&dir.join(SRC_TEMPLATE_DIR))?;
-        let run_file_path = &dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE);
+        create_harness_dir(&exp_source_dir.join(SRC_TEMPLATE_DIR))?;
+        let run_file_path = &exp_source_dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE);
 
         let mut run_file = OpenOptions::new()
             .mode(0o775)
@@ -254,9 +254,9 @@ impl FileWriter for ExperimentSource {
 
         run_file.write_all(run_sh_bytes)?;
 
-        info!("Experiment harness created under {}", dir.display());
+        info!("Experiment harness created under {}", exp_source_dir.display());
 
-        self.exomat_envs.exp_src_dir = dir.to_path_buf();
+        self.exomat_envs.exp_src_dir = exp_source_dir.to_path_buf();
         Ok(())
     }
 }
