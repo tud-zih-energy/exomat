@@ -15,11 +15,14 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::{fs::OpenOptions, os::unix::fs::OpenOptionsExt};
 
+/// Describes the current state of an Experiment Run
 #[derive(Clone, Debug, PartialEq)]
 pub enum RunStatus {
+    /// Run hsn't been executed yet, status is unknown
     Unknown,
-    Ready,
+    /// Run didn't produce errors
     Success,
+    /// Run produced an error
     Fail(String),
 }
 
@@ -36,6 +39,20 @@ pub struct ExperimentRun {
 }
 
 impl ExperimentRun {
+    /// Creates a new Experiment Run
+    ///
+    /// The following values will be set:
+    /// - `run_sh`: `run_sh`
+    /// - `run_name`: built from `environment.0`, `exomat_environment.repetition` and `rep_format_length`
+    /// - `env`: `environment.1`
+    /// - `exomat_env`: `exomat_environment`
+    /// - `out_files`: None
+    /// - `status`: RunStatus::Unknown
+    /// - `location`: None
+    ///
+    /// ## Panics
+    /// - panics if `rep_format_length` is <= 0
+    /// - panics if environment.1 contains reserved Environemnt variables (see ExomatEnvironment)
     pub fn new(
         run_sh: &str,
         environment: (&PathBuf, &Environment),
@@ -62,7 +79,7 @@ impl ExperimentRun {
             env: environment.1.clone(),
             exomat_env: exomat_environment.clone(),
             out_files: None,
-            status: RunStatus::Ready,
+            status: RunStatus::Unknown,
             location: None,
         }
     }
@@ -75,18 +92,24 @@ impl ExperimentRun {
         }
     }
 
+    // ========================= getter ========================================
+
+    /// Returns the run name
     pub fn run_dir_name(&self) -> &str {
         &self.run_name
     }
 
+    /// Returns the current repetition
     pub fn repetition(&self) -> &u64 {
         &self.exomat_env.repetition
     }
 
+    /// returns the environment of this Experiment Run
     pub fn environment(&self) -> &Environment {
         &self.env
     }
 
+    /// Returns the run status
     pub fn status(&self) -> &RunStatus {
         &self.status
     }
@@ -95,7 +118,7 @@ impl ExperimentRun {
     ///
     /// If there is no file with this name, `None` is returned.
     /// The returned Vec may be empty.
-    pub fn get_var(&self, var: &str) -> Option<&Vec<String>> {
+    pub fn out_var(&self, var: &str) -> Option<&Vec<String>> {
         match &self.out_files {
             Some(out) => {
                 if let Some(outfile) = out.get_outfile(var) {
@@ -109,9 +132,11 @@ impl ExperimentRun {
     }
 
     /// Returns a reference to the list of out_ files recorded
-    pub fn get_out_files(&self) -> &Option<OutList> {
+    pub fn out_files(&self) -> &Option<OutList> {
         &self.out_files
     }
+
+    // ========================= setter ========================================
 
     /// Replaces `self.out_files` with `new_out`.
     ///
@@ -120,7 +145,9 @@ impl ExperimentRun {
         self.out_files = new_out
     }
 
-    /// Generates a RunReader from `outlist`.
+    // ========================= helper ========================================
+
+    /// Generates an ExperimentRun from `outlist`.
     ///
     /// Sets an empty Environemnt.
     #[cfg(test)]
@@ -134,7 +161,7 @@ impl ExperimentRun {
                 repetition: 1,
             },
             out_files: Some(outlist.clone()),
-            status: RunStatus::Ready,
+            status: RunStatus::Unknown,
             location: None,
         }
     }
@@ -231,9 +258,11 @@ impl Runner for ExperimentRun {
     ///       by calling this function.
     ///
     /// ## Errors and Panics
-    /// - Returns a `HarnessRunrror` if [RUN_RUN_FILE] could not be executed
-    /// - panics if there is no [RUN_RUN_FILE] in `run_folder`
-    /// - panics if there is no [RUN_ENV_FILE] in `run_folder`
+    /// - Returns a `HarnessRunrror` if the run has not been serialized yet
+    /// - Returns a `HarnessRunrror` if the script could not be executed
+    /// - Returns a `HarnessRunrror` if there is no [RUN_RUN_FILE] in `run_folder`
+    /// - Returns a `HarnessRunrror` if there is no [RUN_ENV_FILE] in `run_folder`
+    /// - panics if self.location is inacessable
     fn execute(&mut self, exp_name: &str) -> Result<Self::Item> {
         trace!("{exp_name}: Checking run directory {}", self.run_name);
         if self.location.is_none() {
@@ -248,7 +277,7 @@ impl Runner for ExperimentRun {
             .as_ref()
             .expect("Run location not accessable")
             .canonicalize()
-            .unwrap();
+            .expect("Run location not accessable");
 
         if !run_folder.join(RUN_RUN_FILE).is_file() {
             return Err(Error::HarnessRunError {
@@ -306,20 +335,20 @@ impl Runner for ExperimentRun {
 
 // ========================== Writer ==========================
 impl FileWriter for ExperimentRun {
-    /// Creates a ready-to-use experiment run folder for **one interation** with **one environment**
+    /// Creates a ready-to-use experiment run for **one interation** with **one environment**
     /// of an experiment.
     ///
-    /// ### Note: `env_file` is used to deduce the `{env}` part of the new experiment run directory name.
-    /// ###       `exomat_environment` is used to get the `{it}` part.
+    /// ## out_ files in `self.out_files` will not be created
+    /// as they should created by the run script
     ///
-    /// The new directory will be created in the given `series_folder` under [SERIES_RUNS_DIR]`/run_[env]_rep[repetition]`.
+    /// The new directory will be created in the given `dir`.
     /// This will result in the following structure:
     /// ```notest
     /// series_folder
     ///   |-> ...
     ///   \-> runs/
     ///     |-> ...
-    ///     \-> run_{env}_rep{it}/
+    ///     \-> dir
     ///       |-> .exomat_run
     ///       |-> RUN_RUN_FILE     (copy of SRC_RUN_FILE)
     ///       \-> RUN_ENV_FILE     (copy of env_file)
@@ -332,33 +361,6 @@ impl FileWriter for ExperimentRun {
     /// - Returns a `HarnessCreateError` if any file or directory could not be created or copied
     /// - Panics if `it_format_length` is 0
     fn persist(&mut self, dir: &PathBuf) -> Result<()> {
-        // assert!(it_format_length > 0, "repetition format cannot be 0");
-
-        // // unwrap here, because this should never fail and if it does it's your fault
-        // let env_name = &env_file.file_stem().unwrap().to_str().unwrap();
-
-        // let run = format!(
-        //     "run_{}_rep{:0length$}",
-        //     env_name,
-        //     exomat_environment.repetition,
-        //     length = it_format_length,
-        // );
-
-        // get path to runs/, return error if it does not exist
-        // let runs_dir = match series_folder.join(SERIES_RUNS_DIR).is_dir() {
-        //     true => series_folder.join(SERIES_RUNS_DIR),
-        //     false => {
-        //         return Err(Error::HarnessCreateError {
-        //             entry: run,
-        //             reason: format!(
-        //                 "{} dir does not exist in {}",
-        //                 SERIES_RUNS_DIR,
-        //                 series_folder.display()
-        //             ),
-        //         })
-        //     }
-        // };
-
         create_harness_dir(&dir)?;
         create_harness_file(&dir.join(MARKER_RUN))?;
 
@@ -412,7 +414,7 @@ impl std::fmt::Display for ExperimentRun {
 impl FileReader for ExperimentRun {
     type Item = ExperimentRun;
 
-    /// Parses an Experiment Run into a RunReader object.
+    /// Parses an Experiment Run directory into an ExperimentRun.
     ///
     /// Will balance out missing values, if possible, so that the number of values
     /// is even across all out_ files.
@@ -422,14 +424,14 @@ impl FileReader for ExperimentRun {
     ///
     /// ### Warnings, Errors and Panics
     /// What you will be **warn**ed about:
-    /// - no env file at run/[RUN_ENV_FILE]
+    /// - no env file at run/[RUN_ENV_FILE] (Empty Environment will be used)
     /// - an out_ file shadows an env var
     ///
     /// What will cause an **Error**:
     /// - invalid out_ file names
     /// - unbalanced multiline out_ files
     ///
-    /// This function my **Panic** if reading/writing failed.
+    /// This function might **Panic** if reading/writing failed.
     fn parse(dir: &PathBuf) -> Result<Self::Item> {
         // read env file
         let env = Environment::from_file(&dir.join(RUN_ENV_FILE)).unwrap_or_else(|_| {
