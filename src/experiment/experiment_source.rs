@@ -1,7 +1,11 @@
 use log::{debug, info, warn};
 use std::{
-    collections::HashMap, fs::read_to_string, fs::OpenOptions, io::Write,
-    os::unix::fs::OpenOptionsExt, path::PathBuf,
+    collections::HashMap,
+    fs::read_to_string,
+    fs::OpenOptions,
+    io::Write,
+    os::unix::fs::OpenOptionsExt,
+    path::{Path, PathBuf},
 };
 
 use crate::experiment::{FileReader, FileWriter};
@@ -19,6 +23,13 @@ pub struct ExperimentSource {
     run_sh: String,
     envs: EnvironmentLocationList,
     exomat_envs: ExomatEnvironment,
+}
+
+/// Default implementation because clippy said so
+impl Default for ExperimentSource {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ExperimentSource {
@@ -174,7 +185,7 @@ impl FileReader for ExperimentSource {
     /// - returns an `IoError` if the run script could not be read
     /// - returns an `EnvError` if Environments could not be parsed
     /// - panics if the absolute path of `dir` cannot be build
-    fn parse(exp_source_dir: &PathBuf) -> Result<Self::Item> {
+    fn parse(exp_source_dir: &Path) -> Result<Self::Item> {
         let exomat_envs = ExomatEnvironment::new(
             &exp_source_dir
                 .to_path_buf()
@@ -182,7 +193,7 @@ impl FileReader for ExperimentSource {
                 .expect("Could not resolve Source path"),
             1,
         );
-        let run_sh = read_to_string(&exp_source_dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE))?;
+        let run_sh = read_to_string(exp_source_dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE))?;
         let envs = get_existing_environments_by_fname(&exp_source_dir.join(SRC_ENV_DIR))?;
 
         Ok(Self {
@@ -214,23 +225,18 @@ impl FileWriter for ExperimentSource {
     /// - returns an `HarnessCreateError` if any entry of the list above could not be created.
     /// - returns an `IoError` if the run script could not be written
     /// - returns an `EnvError` if Environment serialization failed
-    fn persist(&mut self, exp_source_dir: &PathBuf) -> Result<()> {
-        create_harness_dir(exp_source_dir)?;
+    fn persist(&mut self, exp_source_dir: &Path) -> Result<()> {
+        create_harness_dir(&exp_source_dir.to_path_buf())?;
         create_harness_file(&exp_source_dir.join(MARKER_SRC))?;
 
         // create envs if some are given, otherwise just create an empty env file
         debug!("persisting env dir");
         create_harness_dir(&exp_source_dir.join(SRC_ENV_DIR))?;
-        if self.envs.len() == 0 {
+        if self.envs.is_empty() {
             create_harness_file(&exp_source_dir.join(SRC_ENV_DIR).join(SRC_ENV_FILE))?;
         } else {
-            let envs = EnvironmentContainer::from_env_list(
-                self.envs
-                    .clone()
-                    .into_iter()
-                    .map(|(_, value)| value)
-                    .collect::<Vec<Environment>>(),
-            );
+            let envs =
+                EnvironmentContainer::from_env_list(self.envs.clone().into_values().collect());
             envs.serialize_environments(&exp_source_dir.join(SRC_ENV_DIR))?;
         }
 

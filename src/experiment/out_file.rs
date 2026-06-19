@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::fs::read_to_string;
 use std::ops::{Deref, DerefMut};
-use std::path::PathBuf;
+use std::path::Path;
 
 use super::FileReader;
 use crate::helper::errors::{Error, Result};
@@ -107,8 +107,8 @@ impl OutFile {
     ///
     /// One String in new_vals should represent one line of an out_ file.
     /// It's not recommended to ignore this.
-    pub fn extend_values(&mut self, new_vals: &Vec<String>) {
-        self.content.extend(new_vals.clone())
+    pub fn extend_values(&mut self, new_vals: &[String]) {
+        self.content.extend(new_vals.to_owned())
     }
 
     /// Copy the item at `index` `by` times at the end of the content list
@@ -140,7 +140,7 @@ impl FileReader for OutFile {
     /// - Returns a `ReaderError` if outfile is not a file
     /// - Returns a `ReaderError` if outfile does not start with "out_"
     /// - Returns an `Empty` Error if outfile has an invalid name
-    fn parse(outfile: &PathBuf) -> Result<Self::Item> {
+    fn parse(outfile: &Path) -> Result<Self::Item> {
         if !outfile.is_file() {
             return Err(Error::ReaderError {
                 dir: outfile.display().to_string(),
@@ -161,16 +161,13 @@ impl FileReader for OutFile {
             }
 
             // read content
-            let values = read_to_string(outfile)?
+            let content = read_to_string(outfile)?
                 .trim()
                 .split("\n")
                 .map(|v| v.to_string())
                 .collect();
 
-            Ok(Self {
-                name: name,
-                content: values,
-            })
+            Ok(Self { name, content })
         } else {
             Err(Error::ReaderError {
                 dir: outfile.display().to_string(),

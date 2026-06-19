@@ -155,7 +155,7 @@ pub fn reset_logger(verbosity: spdlog::LevelFilter) {
         .sink(Arc::new(
             spdlog::sink::StdStreamSink::builder()
                 .formatter(Box::new(PatternFormatter::new(pattern)))
-                .level_filter(spdlog::LevelFilter::from(verbosity))
+                .level_filter(verbosity)
                 .std_stream(spdlog::sink::StdStream::Stdout)
                 .build()
                 .unwrap(),

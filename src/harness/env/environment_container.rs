@@ -16,6 +16,12 @@ pub struct EnvironmentContainer {
     environment_list: Vec<Environment>,
 }
 
+impl Default for EnvironmentContainer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EnvironmentContainer {
     /// Creates a new, empty EnvironmentContainer
     pub fn new() -> Self {
@@ -34,8 +40,7 @@ impl EnvironmentContainer {
         // create an Environment from each file
         Ok(EnvironmentContainer {
             environment_list: environments_by_fname
-                .into_iter()
-                .map(|(_, value)| value)
+                .into_values()
                 .collect::<Vec<Environment>>(),
         })
     }
@@ -67,7 +72,7 @@ impl EnvironmentContainer {
             let env_file_name = format!("{:0lz$}.env", counter, lz = leading_zeros);
             let file_path = &exp_src_envs.join(&env_file_name);
 
-            environment.to_file(&file_path)?;
+            environment.to_file(file_path)?;
         }
 
         Ok(())
@@ -105,7 +110,7 @@ impl EnvironmentContainer {
                     }
                 }
 
-                new_list.extend(try_assemble_all(&file, &to_add)?);
+                new_list.extend(try_assemble_all(file, &to_add)?);
             }
 
             self.environment_list = new_list;

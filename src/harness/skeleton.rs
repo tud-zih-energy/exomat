@@ -1,12 +1,12 @@
 //! harness skeleton subcommand
 
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::experiment::{ExperimentSource, FileWriter};
 use crate::helper::errors::Result;
 
 /// entrypoint for skeleton binary
-pub fn main(exp_src_dir: &PathBuf) -> Result<()> {
+pub fn main(exp_src_dir: &Path) -> Result<()> {
     let mut src = ExperimentSource::new();
     src.persist(exp_src_dir)?;
 

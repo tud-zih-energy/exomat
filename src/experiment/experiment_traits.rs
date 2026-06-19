@@ -1,12 +1,12 @@
 use crate::helper::errors::Result;
-use std::path::PathBuf;
+use std::path::Path;
 
 pub trait CsvWriter {
-    fn to_csv(&self, file: &PathBuf) -> Result<()>;
+    fn to_csv(&self, file: &Path) -> Result<()>;
 }
 
 pub trait FileWriter {
-    fn persist(&mut self, dir: &PathBuf) -> Result<()>;
+    fn persist(&mut self, dir: &Path) -> Result<()>;
 }
 
 pub trait LogWriter {
@@ -16,7 +16,7 @@ pub trait LogWriter {
 pub trait FileReader {
     type Item;
 
-    fn parse(dir: &PathBuf) -> Result<Self::Item>;
+    fn parse(dir: &Path) -> Result<Self::Item>;
 }
 
 pub trait Runner {

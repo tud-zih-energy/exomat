@@ -26,7 +26,7 @@ pub fn experiment(
     log_progress_handler: MultiProgress,
     is_trial: bool,
 ) -> Result<()> {
-    let mut series = ExperimentSeries::from_source(&experiment)?;
+    let mut series = ExperimentSeries::from_source(experiment)?;
     series.generate_runs()?;
     series.persist(&output)?;
 
@@ -86,7 +86,7 @@ fn execute_exp_repetitions(
     let prog_bar = if is_trial {
         ProgressBar::new(1)
     } else {
-        ProgressBar::new(series.repetition_count() as u64 + 1)
+        ProgressBar::new(series.repetition_count() + 1)
     };
 
     prog_bar.set_style(
