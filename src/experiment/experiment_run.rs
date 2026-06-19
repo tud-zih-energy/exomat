@@ -360,13 +360,13 @@ impl FileWriter for ExperimentRun {
     /// - Returns a `HarnessCreateError` if there is no [SERIES_RUNS_DIR] found inside `series_folder`
     /// - Returns a `HarnessCreateError` if any file or directory could not be created or copied
     /// - Panics if `it_format_length` is 0
-    fn persist(&mut self, dir: &PathBuf) -> Result<()> {
-        create_harness_dir(&dir)?;
-        create_harness_file(&dir.join(MARKER_RUN))?;
+    fn persist(&mut self, exp_run_dir: &PathBuf) -> Result<()> {
+        create_harness_dir(&exp_run_dir)?;
+        create_harness_file(&exp_run_dir.join(MARKER_RUN))?;
 
         // copy ruh.sh and [env].env to runs_dir
         // create default run.sh as executable
-        let run_file_path = &dir.join(RUN_RUN_FILE);
+        let run_file_path = &exp_run_dir.join(RUN_RUN_FILE);
         OpenOptions::new()
             .mode(0o775)
             .write(true)
@@ -382,10 +382,10 @@ impl FileWriter for ExperimentRun {
         // write envs to file (including exomat envs)
         let mut serializable_envs = self.env.clone();
         serializable_envs.extend_envs(&self.exomat_env.to_environment_serializable());
-        serializable_envs.to_file(&dir.join(RUN_ENV_FILE))?;
+        serializable_envs.to_file(&exp_run_dir.join(RUN_ENV_FILE))?;
 
         // set location
-        self.location = Some(dir.to_path_buf());
+        self.location = Some(exp_run_dir.to_path_buf());
         Ok(())
     }
 }
@@ -432,19 +432,19 @@ impl FileReader for ExperimentRun {
     /// - unbalanced multiline out_ files
     ///
     /// This function might **Panic** if reading/writing failed.
-    fn parse(dir: &PathBuf) -> Result<Self::Item> {
+    fn parse(exp_run_dir: &PathBuf) -> Result<Self::Item> {
         // read env file
-        let env = Environment::from_file(&dir.join(RUN_ENV_FILE)).unwrap_or_else(|_| {
-            warn!("No environment found in run {}", dir.display());
+        let env = Environment::from_file(&exp_run_dir.join(RUN_ENV_FILE)).unwrap_or_else(|_| {
+            warn!("No environment found in run {}", exp_run_dir.display());
             Environment::new()
         });
 
         // read out_file
-        let run_sh = std::fs::read_to_string(&dir.join(RUN_RUN_FILE))?;
+        let run_sh = std::fs::read_to_string(&exp_run_dir.join(RUN_RUN_FILE))?;
 
         // read out files
         let mut out_list: OutList = OutList::default();
-        let contained_files = find_all_files(&dir)?;
+        let contained_files = find_all_files(&exp_run_dir)?;
 
         for file in contained_files {
             match OutFile::parse(&file) {
@@ -456,7 +456,7 @@ impl FileReader for ExperimentRun {
                         warn!(
                             "in {}: out_{} shadows input environment variable ${}",
                             outfile.var_name(),
-                            dir.display(),
+                            exp_run_dir.display(),
                             outfile.var_name(),
                         );
                     }
@@ -498,7 +498,7 @@ impl FileReader for ExperimentRun {
                         // other columns
                     } else if len != max_length {
                         return Err(Error::EnvError {
-                                        reason: format!("Mismatched number of values for {} {len}, other value in {} has {max_length}", outfile.var_name(), dir.display())});
+                                        reason: format!("Mismatched number of values for {} {len}, other value in {} has {max_length}", outfile.var_name(), exp_run_dir.display())});
                     }
                 }
 
@@ -507,7 +507,7 @@ impl FileReader for ExperimentRun {
         };
 
         let exomat_env = ExomatEnvironment::new(&PathBuf::new(), 1);
-        let run_name = dir
+        let run_name = exp_run_dir
             .file_name()
             .expect("Could not parse run name")
             .display()
@@ -520,7 +520,7 @@ impl FileReader for ExperimentRun {
             exomat_env,
             out_files: out_balanced,
             status: RunStatus::Unknown,
-            location: Some(dir.to_path_buf()),
+            location: Some(exp_run_dir.to_path_buf()),
         })
     }
 }

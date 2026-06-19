@@ -500,8 +500,8 @@ impl CsvWriter for ExperimentSeries {
     ///
     /// ## Errors
     /// - Returns a `CsvError` if something went wrong during the csv serialization
-    fn to_csv(&self, file: &PathBuf) -> Result<()> {
-        let mut wtr = Writer::from_path(file).map_err(|e| Error::CsvError {
+    fn to_csv(&self, csv_file: &PathBuf) -> Result<()> {
+        let mut wtr = Writer::from_path(csv_file).map_err(|e| Error::CsvError {
             reason: e.to_string(),
         })?;
 
@@ -549,7 +549,7 @@ impl FileWriter for ExperimentSeries {
     /// - Returns a `HarnessCreateError` if there is an experiment series directory
     ///   called `series_name` in the same directory
     /// - Panics if `exp_source` could not be read
-    fn persist(&mut self, dir: &PathBuf) -> Result<()> {
+    fn persist(&mut self, exp_series_dir: &PathBuf) -> Result<()> {
         debug!(
             "attempting to build series directory from {}",
             self.source.location().display()
@@ -584,20 +584,20 @@ impl FileWriter for ExperimentSeries {
         }
 
         debug!("checking if creating series inside of experiment (would be forbidden)");
-        if is_child_dir_of_of(dir, self.source.location())? {
+        if is_child_dir_of_of(exp_series_dir, self.source.location())? {
             // log full paths to debug, but let error be handled (i.e. reported as error) outside
             debug!("refusing to build series dir inside of experiment dir, experiment dir: {}, to-be-created series dir: {}",
                self.source.location().display(),
-               dir.display());
+               exp_series_dir.display());
             return Err(Error::HarnessRunError {
                 experiment: self.source.location().display().to_string(),
                 err: "can not generate output inside of experiment dir".to_string(),
             });
         }
-        let src = create_harness_dir(&dir.join(SERIES_SRC_DIR))?;
-        let runs = create_harness_dir(&dir.join(SERIES_RUNS_DIR))?;
+        let src = create_harness_dir(&exp_series_dir.join(SERIES_SRC_DIR))?;
+        let runs = create_harness_dir(&exp_series_dir.join(SERIES_RUNS_DIR))?;
 
-        let _ = create_harness_file(&dir.join(MARKER_SERIES))?;
+        let _ = create_harness_file(&exp_series_dir.join(MARKER_SERIES))?;
         let _ = create_harness_file(&runs.join(SERIES_STDOUT_LOG))?;
         let _ = create_harness_file(&runs.join(SERIES_STDERR_LOG))?;
         let _ = create_harness_file(&runs.join(SERIES_EXOMAT_LOG))?;
@@ -612,8 +612,11 @@ impl FileWriter for ExperimentSeries {
             run.persist(&runs.join(run.run_dir_name()))?;
         }
 
-        info!("Created new experiment series dir at {}", dir.display());
-        self.path = Some(dir.to_path_buf());
+        info!(
+            "Created new experiment series dir at {}",
+            exp_series_dir.display()
+        );
+        self.path = Some(exp_series_dir.to_path_buf());
 
         Ok(())
     }
@@ -627,9 +630,9 @@ impl FileReader for ExperimentSeries {
     ///
     /// ### Error
     /// - Returns a `ReaderError` if any RunReader failed to parse
-    fn parse(dir: &PathBuf) -> Result<Self::Item> {
+    fn parse(exp_series_dir: &PathBuf) -> Result<Self::Item> {
         // find all run dirs
-        let runs: Vec<ExperimentRun> = find_run_repetitions(&dir.join(SERIES_RUNS_DIR))
+        let runs: Vec<ExperimentRun> = find_run_repetitions(&exp_series_dir.join(SERIES_RUNS_DIR))
             .iter()
             .map(|run| {
                 ExperimentRun::parse(run).map_err(|e| Error::ReaderError {
@@ -640,12 +643,14 @@ impl FileReader for ExperimentSeries {
             .collect::<Result<Vec<_>>>()?;
 
         // read log files
-        let stdout_log = Self::read_log(&dir.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG));
-        let stderr_log = Self::read_log(&dir.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG));
+        let stdout_log =
+            Self::read_log(&exp_series_dir.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG));
+        let stderr_log =
+            Self::read_log(&exp_series_dir.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG));
 
         let mut reader = ExperimentSeries {
             source: ExperimentSource::new(),
-            path: Some(dir.to_path_buf()),
+            path: Some(exp_series_dir.to_path_buf()),
             runs,
             stdout_log,
             stderr_log,
