@@ -225,7 +225,7 @@ impl ExperimentSeries {
         let mut keys: Vec<&str> = self
             .runs
             .iter()
-            .filter_map(|run| run.get_out_files().as_ref())
+            .filter_map(|run| run.out_files().as_ref())
             .flat_map(|outlist| outlist.iter().map(|outfile| outfile.var_name().as_str()))
             .collect();
 
@@ -290,8 +290,8 @@ impl ExperimentSeries {
 
         for run in self.runs.iter_mut() {
             for key in &keys {
-                if run.get_var(key).is_none() {
-                    let mut new_run = match &run.get_out_files() {
+                if run.out_var(key).is_none() {
+                    let mut new_run = match &run.out_files() {
                         None => OutList::default(),
                         Some(r) => r.clone(),
                     };
@@ -326,7 +326,7 @@ impl ExperimentSeries {
         // collect OutLists of all runs, add empty OutList if run does not have one
         let mut rows = OutList::default();
         for run in &self.runs {
-            if let Some(out) = &run.get_out_files() {
+            if let Some(out) = &run.out_files() {
                 rows.extend_list(out)
             } else {
                 rows.extend(Vec::new())
@@ -372,11 +372,11 @@ impl ExperimentSeries {
     /// - there are runs with out_ files, but all out_ files are empty
     fn runs_are_empty(&self) -> bool {
         if self.runs.is_empty()
-            || self.runs.iter().all(|run| run.get_out_files().is_none())
+            || self.runs.iter().all(|run| run.out_files().is_none())
             || self
                 .runs
                 .iter()
-                .all(|run| run.get_out_files().iter().all(|out| out.is_empty()))
+                .all(|run| run.out_files().iter().all(|out| out.is_empty()))
         {
             true
         } else {
@@ -667,7 +667,7 @@ impl std::fmt::Display for ExperimentSeries {
         let outfiles = if self.runs_are_empty() {
             "[{exp_name}] created no output files\n".to_string()
         } else {
-            if let Some(outfiles) = self.runs()[0].get_out_files() {
+            if let Some(outfiles) = self.runs()[0].out_files() {
                 let mut out = String::new();
                 for out_file in outfiles.to_vec() {
                     out.push_str(&format!("[{exp_name}] {out_file}\n"));
@@ -864,7 +864,7 @@ mod tests {
         assert!(keys.contains(&"empty"));
         assert!(keys.len() == 1);
 
-        let content = series_reader.runs()[0].get_var(keys[0]);
+        let content = series_reader.runs()[0].out_var(keys[0]);
         assert!(content.is_some());
         assert_eq!(content.unwrap(), &vec![String::from("")]);
     }
@@ -954,7 +954,7 @@ mod tests {
         assert_eq!(reader.run_count(), 1);
         let res = &reader.runs()[0];
 
-        assert!(res.get_var("empty") == Some(&vec![String::new()]));
+        assert!(res.out_var("empty") == Some(&vec![String::new()]));
     }
 
     #[rstest]
@@ -974,7 +974,7 @@ mod tests {
         for expected_outlist in expected_outlists {
             let found = runs
                 .iter()
-                .any(|run| run.get_out_files().as_ref().unwrap() == &expected_outlist);
+                .any(|run| run.out_files().as_ref().unwrap() == &expected_outlist);
             assert!(found, "Expected OutList not found in results");
         }
     }
@@ -987,8 +987,8 @@ mod tests {
 
         let res = &reader.runs()[0];
 
-        assert!(res.get_var("some").is_some());
-        assert!(res.get_var("some.txt").is_some());
+        assert!(res.out_var("some").is_some());
+        assert!(res.out_var("some.txt").is_some());
     }
 
     #[rstest]
@@ -1010,22 +1010,22 @@ mod tests {
         let res = &reader.runs()[0];
 
         // check content, order is important
-        assert!(res.get_var("multi").is_some());
+        assert!(res.out_var("multi").is_some());
         assert_eq!(
-            res.get_var("multi").unwrap(),
+            res.out_var("multi").unwrap(),
             &vec!["11".to_string(), "20".to_string()]
         );
 
         // same as multi
-        assert!(res.get_var("trailing").is_some());
+        assert!(res.out_var("trailing").is_some());
         assert_eq!(
-            res.get_var("trailing").unwrap(),
+            res.out_var("trailing").unwrap(),
             &vec!["11".to_string(), "20".to_string()]
         );
 
-        assert!(res.get_var("single").is_some());
+        assert!(res.out_var("single").is_some());
         assert_eq!(
-            res.get_var("single").unwrap(),
+            res.out_var("single").unwrap(),
             &vec!["foo".to_string(), "foo".to_string()]
         );
     }
@@ -1042,15 +1042,15 @@ mod tests {
         let res = &reader.runs()[0];
 
         // check content
-        assert!(res.get_var("multi").is_some());
+        assert!(res.out_var("multi").is_some());
         assert_eq!(
-            res.get_var("multi").unwrap(),
+            res.out_var("multi").unwrap(),
             &vec!["foo".to_string(), "bar".to_string()]
         );
 
-        assert!(res.get_var("empty").is_some());
+        assert!(res.out_var("empty").is_some());
         assert_eq!(
-            res.get_var("empty").unwrap(),
+            res.out_var("empty").unwrap(),
             &vec![String::new(), String::new()]
         );
     }
@@ -1110,7 +1110,7 @@ mod tests {
 
         // since the order of OutFiles per run is not always the same, test it this way
         for run in runs {
-            let outlist = run.get_out_files().as_ref().unwrap();
+            let outlist = run.out_files().as_ref().unwrap();
             assert_eq!(outlist.len(), 3);
 
             assert!(
