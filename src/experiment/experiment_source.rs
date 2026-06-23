@@ -61,20 +61,25 @@ impl ExperimentSource {
     /// ## Panics
     /// - panics if the randomly chosen Environment is inaccessable
     pub fn to_trial_source(&self) -> Self {
+        fn take_first<I>(list: I) -> I::Item
+        where
+            I: IntoIterator,
+        {
+            list.into_iter().next().expect("Could not get first item")
+        }
+
         let trial_env: EnvironmentLocationList = match self.envs.is_empty() {
             true => HashMap::from([(PathBuf::from(SRC_ENV_FILE), Environment::new())]),
-            false => HashMap::from([self
-                .envs
-                .clone()
-                .into_iter()
-                .next()
-                .expect("Cannot access Environment")]),
+            false => {
+                let (path, env) = take_first(&self.envs);
+                HashMap::from([(path.clone(), env.clone())])
+            }
         };
 
         info!(
             "Created trial with environment \"{}\": {:?}",
-            trial_env.keys().take(1).next().unwrap().display(),
-            trial_env.values().take(1).next().unwrap()
+            take_first(trial_env.keys()).display(),
+            take_first(trial_env.values())
         );
 
         Self {
@@ -151,7 +156,7 @@ impl ExperimentSource {
         debug!("checking env extension");
         if let Some(invalid_env) = envs
             .keys()
-            .find(|env_file_name| env_file_name.extension().unwrap() != "env")
+            .find(|env_file_name| env_file_name.extension().unwrap_or_default() != "env")
         {
             return Err(Error::EnvError {
                 reason: format!("Invalid env file name at {}", invalid_env.display()),

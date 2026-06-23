@@ -324,7 +324,11 @@ impl Runner for ExperimentRun {
         };
 
         self.log_run_result(
-            run_folder.file_stem().unwrap().to_str().unwrap(),
+            &run_folder
+                .file_stem()
+                .expect("run folder name inaccessable")
+                .display()
+                .to_string(),
             run.status,
             &stderr,
         )?;
@@ -372,7 +376,7 @@ impl FileWriter for ExperimentRun {
             .create_new(true)
             .open(run_file_path)
             .map_err(|e| Error::HarnessCreateError {
-                entry: run_file_path.to_str().unwrap().to_string(),
+                entry: run_file_path.display().to_string(),
                 reason: e.to_string(),
             })?;
 
