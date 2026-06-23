@@ -55,15 +55,25 @@ pub fn contains_either(string: &String, one: &str, other: &str) -> bool {
 /// Creates a file called `name` in `series_dir/[SERIES_RUNS_DIR]/rep_name/` with the content `content`
 ///
 /// If `rep_name` is `None`, [TEST_RUN_REP_DIR0] is used.
-pub fn create_out_file(series_dir: &PathBuf, rep_name: Option<&str>, name: &str, content: &str) {
-    let outfile = series_dir
+pub fn create_out_file(
+    series_dir: &PathBuf,
+    rep_name: Option<&str>,
+    name: &str,
+    content: &str,
+) -> PathBuf {
+    let rundir = series_dir
         .join(SERIES_RUNS_DIR)
-        .join(rep_name.unwrap_or(TEST_RUN_REP_DIR0))
-        .join(name);
+        .join(rep_name.unwrap_or(TEST_RUN_REP_DIR0));
 
-    std::fs::File::create(&outfile).unwrap();
+    if !rundir.exists() {
+        std::fs::create_dir_all(&rundir).unwrap();
+    }
+
+    std::fs::File::create(&rundir.join(name)).unwrap();
 
     if !content.is_empty() {
-        std::fs::write(outfile, content).unwrap();
+        std::fs::write(&rundir.join(name), content).unwrap();
     }
+
+    rundir.join(name)
 }
