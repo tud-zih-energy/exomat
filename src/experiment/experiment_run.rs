@@ -27,6 +27,12 @@ pub enum RunStatus {
 }
 
 /// Container for an Experiment Run
+///
+/// An Experiment Run must be written to the filesystem before it can be exeucted.
+/// A normal workflow would be:
+/// 1. `new(...)`
+/// 2. `persist(...)`
+/// 3. `execute()`
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExperimentRun {
     run_sh: String,

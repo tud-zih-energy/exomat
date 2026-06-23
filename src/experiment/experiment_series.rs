@@ -20,6 +20,14 @@ use std::io::{PipeReader, Read};
 use std::path::{Path, PathBuf};
 
 /// Container for an Experiment Series
+///
+/// An Experiment Series must be written to the filesystem before it can be exeucted.
+/// A normal workflow would be:
+/// 1. `from_source(...)`
+/// 2. `generate_runs()`
+/// 2. `persist(...)`
+/// 3. `for run in series.iter() { run.execute(); }`
+/// 4. `persist_logs()`
 #[derive(Debug)]
 pub struct ExperimentSeries {
     source: ExperimentSource,
