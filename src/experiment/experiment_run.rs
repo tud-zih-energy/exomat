@@ -489,7 +489,7 @@ impl FileReader for ExperimentRun {
 
                     if len == 1 && max_length > 1 {
                         let to_extend = max_length - len;
-                        outfile.repeat(0, to_extend);
+                        outfile.repeat(0, to_extend)?;
 
                         // We got multiple values for var, check if it has the same number of rows as the
                         // other columns
