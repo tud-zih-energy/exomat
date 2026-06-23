@@ -758,12 +758,12 @@ fn find_run_repetitions(runs_dir: &Path) -> Vec<PathBuf> {
             // if directory name starts with "run_", it is considered a run repetition
             if entry
                 .as_ref()
-                .unwrap()
+                .expect("unreadyble entry")
                 .path() // complete path
                 .file_name() // last part of path; directory name
-                .unwrap()
+                .expect("entry has inaccessable file name")
                 .to_str()
-                .unwrap()
+                .expect("cannot stringify file name")
                 .starts_with("run_")
             {
                 trace!("found run: {}", entry.as_ref().unwrap().path().display());
