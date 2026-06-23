@@ -331,36 +331,43 @@ impl ExperimentSeries {
     /// ]
     /// ```
     fn to_csv_rows(&self) -> Vec<Vec<String>> {
-        // collect OutLists of all runs, add empty OutList if run does not have one
-        let mut rows = OutList::default();
-        for run in &self.runs {
-            if let Some(out) = &run.out_files() {
-                rows.extend_list(out)
-            } else {
-                rows.extend(Vec::new())
-            }
-        }
+        // sort runs by their repetition/env
+        let mut sorted_runs = self.runs.clone();
+        sorted_runs.sort_by_key(|run| run.run_dir_name().to_owned());
 
         // collect all header
         let mut rows_vec: Vec<Vec<String>> =
             vec![self.keys().iter().map(|k| k.to_string()).collect()];
 
-        let max_val_len = rows.iter().map(|out| out.value_count()).max().unwrap_or(0);
+        let max_val_len = sorted_runs
+            .iter()
+            .map(|run| {
+                run.out_files()
+                    .as_ref()
+                    .unwrap_or(&OutList::from(vec![]).unwrap())
+                    .max_length()
+            })
+            .max()
+            .unwrap_or(0);
 
-        // turn all data into one list
+        // collect content (one entry = every ith element of each key)
         for i in 0..max_val_len {
-            // (one entry = every ith element of each key)
-            let mut row: Vec<String> = Vec::new();
+            // for each run ...
+            for run in &sorted_runs {
+                let mut row: Vec<String> = Vec::new();
 
-            for key in self.keys() {
-                let outfile = rows
-                    .iter()
-                    .find(|outfile| outfile.var_name() == key)
-                    .unwrap_or_else(|| panic!("No outfile with name \"{}\" found", key));
-                row.push(outfile.values().get(i).cloned().unwrap_or_else(String::new));
+                // ... add ith element of each key to a list ...
+                for key in self.keys() {
+                    if let Some(vals) = &run.out_var(key) {
+                        row.push(vals.get(i).cloned().unwrap_or_else(String::new));
+                    } else {
+                        row.push(String::new())
+                    }
+                }
+
+                // ... and save the list for this run
+                rows_vec.push(row);
             }
-
-            rows_vec.push(row);
         }
 
         rows_vec
@@ -496,6 +503,7 @@ impl CsvWriter for ExperimentSeries {
         if !self.runs_are_empty() {
             // turn self.runs into csv rows (contains header)
             let content = self.to_csv_rows();
+            debug!("series contains content: {:?}", content);
 
             for row in content {
                 wtr.write_record(row).map_err(|e| Error::CsvError {
