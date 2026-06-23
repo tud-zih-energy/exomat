@@ -130,7 +130,7 @@ impl ExperimentSource {
 
     /// A reference to the run script this Experiment will execute.
     ///
-    /// Stores the content of `[experiment]/SRC_TEMPLATE_DIR/SRC_RUN_FILE``
+    /// Stores the content of `self.location()/SRC_TEMPLATE_DIR/SRC_RUN_FILE``
     pub fn run_script(&self) -> &str {
         &self.run_sh
     }
