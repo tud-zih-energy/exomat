@@ -77,8 +77,8 @@ impl ExperimentSeries {
     }
 
     /// Immutable iteration
-    pub fn iter<'a>(&'a self) -> SeriesReaderIter<'a> {
-        SeriesReaderIter {
+    pub fn iter<'a>(&'a self) -> ExperimentSeriesIter<'a> {
+        ExperimentSeriesIter {
             series_reader: self,
             index: 0,
         }
@@ -698,12 +698,12 @@ impl std::fmt::Display for ExperimentSeries {
 }
 
 // ========================== Iterator ==========================
-pub struct SeriesReaderIter<'a> {
+pub struct ExperimentSeriesIter<'a> {
     series_reader: &'a ExperimentSeries,
     index: usize,
 }
 
-impl<'a> Iterator for SeriesReaderIter<'a> {
+impl<'a> Iterator for ExperimentSeriesIter<'a> {
     type Item = ExperimentRun;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -719,7 +719,7 @@ impl<'a> Iterator for SeriesReaderIter<'a> {
 }
 impl<'a> IntoIterator for &'a ExperimentSeries {
     type Item = ExperimentRun;
-    type IntoIter = SeriesReaderIter<'a>;
+    type IntoIter = ExperimentSeriesIter<'a>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
