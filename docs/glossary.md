@@ -85,19 +85,23 @@ As to not confuse them, here is a list of all defined types/structs:
 > These names should never be used for anything other than what they describe here
 
 ### Structs
-name                 | module | description
----------------------|--------|---------------
-Environment          | env    | Content of one `.env`-file
-EnvironmentContainer | env    | List of `.env`-files
-ExomatEnvironment    | env    | List of Exomat-internal environment variables
-SeriesReader         | table  | Internal representation of an Experiment Series
-RunReader            | table  | Internal representation of an Experiment Run
+name                 | module     | description
+---------------------|------------|---------------
+Environment          | env        | Content of one `.env`-file
+EnvironmentContainer | env        | List of `.env`-files
+ExomatEnvironment    | env        | List of Exomat-internal environment variables
+ExperimentSource     | experiment | Internal representation of an Experiment Source
+ExperimentSeries     | experiment | Internal representation of an Experiment Series
+ExperimentRun        | experiment | Internal representation of an Experiment Run
+OutFile              | experiment | Internal representation of an `out_`-file
+OutList              | experiment | List of `out_`-files
+
+> Some structs have iterator implementations. They use separate structs, called `[struct]Iter`. They are not listed here.
 
 ### Type Definitions
-name                    | module | alias                           | description
-------------------------|--------|---------------------------------|--------------
-Result                  | error  | `Result<T, Error>`              | Exomat return type
-OutList                 | table  | `HashMap<String, Vec<String>>`  | Maps out_ file names to their content
-Observation             | table  | `HashMap<String, String>`       | One row of values across all out_ files in an Experiment Run
-EnvList                 | env    | `HashMap<String, Vec<String>>`  | Lists all possible `values` for each `NAME` (see `env_list`)
-EnvironmentLocationList | env    | `HashMap<PathBuf, Environment>` | Maps File Paths to Environments
+name                    | module     | alias                           | description
+------------------------|------------|---------------------------------|--------------
+Result                  | error      | `Result<T, Error>`              | Exomat return type
+Observation             | experiment | `HashMap<String, String>`       | One row of values across all `out_`-files in an Experiment Run
+EnvList                 | env        | `HashMap<String, Vec<String>>`  | Lists all possible `values` for each `NAME` (see `env_list`)
+EnvironmentLocationList | env        | `HashMap<PathBuf, Environment>` | Maps File Paths to Environments
