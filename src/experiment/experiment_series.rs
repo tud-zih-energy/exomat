@@ -15,7 +15,7 @@ use chrono::Local;
 use csv::Writer;
 use log::{debug, info, trace, warn};
 use rand::seq::SliceRandom;
-use std::fs::{read_to_string, write, OpenOptions};
+use std::fs::{read_to_string, write};
 use std::io::{PipeReader, Read};
 use std::path::{Path, PathBuf};
 
@@ -461,17 +461,7 @@ impl LogWriter for ExperimentSeries {
 
             // append to exomat log
             let exomat_log_path = path.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG);
-            OpenOptions::new()
-                .append(true)
-                .open(&exomat_log_path)
-                .map_err(|e| Error::HarnessCreateError {
-                    entry: exomat_log_path.display().to_string(),
-                    reason: e.to_string(),
-                })?;
-
-            std::fs::write(&exomat_log_path, "{buf}")?;
-
-            Ok(())
+            self.append_to_file(&exomat_log_path, "{buf")
         } else {
             Err(Error::HarnessRunError {
                 experiment: self.experiment_name()?,
