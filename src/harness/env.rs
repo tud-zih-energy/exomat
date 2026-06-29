@@ -146,7 +146,7 @@ where
 /// - Returns `EnvError` if a key from `to_add` is already in `given`
 fn try_assemble_all(given: &Environment, to_add: &EnvList) -> Result<Vec<Environment>> {
     // combine all values from to_add
-    let mut combinations = EnvironmentContainer::from_environments(
+    let mut combinations = EnvironmentContainer::from_env_list(
         to_add
             .values()
             .multi_cartesian_product()
@@ -158,7 +158,7 @@ fn try_assemble_all(given: &Environment, to_add: &EnvList) -> Result<Vec<Environ
                     .cloned()
                     .zip(val_combos.iter().map(|s| s.to_string()))
                     .collect::<Vec<(String, String)>>();
-                Environment::from_environment_list(pairs)
+                Environment::from_env_list(pairs)
             })
             .collect(),
     );
@@ -465,7 +465,7 @@ mod tests {
         let assembled = try_assemble_all(&env_1a, &envlist_2b).unwrap();
 
         assert_eq!(assembled.len(), 1);
-        assert!(assembled.contains(&Environment::from_environment_list(vec![
+        assert!(assembled.contains(&Environment::from_env_list(vec![
             ("1".to_string(), "a".to_string()),
             ("2".to_string(), "b".to_string()),
         ])));
@@ -532,7 +532,7 @@ mod tests {
     fn env_try_assemble(env_1a: Environment) {
         // helper
         fn env_from_pairs(v: Vec<(&str, &str)>) -> Environment {
-            Environment::from_environment_list(
+            Environment::from_env_list(
                 v.into_iter()
                     .map(|(a, b)| (a.to_string(), b.to_string()))
                     .collect_vec(),
@@ -591,8 +591,8 @@ mod tests {
             std::fs::write("two.env", "FOO=baz").unwrap();
             std::fs::write("01.env", "FOO=bar").unwrap();
 
-            let expected_bar = Environment::from_environment_list(vec![("FOO".to_string(), "bar".to_string())]);
-            let expected_baz = Environment::from_environment_list(vec![("FOO".to_string(), "baz".to_string())]);
+            let expected_bar = Environment::from_env_list(vec![("FOO".to_string(), "bar".to_string())]);
+            let expected_baz = Environment::from_env_list(vec![("FOO".to_string(), "baz".to_string())]);
 
             let envs_no_fname = EnvironmentContainer::from_files(&PathBuf::from(".")).unwrap();
             assert!(envs_no_fname.to_environments().contains(&expected_baz));

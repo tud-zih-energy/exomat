@@ -26,7 +26,7 @@ impl ExomatEnvironment {
     pub fn to_environment_full(&self) -> Environment {
         let mut env = self.to_environment_serializable();
 
-        env.extend_envs(&Environment::from_environment_list(Vec::from([(
+        env.extend_envs(&Environment::from_env_list(Vec::from([(
             String::from("EXP_SRC_DIR"),
             self.exp_src_dir
                 .canonicalize()
@@ -45,7 +45,7 @@ impl ExomatEnvironment {
     ///
     /// - "REPETITION"
     pub fn to_environment_serializable(&self) -> Environment {
-        Environment::from_environment_list(Vec::from([(
+        Environment::from_env_list(Vec::from([(
             String::from("REPETITION"),
             self.repetition.to_string(),
         )]))

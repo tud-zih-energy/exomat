@@ -46,7 +46,7 @@ impl EnvironmentContainer {
     }
 
     /// Returns a new EnvironmentContainer from the content of `list`.
-    pub fn from_environments(list: Vec<Environment>) -> Self {
+    pub fn from_env_list(list: Vec<Environment>) -> Self {
         EnvironmentContainer {
             environment_list: list,
         }
@@ -443,12 +443,12 @@ mod tests {
     #[rstest]
     fn env_remove_valid(envlist_mixed: EnvList) {
         // list with "VAR1" and "VAR2"
-        let mut env = EnvironmentContainer::from_environments(vec![
-            Environment::from_environment_list(vec![
+        let mut env = EnvironmentContainer::from_env_list(vec![
+            Environment::from_env_list(vec![
                 ("VAR1".to_string(), "VAL".to_string()),
                 ("VAR2".to_string(), "VAL".to_string()),
             ]),
-            Environment::from_environment_list(vec![
+            Environment::from_env_list(vec![
                 ("VAR1".to_string(), "VALUE".to_string()),
                 ("VAR2".to_string(), "VAL".to_string()),
             ]),
@@ -473,7 +473,7 @@ mod tests {
         }
 
         // list with a lot of Environments (10)
-        let many_env = EnvironmentContainer::from_environments(vec![Environment::new(); 11]);
+        let many_env = EnvironmentContainer::from_env_list(vec![Environment::new(); 11]);
 
         let tmpdir = TempDir::new().unwrap();
         let tmpdir = tmpdir.path().to_path_buf();
