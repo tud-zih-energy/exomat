@@ -13,7 +13,6 @@ use log::{debug, error, info, trace};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::{fs::OpenOptions, os::unix::fs::OpenOptionsExt};
 
 /// Describes the current state of an Experiment Run
 #[derive(Clone, Debug, PartialEq)]
@@ -374,18 +373,8 @@ impl FileWriter for ExperimentRun {
         create_harness_file(&exp_run_dir.join(MARKER_RUN))?;
 
         debug!("copy ruh.sh and [env].env to runs_dir");
-        let run_file_path = &exp_run_dir.join(RUN_RUN_FILE);
-        OpenOptions::new()
-            .mode(0o775)
-            .write(true)
-            .create_new(true)
-            .open(run_file_path)
-            .map_err(|e| Error::HarnessCreateError {
-                entry: run_file_path.display().to_string(),
-                reason: e.to_string(),
-            })?;
-
-        std::fs::write(run_file_path, &self.run_sh)?;
+        let mut run_file = self.create_executable(&exp_run_dir.join(RUN_RUN_FILE))?;
+        self.write_to_file(&mut run_file, &self.run_sh.as_bytes())?;
 
         debug!("write envs to file (including exomat envs)");
         let mut serializable_envs = self.env.clone();

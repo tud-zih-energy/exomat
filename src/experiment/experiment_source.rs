@@ -2,9 +2,6 @@ use log::{debug, info, warn};
 use std::{
     collections::HashMap,
     fs::read_to_string,
-    fs::OpenOptions,
-    io::Write,
-    os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
 };
 
@@ -248,17 +245,8 @@ impl FileWriter for ExperimentSource {
         // create run.sh as executable
         debug!("persisting run script");
         create_harness_dir(&exp_source_dir.join(SRC_TEMPLATE_DIR))?;
-        let run_file_path = &exp_source_dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE);
-
-        let mut run_file = OpenOptions::new()
-            .mode(0o775)
-            .write(true)
-            .create_new(true)
-            .open(run_file_path)
-            .map_err(|e| Error::HarnessCreateError {
-                entry: run_file_path.to_str().unwrap().to_string(),
-                reason: e.to_string(),
-            })?;
+        let mut run_file =
+            self.create_executable(&exp_source_dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE))?;
 
         // write content to run.sh
         let run_sh_bytes = if self.run_sh.is_empty() {
@@ -268,7 +256,7 @@ impl FileWriter for ExperimentSource {
             self.run_sh.as_bytes()
         };
 
-        run_file.write_all(run_sh_bytes)?;
+        self.write_to_file(&mut run_file, run_sh_bytes)?;
 
         info!(
             "Experiment harness created under {}",
