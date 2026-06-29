@@ -614,15 +614,16 @@ impl FileReader for ExperimentSeries {
     /// - Returns a `ReaderError` if any RunReader failed to parse
     fn parse(exp_series_dir: &Path) -> Result<Self::Item> {
         debug!("looking for experiment runs");
-        let runs: Vec<ExperimentRun> = find_run_repetitions(&exp_series_dir.join(SERIES_RUNS_DIR))
-            .iter()
-            .map(|run| {
-                ExperimentRun::parse(run).map_err(|e| Error::ReaderError {
-                    dir: run.display().to_string(),
-                    reason: e.to_string(),
+        let runs =
+            <ExperimentSeries as FileReader>::find_all_files(&exp_series_dir.join(SERIES_RUNS_DIR))
+                .iter()
+                .map(|run| {
+                    ExperimentRun::parse(run).map_err(|e| Error::ReaderError {
+                        dir: run.display().to_string(),
+                        reason: e.to_string(),
+                    })
                 })
-            })
-            .collect::<Result<Vec<_>>>()?;
+                .collect::<Result<Vec<_>>>()?;
 
         debug!("reading log files");
         let stdout_log =
@@ -644,6 +645,49 @@ impl FileReader for ExperimentSeries {
         debug!("adding missing keys");
         reader.fill_missing_keys()?;
         Ok(reader)
+    }
+
+    /// Builds and returns a vector of all run repetitions in the given directory.
+    ///
+    /// A directory is considered a run repetition, if it's name starts with "run_".
+    ///
+    /// ## Panics
+    /// - Panics if directory traversal went wrong
+    fn find_all_files(runs_dir: &Path) -> Vec<PathBuf> {
+        let mut repetitions = Vec::<PathBuf>::new();
+
+        // return the empty vector if runs_dir does not exist
+        if !runs_dir.is_dir() {
+            trace!("no experiment runs found");
+            return repetitions;
+        }
+
+        for entry in runs_dir.read_dir().expect("Could not read dir") {
+            if entry
+                .as_ref()
+                .expect("Entry not readable")
+                .metadata()
+                .expect("Metadata of entry not readable")
+                .is_dir()
+            {
+                // if directory name starts with "run_", it is considered a run repetition
+                if entry
+                    .as_ref()
+                    .expect("unreadyble entry")
+                    .path() // complete path
+                    .file_name() // last part of path; directory name
+                    .expect("entry has inaccessable file name")
+                    .to_str()
+                    .expect("cannot stringify file name")
+                    .starts_with("run_")
+                {
+                    trace!("found run: {}", entry.as_ref().unwrap().path().display());
+                    repetitions.push(entry.unwrap().path());
+                }
+            }
+        }
+
+        repetitions
     }
 }
 
@@ -714,51 +758,6 @@ impl<'a> IntoIterator for &'a ExperimentSeries {
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
     }
-}
-
-// ========================== Helper ==========================
-
-/// Builds and returns a vector of all run repetitions in the given directory.
-///
-/// A directory is considered a run repetition, if it's name starts with "run_".
-///
-/// ## Panics
-/// - Panics if directory traversal went wrong
-fn find_run_repetitions(runs_dir: &Path) -> Vec<PathBuf> {
-    let mut repetitions = Vec::<PathBuf>::new();
-
-    // return the empty vector if runs_dir does not exist
-    if !runs_dir.is_dir() {
-        trace!("no experiment runs found");
-        return repetitions;
-    }
-
-    for entry in runs_dir.read_dir().expect("Could not read dir") {
-        if entry
-            .as_ref()
-            .expect("Entry not readable")
-            .metadata()
-            .expect("Metadata of entry not readable")
-            .is_dir()
-        {
-            // if directory name starts with "run_", it is considered a run repetition
-            if entry
-                .as_ref()
-                .expect("unreadyble entry")
-                .path() // complete path
-                .file_name() // last part of path; directory name
-                .expect("entry has inaccessable file name")
-                .to_str()
-                .expect("cannot stringify file name")
-                .starts_with("run_")
-            {
-                trace!("found run: {}", entry.as_ref().unwrap().path().display());
-                repetitions.push(entry.unwrap().path());
-            }
-        }
-    }
-
-    repetitions
 }
 
 // ========================== Tests ==========================

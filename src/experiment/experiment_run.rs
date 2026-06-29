@@ -3,7 +3,7 @@ use crate::experiment::out_file::{Observation, OutFile, OutList};
 use crate::harness::env::{Environment, ExomatEnvironment};
 
 use crate::helper::{
-    archivist::{create_harness_dir, create_harness_file, find_all_files},
+    archivist::{create_harness_dir, create_harness_file},
     errors::{Error, Result},
     fs_names::*,
 };
@@ -443,7 +443,7 @@ impl FileReader for ExperimentRun {
 
         trace!("Reading out_ files of Run {}", exp_run_dir.display());
         let mut out_list: OutList = OutList::default();
-        let contained_files = find_all_files(exp_run_dir)?;
+        let contained_files = <ExperimentRun as FileReader>::find_all_files(exp_run_dir);
 
         for file in contained_files {
             debug!("checking file {}", file.display());

@@ -131,28 +131,6 @@ pub fn find_marker(location: &Path, marker_name: &str) -> Result<PathBuf> {
     }
 }
 
-/// Builds and returns a vector of all readable files in the given directory.
-///
-/// ## Panics
-/// - Panics if directory traversal went wrong
-pub fn find_all_files(dir: &Path) -> Result<Vec<PathBuf>> {
-    let mut files = Vec::<PathBuf>::new();
-
-    for entry in dir.read_dir().expect("Could not read dir") {
-        if entry
-            .as_ref()
-            .expect("Entry not readable")
-            .metadata()
-            .expect("Metadata of entry not readable")
-            .is_file()
-        {
-            files.push(entry.unwrap().path());
-        }
-    }
-
-    Ok(files)
-}
-
 #[cfg(test)]
 mod tests {
     use chrono::Local;
