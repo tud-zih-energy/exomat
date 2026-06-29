@@ -146,11 +146,16 @@ impl ExperimentRun {
 
     // ========================= setter ========================================
 
-    /// Replaces `self.out_files` with `new_out`.
+    /// Inserts `new_out` at the end of `self.out_files`.
     ///
     /// The content of `new_out` is not checked in any way.
-    pub fn replace_out_files_unchecked(&mut self, new_out: Option<OutList>) {
-        self.out_files = new_out
+    pub fn insert_out_file(&mut self, new_out: OutFile) -> Result<()> {
+        match &mut self.out_files {
+            None => self.out_files = Some(OutList::from(vec![new_out])?),
+            Some(r) => r.push(new_out),
+        };
+
+        Ok(())
     }
 
     // ========================= helper ========================================

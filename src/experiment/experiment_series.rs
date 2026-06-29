@@ -293,22 +293,18 @@ impl ExperimentSeries {
     ///
     /// If a key is present in one Experiment Run but missing another, the key will be
     /// added with "NA" as it's value.
-    fn fill_missing_keys(&mut self) {
+    fn fill_missing_keys(&mut self) -> Result<()> {
         let keys: Vec<String> = self.keys().into_iter().map(|k| k.to_string()).collect();
 
         for run in self.runs.iter_mut() {
             for key in &keys {
                 if run.out_var(key).is_none() {
-                    let mut new_run = match &run.out_files() {
-                        None => OutList::default(),
-                        Some(r) => r.clone(),
-                    };
-                    new_run.push(OutFile::from(key, vec!["NA".to_string()]));
-
-                    run.replace_out_files_unchecked(Some(new_run));
+                    run.insert_out_file(OutFile::from(key, vec!["NA".to_string()]))?;
                 }
             }
         }
+
+        Ok(())
     }
 
     /// Parses `self.runs` into rows, that can be serialized in a CSV format.
@@ -656,7 +652,7 @@ impl FileReader for ExperimentSeries {
         };
 
         debug!("adding missing keys");
-        reader.fill_missing_keys();
+        reader.fill_missing_keys()?;
         Ok(reader)
     }
 }
