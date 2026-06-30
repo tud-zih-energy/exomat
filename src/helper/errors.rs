@@ -24,6 +24,9 @@ pub enum Error {
     #[error("Encountered error while trying to run {experiment}: {err}")]
     HarnessRunError { experiment: String, err: String },
 
+    #[error("Unable to summarize {experiment}: {err}")]
+    SummaryError { experiment: String, err: String },
+
     #[error("Something went wrong in .env generation: {reason:?}")]
     EnvError { reason: String },
 
