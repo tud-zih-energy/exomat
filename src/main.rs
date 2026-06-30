@@ -34,7 +34,7 @@ fn main() -> ExitCode {
             experiment,
             estimate,
             full,
-        } => exomat::harness::summary::main(experiment, estimate, full),
+        } => exomat::harness::summary::main(&experiment, estimate, full),
         Commands::Completion { shell } => bin::completion::main(shell),
     };
 

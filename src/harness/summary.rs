@@ -6,7 +6,7 @@ use log::{debug, trace};
 use std::path::PathBuf;
 use std::time::Duration;
 
-pub fn main(source: PathBuf, estimate: Option<Option<u64>>, full: bool) -> Result<()> {
+pub fn main(source: &PathBuf, estimate: Option<Option<u64>>, full: bool) -> Result<()> {
     trace!("Parsing experiment Source...");
     let source = ExperimentSource::parse(&source)?;
     let exp_name = source.name().unwrap();
@@ -58,4 +58,40 @@ pub fn main(source: PathBuf, estimate: Option<Option<u64>>, full: bool) -> Resul
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::experiment::FileWriter;
+
+    use tempfile::TempDir;
+
+    #[test]
+    fn summary_no_source() {
+        let tmpdir = TempDir::new().unwrap();
+        let tmpdir = tmpdir.path().to_path_buf();
+
+        assert!(main(&tmpdir, None, false).is_err())
+    }
+
+    #[test]
+    fn summary_e2e() {
+        let tmpdir = TempDir::new().unwrap();
+        let tmpdir = tmpdir.path().to_path_buf();
+
+        let mut source = ExperimentSource::new();
+        source.persist(&tmpdir).unwrap();
+
+        assert!(main(&tmpdir, None, false).is_err());
+
+        assert!(main(&tmpdir, Some(None), false).is_ok());
+        assert!(main(&tmpdir, Some(Some(0)), false).is_ok());
+        assert!(main(&tmpdir, Some(Some(1)), false).is_ok());
+
+        assert!(main(&tmpdir, None, true).is_ok());
+        assert!(main(&tmpdir, Some(None), true).is_ok());
+        assert!(main(&tmpdir, Some(Some(0)), true).is_ok());
+        assert!(main(&tmpdir, Some(Some(1)), true).is_ok());
+    }
 }
