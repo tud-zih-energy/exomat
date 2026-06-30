@@ -1,3 +1,4 @@
+use chrono::{DateTime, Local};
 use log::{debug, info, warn};
 use std::{
     collections::HashMap,
@@ -265,6 +266,58 @@ impl FileWriter for ExperimentSource {
 
         self.exomat_envs.exp_src_dir = exp_source_dir.to_path_buf();
         Ok(())
+    }
+}
+
+// ========================== Display ==========================
+impl std::fmt::Display for ExperimentSource {
+    /// Prints a summary about this Experiment Source
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn duration_to_string(duration: std::time::SystemTime) -> String {
+            let dt_now_local: DateTime<Local> = duration.clone().into();
+
+            let format = "%d-%m-%Y %H:%M:%S";
+            dt_now_local.format(&format).to_string()
+        }
+
+        let exp_name = self.name().map_err(|_| std::fmt::Error)?;
+
+        if !self.exomat_envs.exp_src_dir.is_dir() {
+            return Err(std::fmt::Error);
+        }
+
+        // metadata
+        let meta = self
+            .exomat_envs
+            .exp_src_dir
+            .metadata()
+            .expect("Could not read Experiment Source metadata");
+
+        let created_at = duration_to_string(
+            meta.created()
+                .expect("Could not read Experiment Source creation time"),
+        );
+        let modified = duration_to_string(
+            meta.modified()
+                .expect("Could not determine last modification time of Experiment Source"),
+        );
+
+        // content
+        let env_count = self.envs.len();
+        let mut env_vars: Vec<&String> = self
+            .envs
+            .iter()
+            .map(|(_, env_file)| env_file.get_env_vars())
+            .flatten()
+            .collect();
+        env_vars.sort();
+        env_vars.dedup();
+
+        write!(
+            f,
+            "[{exp_name}]\ncreated:       {}\nlast modified: {}\n\n[{exp_name}] environments\ncount:         {}\nvariables:     {:?}\n",
+            created_at, modified, env_count, env_vars
+        )
     }
 }
 
