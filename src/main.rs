@@ -48,7 +48,7 @@ fn run_main(args: Cli, log_handler: indicatif::MultiProgress) -> Result<()> {
             experiment,
             estimate,
             full,
-        } => exomat::harness::summary::main(experiment, estimate, full),
+        } => exomat::harness::summary::main(&experiment, estimate, full),
         Commands::Completion { shell } => bin::completion::main(shell),
     }
 }
