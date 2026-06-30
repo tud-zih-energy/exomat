@@ -218,6 +218,20 @@ pub enum Commands {
         input: PathBuf,
     },
 
+    /// Information about an experiment Source.
+    Summary {
+        /// Print an estimated run time for the entire experiment Source.
+        ///
+        /// You can provide your own estimation for how long one run takes.
+        /// If you don't, a small selection of possibilities will be printed.
+        #[arg(short = 'e', long, default_value = None, default_missing_value = "5")]
+        estimate: Option<u64>,
+
+        /// Prints all kinds of information about the experiment Source.
+        #[arg(short = 'f', long)]
+        full: bool,
+    },
+
     /// Generate exomat autocompletions
     ///
     /// Autocompletion will be printed to stdout. Example usage for bash:
