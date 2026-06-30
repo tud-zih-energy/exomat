@@ -1,3 +1,5 @@
+//! harness summary subcommand
+
 use crate::experiment::{ExperimentSource, FileReader};
 use crate::helper::errors::{Error, Result};
 
@@ -5,13 +7,31 @@ use chrono::Local;
 use log::{debug, trace};
 use std::time::Duration;
 
-pub fn main(estimate: Option<Option<u64>>, full: bool) -> Result<()> {
+/// entrypoint for summary binary
+///
+/// Summarizes the Experiment Source at `source`.
+///
+/// ## Parameters
+/// - `estimate_s`:
+///     - `None` -> No estimated runtime is printed
+///     - `Some(None)` -> Estimate is printed, based on a few possible durations per run
+///     - `Some(x)` -> Estimate is printed based on x seconds per run
+/// - `full`:
+///     - `true` -> Additional information about the Experiment Source is printed
+///     - `false` -> No additional information printed
+///
+/// ## Errors and Panics
+/// - returns an `EnvError` if `source` cannot be parsed by ExperimentSource
+/// - returns a `SummaryError` if `estimate.is_none()` and `full` is false
+/// - returns a `SummaryError` if the estimated runtime could not be calculated
+/// - panics if the name of the Experiment could not be read from `source`
+pub fn main(estimate_s: Option<Option<u64>>, full: bool) -> Result<()> {
     trace!("Parsing experiment Source...");
     let source = ExperimentSource::parse(&std::env::current_dir()?)?;
     let exp_name = source.name().unwrap();
 
     // check that correct arguments were passed
-    if estimate.is_none() && !full {
+    if estimate_s.is_none() && !full {
         return Err(Error::SummaryError {
             experiment: exp_name.clone(),
             err: String::from("Invalid arguments"),
@@ -24,7 +44,7 @@ pub fn main(estimate: Option<Option<u64>>, full: bool) -> Result<()> {
     }
 
     // calculate estimation
-    if let Some(per_run) = estimate {
+    if let Some(per_run) = estimate_s {
         let env_count = source.envs().len() as u64;
 
         let per_run = if let Some(custom_estimate) = per_run {
