@@ -1,11 +1,12 @@
 use crate::experiment::{ExperimentSource, FileReader};
 use crate::helper::errors::{Error, Result};
 
+use chrono::Local;
 use log::{debug, trace};
 use std::path::PathBuf;
 use std::time::Duration;
 
-pub fn main(source: PathBuf, estimate: Option<u64>, full: bool) -> Result<()> {
+pub fn main(source: PathBuf, estimate: Option<Option<u64>>, full: bool) -> Result<()> {
     trace!("Parsing experiment Source...");
     let source = ExperimentSource::parse(&source)?;
 
@@ -18,26 +19,38 @@ pub fn main(source: PathBuf, estimate: Option<u64>, full: bool) -> Result<()> {
         });
     };
 
+    // calculate estimation
     if let Some(per_run) = estimate {
-        // calculate estimation
         let rep_count = source.repetitions();
 
-        debug!("Calculating estimation with {rep_count} repetitions and {per_run}s per run");
-        let estimation = chrono::Duration::from_std(Duration::from_secs(rep_count * per_run))
-            .map_err(|e| Error::SummaryError {
-                experiment: source.name().unwrap(),
-                err: e.to_string(),
-            })?;
+        let per_run = if let Some(custom_estimate) = per_run {
+            vec![custom_estimate]
+        } else {
+            vec![1, 10, 60]
+        };
 
-        // print estimation
-        println!(
-            "[{}] at {}s/run: {}:{}:{}",
-            source.name().unwrap(),
-            per_run,
-            estimation.num_hours(),
-            estimation.num_minutes(),
-            estimation.num_seconds(),
-        );
+        for duration in per_run {
+            debug!("calculating estimation with {rep_count} repetition(s) and {duration}s per run");
+            let estimation = chrono::Duration::from_std(Duration::from_secs(rep_count * duration))
+                .map_err(|e| Error::SummaryError {
+                    experiment: source.name().unwrap(),
+                    err: e.to_string(),
+                })?;
+
+            debug!("calculation ETA");
+            let eta = Local::now() + estimation;
+
+            // print estimation
+            println!(
+                "[{}] at {}s/run: {:02}:{:02}:{:02} (done {})",
+                source.name().unwrap(),
+                duration,
+                estimation.num_hours(),
+                estimation.num_minutes() % 60,
+                estimation.num_seconds() % 60,
+                eta.format("%H:%M").to_string()
+            );
+        }
     } else if full {
         // print summary
         todo!()

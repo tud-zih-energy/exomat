@@ -165,8 +165,8 @@ pub enum Commands {
         ///
         /// You can provide your own estimation for how long one run takes.
         /// If you don't, a small selection of possibilities will be printed.
-        #[arg(short = 'e', long,  default_value = None, default_missing_value = "5", num_args = 0..1)]
-        estimate: Option<u64>,
+        #[arg(short = 'e', long, value_name = "SECONDS")]
+        estimate: Option<Option<u64>>,
 
         /// Prints all kinds of information about the experiment Source.
         #[arg(short = 'f', long)]
