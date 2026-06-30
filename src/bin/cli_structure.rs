@@ -152,6 +152,27 @@ pub enum Commands {
     /// this format: ./runs/run_*/out_*
     MakeTable {},
 
+    /// Information about an experiment Source.
+    Summary {
+        /// Path to the experiment to run. Try PWD if not given.
+        ///
+        /// This is the path to a folder whose content conforms to the standards
+        /// defined in `docs/harness.md`.
+        #[clap()]
+        experiment: PathBuf,
+
+        /// Print an estimated run time for the entire experiment Source.
+        ///
+        /// You can provide your own estimation for how long one run takes.
+        /// If you don't, a small selection of possibilities will be printed.
+        #[arg(short = 'e', long, default_value = None, default_missing_value = "5")]
+        estimate: Option<u64>,
+
+        /// Prints all kinds of information about the experiment Source.
+        #[arg(short = 'f', long)]
+        full: bool,
+    },
+
     /// Generate exomat autocompletions
     ///
     /// Autocompletion will be printed to stdout. Example usage for bash:

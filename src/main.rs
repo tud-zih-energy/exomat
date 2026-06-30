@@ -30,6 +30,11 @@ fn main() -> ExitCode {
             remove,
         } => exomat::harness::env::main(add, append, remove),
         Commands::MakeTable {} => exomat::harness::table::main(),
+        Commands::Summary {
+            experiment,
+            estimate,
+            full,
+        } => exomat::harness::summary::main(experiment, estimate, full),
         Commands::Completion { shell } => bin::completion::main(shell),
     };
 

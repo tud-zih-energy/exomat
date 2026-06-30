@@ -7,6 +7,7 @@ pub mod harness {
     pub mod env;
     pub mod run;
     pub mod skeleton;
+    pub mod summary;
     pub mod table;
 }
 
