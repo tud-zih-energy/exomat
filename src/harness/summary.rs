@@ -58,3 +58,44 @@ pub fn main(estimate: Option<Option<u64>>, full: bool) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::experiment::FileWriter;
+
+    use rusty_fork::rusty_fork_test;
+    use tempfile::TempDir;
+
+    rusty_fork_test! {
+        #[test]
+        fn summary_no_source() {
+            let tmpdir = TempDir::new().unwrap();
+            let tmpdir = tmpdir.path().to_path_buf();
+            std::env::set_current_dir(&tmpdir).unwrap();
+
+            assert!(main(None, false).is_err())
+        }
+
+        #[test]
+        fn summary_e2e() {
+            let tmpdir = TempDir::new().unwrap();
+            let tmpdir = tmpdir.path().to_path_buf();
+            std::env::set_current_dir(&tmpdir).unwrap();
+
+            let mut source = ExperimentSource::new();
+            source.persist(&tmpdir).unwrap();
+
+            assert!(main(None, false).is_err());
+
+            assert!(main(Some(None), false).is_ok());
+            assert!(main(Some(Some(0)), false).is_ok());
+            assert!(main(Some(Some(1)), false).is_ok());
+
+            assert!(main(None, true).is_ok());
+            assert!(main(Some(None), true).is_ok());
+            assert!(main(Some(Some(0)), true).is_ok());
+            assert!(main(Some(Some(1)), true).is_ok());
+        }
+    }
+}
