@@ -38,7 +38,12 @@ impl FromLua for LuaEnvList {
         match value {
             Value::UserData(ud) => Ok(ud.borrow::<Self>()?.clone()),
             Value::Table(tb) => envlist_from_lua(tb),
-            _ => unreachable!(),
+            Value::Nil => Ok(LuaEnvList::from(HashMap::new())),
+            _ => Err(LuaError::ToLuaConversionError {
+                from: value.to_string().unwrap(),
+                to: "LuaEnvList",
+                message: None,
+            }),
         }
     }
 }
@@ -133,6 +138,21 @@ pub fn eval(chunk_str: String) -> LuaResult<Vec<EnvList>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_lua() {
+        let empty = String::new();
+        let res = eval(empty).unwrap();
+
+        assert_eq!(res.len(), 1);
+        assert!(res[0].is_empty())
+    }
+
+    #[test]
+    fn invalid_lua() {
+        let invalid = String::from("this in not lua I don't know what else to write");
+        assert!(eval(invalid).is_err())
+    }
 
     #[test]
     fn lua_from_file() {
