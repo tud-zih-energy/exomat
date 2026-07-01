@@ -40,6 +40,21 @@ impl EnvironmentContainer {
         })
     }
 
+    pub fn from_lua(lists: Vec<EnvList>) -> Result<Self> {
+        let mut envlist: Vec<Environment> = Vec::new();
+
+        for list in lists {
+            let env = try_assemble_all(&Environment::new(), &list)?;
+            envlist.extend(env);
+        }
+
+        envlist.dedup();
+
+        Ok(EnvironmentContainer {
+            environment_list: envlist,
+        })
+    }
+
     /// Returns a new EnvironmentContainer from the content of `list`.
     pub fn from_environments(list: Vec<Environment>) -> Self {
         EnvironmentContainer {

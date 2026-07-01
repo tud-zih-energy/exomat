@@ -104,6 +104,12 @@ pub enum Commands {
         /// > The order of these files does not necessarily represent reality
         #[arg(short = 'r', long, num_args = 1..)]
         remove: Vec<Vec<String>>,
+
+        /// Parses Environments from a lua file.
+        ///
+        /// Any existing environments will be overwritten and replaced with the result.
+        #[arg(short = 'l', long, value_name = "LUA FILE PATH")]
+        lua: Option<PathBuf>,
     },
 
     /// Execute an experiment from an experiment directory
