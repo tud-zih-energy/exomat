@@ -255,10 +255,10 @@ impl Runner for ExperimentRun {
     ///       by calling this function.
     ///
     /// ## Errors and Panics
-    /// - Returns a `HarnessRunrror` if the run has not been serialized yet
-    /// - Returns a `HarnessRunrror` if the script could not be executed
-    /// - Returns a `HarnessRunrror` if there is no [RUN_RUN_FILE] in `run_folder`
-    /// - Returns a `HarnessRunrror` if there is no [RUN_ENV_FILE] in `run_folder`
+    /// - Returns a `HarnessRunError` if the run has not been serialized yet
+    /// - Returns a `HarnessRunError` if the script could not be executed
+    /// - Returns a `HarnessRunError` if there is no [RUN_RUN_FILE] in `run_folder`
+    /// - Returns a `HarnessRunError` if there is no [RUN_ENV_FILE] in `run_folder`
     fn execute(&mut self, exp_name: &str) -> Result<Self::Item> {
         trace!("{exp_name}: Checking run directory {}", self.run_name);
         debug!("checking if run has been serialized");
