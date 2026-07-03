@@ -269,11 +269,11 @@ impl Runner for ExperimentRun {
             .canonicalize()
             .map_err(|e| Error::HarnessRunError {
                 experiment: exp_name.to_string(),
-                err: format!("Experiment Run has not been serialized yet: {e}"),
+                err: format!("Experiment Run has not been written to disk yet: {e}"),
             })?;
 
         debug!("checking if all files exist in run");
-        for file in [RUN_ENV_FILE, RUN_ENV_FILE] {
+        for file in [RUN_RUN_FILE, RUN_ENV_FILE] {
             if !run_folder.join(file).is_file() {
                 return Err(Error::HarnessRunError {
                     experiment: exp_name.to_string(),
