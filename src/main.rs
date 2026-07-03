@@ -60,7 +60,10 @@ fn run_main(args: Cli) -> Result<()> {
             remove,
         } => exomat::harness::env::main(add, append, remove),
         Commands::MakeTable { output } => exomat::harness::table::main(output),
-        Commands::Summary { estimate, full } => exomat::harness::summary::main(estimate, full),
+        Commands::Summary {
+            estimated_per_run,
+            estimated_repetitions,
+        } => exomat::harness::summary::main(estimated_per_run, estimated_repetitions),
         Commands::Completion { shell } => bin::completion::main(shell),
         Commands::CsvHelper {
             format,
