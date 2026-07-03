@@ -26,42 +26,47 @@ use std::time::Duration;
 /// - returns a `SummaryError` if `estimate.is_none()` and `full` is false
 /// - returns a `SummaryError` if the estimated runtime could not be calculated
 /// - panics if the name of the Experiment could not be read from `source`
-pub fn main(source: &PathBuf, estimate_s: Option<Option<u64>>, full: bool) -> Result<()> {
+pub fn main(
+    source: &PathBuf,
+    estimate_s: Option<Option<u64>>,
+    estimate_rep: Option<Option<u64>>,
+) -> Result<()> {
     trace!("Parsing experiment Source...");
     let source = ExperimentSource::parse(&source)?;
     let exp_name = source.name().unwrap();
 
-    // check that correct arguments were passed
-    if estimate_s.is_none() && !full {
-        return Err(Error::SummaryError {
-            experiment: exp_name.clone(),
-            err: String::from("Invalid arguments"),
-        });
-    };
+    // print summary, no matter the other options
+    println!("{source}");
 
-    // print summary
-    if full {
-        println!("{source}");
-    }
-
-    // calculate estimation
-    if let Some(per_run) = estimate_s {
+    // calculate estimation if one estimated value is given
+    if estimate_rep.is_some() || estimate_s.is_some() {
+        // default values
         let env_count = source.envs().len() as u64;
+        let mut per_run = vec![1, 10, 60];
+        let mut rep = 1;
 
-        let per_run = if let Some(custom_estimate) = per_run {
-            vec![custom_estimate]
-        } else {
-            vec![1, 10, 60]
+        // reset values if the user gave custom values
+        if let Some(requested) = estimate_s {
+            if let Some(custom_estimate) = requested {
+                per_run = vec![custom_estimate];
+            }
+        };
+
+        if let Some(requested) = estimate_rep {
+            if let Some(custom_estimate) = requested {
+                rep = custom_estimate;
+            }
         };
 
         println!("[{exp_name}] estimated runtime per repetition");
         for duration in per_run {
-            debug!("calculating estimation for {env_count} environment(s), {duration}s per run");
-            let estimation = chrono::Duration::from_std(Duration::from_secs(env_count * duration))
-                .map_err(|e| Error::SummaryError {
-                    experiment: exp_name.clone(),
-                    err: e.to_string(),
-                })?;
+            debug!("calculating estimation for {env_count} environment(s), {duration}s per run and {rep} repetitions");
+            let estimation =
+                chrono::Duration::from_std(Duration::from_secs(env_count * duration * rep))
+                    .map_err(|e| Error::SummaryError {
+                        experiment: exp_name.clone(),
+                        err: e.to_string(),
+                    })?;
 
             debug!("calculating ETA");
             let eta = Local::now() + estimation;
@@ -92,7 +97,7 @@ mod tests {
         let tmpdir = TempDir::new().unwrap();
         let tmpdir = tmpdir.path().to_path_buf();
 
-        assert!(main(&tmpdir, None, false).is_err())
+        assert!(main(&tmpdir, None, None).is_err())
     }
 
     #[test]
@@ -103,15 +108,21 @@ mod tests {
         let mut source = ExperimentSource::new();
         source.persist(&tmpdir).unwrap();
 
-        assert!(main(&tmpdir, None, false).is_err());
+        assert!(main(&tmpdir, None, None).is_ok());
+        assert!(main(&tmpdir, Some(Some(0)), Some(Some(0))).is_ok());
 
-        assert!(main(&tmpdir, Some(None), false).is_ok());
-        assert!(main(&tmpdir, Some(Some(0)), false).is_ok());
-        assert!(main(&tmpdir, Some(Some(1)), false).is_ok());
+        assert!(main(&tmpdir, Some(None), None).is_ok());
+        assert!(main(&tmpdir, Some(Some(0)), None).is_ok());
+        assert!(main(&tmpdir, Some(Some(1)), None).is_ok());
 
-        assert!(main(&tmpdir, None, true).is_ok());
-        assert!(main(&tmpdir, Some(None), true).is_ok());
-        assert!(main(&tmpdir, Some(Some(0)), true).is_ok());
-        assert!(main(&tmpdir, Some(Some(1)), true).is_ok());
+        assert!(main(&tmpdir, None, Some(None)).is_ok());
+        assert!(main(&tmpdir, Some(None), Some(None)).is_ok());
+        assert!(main(&tmpdir, Some(Some(0)), Some(None)).is_ok());
+        assert!(main(&tmpdir, Some(Some(1)), Some(None)).is_ok());
+
+        assert!(main(&tmpdir, None, Some(Some(5))).is_ok());
+        assert!(main(&tmpdir, Some(None), Some(Some(1))).is_ok());
+        assert!(main(&tmpdir, Some(Some(0)), Some(Some(74))).is_ok());
+        assert!(main(&tmpdir, Some(Some(12)), Some(Some(0))).is_ok());
     }
 }

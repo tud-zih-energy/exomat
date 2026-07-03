@@ -166,11 +166,14 @@ pub enum Commands {
         /// You can provide your own estimation for how long one run takes.
         /// If you don't, a small selection of possibilities will be printed.
         #[arg(short = 'e', long, value_name = "SECONDS")]
-        estimate: Option<Option<u64>>,
+        estimated_per_run: Option<Option<u64>>,
 
-        /// Prints all kinds of information about the experiment Source.
-        #[arg(short = 'f', long)]
-        full: bool,
+        /// Print an estimated run time for the entire experiment Source.
+        ///
+        /// You can provide your own estimation for how long one run takes.
+        /// If you don't, a small selection of possibilities will be printed.
+        #[arg(short = 'r', long, value_name = "SECONDS")]
+        estimated_repetitions: Option<Option<u64>>,
     },
 
     /// Generate exomat autocompletions

@@ -32,9 +32,9 @@ fn main() -> ExitCode {
         Commands::MakeTable {} => exomat::harness::table::main(),
         Commands::Summary {
             experiment,
-            estimate,
-            full,
-        } => exomat::harness::summary::main(&experiment, estimate, full),
+            estimated_per_run,
+            estimated_repetitions,
+        } => exomat::harness::summary::main(&experiment, estimated_per_run, estimated_repetitions),
         Commands::Completion { shell } => bin::completion::main(shell),
     };
 
