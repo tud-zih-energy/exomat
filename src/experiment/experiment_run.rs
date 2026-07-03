@@ -273,7 +273,7 @@ impl Runner for ExperimentRun {
             })?;
 
         debug!("checking if all files exist in run");
-        for file in [RUN_RUN_FILE, RUN_ENV_FILE] {
+        for file in REQUIRED_RUN_FILES {
             if !run_folder.join(file).is_file() {
                 return Err(Error::HarnessRunError {
                     experiment: exp_name.to_string(),

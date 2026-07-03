@@ -32,6 +32,9 @@ pub const TEST_RUN_REP_DIR1: &str = "run_x_rep1";
 pub const TEST_RUN_REP_DIR2: &str = "run_y_rep0";
 pub const TEST_RUN_REP_DIR3: &str = "run_y_rep4";
 
+// required files in a structure
+pub const REQUIRED_RUN_FILES: [&str; 3] = [MARKER_RUN, RUN_ENV_FILE, RUN_RUN_FILE];
+
 /// Returns the last part of a path (which is the file-/directory name).
 ///
 /// ## Panics
