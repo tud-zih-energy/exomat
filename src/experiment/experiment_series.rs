@@ -1,8 +1,7 @@
 use crate::duplicate_log_to_pipe;
 use crate::experiment::{
-    experiment_run::RunStatus,
-    out_file::{OutFile, OutList},
-    CsvWriter, ExperimentRun, ExperimentSource, FileReader, FileWriter, LogWriter,
+    experiment_run::RunStatus, out_file::OutFile, CsvWriter, ExperimentRun, ExperimentSource,
+    FileReader, FileWriter,
 };
 use crate::harness::env::{Environment, ExomatEnvironment};
 use crate::helper::{
@@ -18,6 +17,9 @@ use rand::seq::SliceRandom;
 use std::fs::{read_to_string, write};
 use std::io::{PipeReader, Read};
 use std::path::{Path, PathBuf};
+
+#[cfg(test)]
+use crate::experiment::out_file::OutList;
 
 /// Container for an Experiment Series
 ///
@@ -425,42 +427,6 @@ impl ExperimentSeries {
 }
 
 // ========================== Writer ==========================
-impl LogWriter for ExperimentSeries {
-    /// Writes the content of `stdout_log`, `stderr_log` and `exomat_log` to their
-    /// repective files in `self.path/SERIES_RUNS_DIR/`
-    ///
-    /// Files will be overwritten if they exist already and created new if they don't.
-    ///
-    /// ## Errors
-    /// - returns a `HarnessRunError` if logs could not be serialized
-    fn persist_logs(&mut self) -> Result<()> {
-        if let Some(path) = self.path.clone() {
-            crate::reset_logger(spdlog::default_logger().level_filter());
-            let mut buf = String::new();
-            let _ = &self.exomat_log.read_to_string(&mut buf)?;
-            self.exomat_log = duplicate_log_to_pipe()?;
-
-            write(
-                path.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG),
-                &self.stdout_log,
-            )?;
-            write(
-                path.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG),
-                &self.stderr_log,
-            )?;
-
-            // append to exomat log
-            let exomat_log_path = path.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG);
-            self.append_to_file(&exomat_log_path, "{buf")
-        } else {
-            Err(Error::HarnessRunError {
-                experiment: self.experiment_name()?,
-                err: "Experiment has been executed, but cannot write logs to file.".to_string(),
-            })
-        }
-    }
-}
-
 impl CsvWriter for ExperimentSeries {
     /// Serializes it's content into `file`.
     ///
@@ -591,6 +557,40 @@ impl FileWriter for ExperimentSeries {
         self.path = Some(exp_series_dir.to_path_buf());
 
         Ok(())
+    }
+
+    /// Writes the content of `stdout_log`, `stderr_log` and `exomat_log` to their
+    /// repective files in `self.path/SERIES_RUNS_DIR/`
+    ///
+    /// Files will be overwritten if they exist already and created new if they don't.
+    ///
+    /// ## Errors
+    /// - returns a `HarnessRunError` if logs could not be serialized
+    fn persist_logs(&mut self) -> Result<()> {
+        if let Some(path) = self.path.clone() {
+            crate::reset_logger(spdlog::default_logger().level_filter());
+            let mut buf = String::new();
+            let _ = &self.exomat_log.read_to_string(&mut buf)?;
+            self.exomat_log = duplicate_log_to_pipe()?;
+
+            write(
+                path.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG),
+                &self.stdout_log,
+            )?;
+            write(
+                path.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG),
+                &self.stderr_log,
+            )?;
+
+            // append to exomat log
+            let exomat_log_path = path.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG);
+            self.append_to_file(&exomat_log_path, "{buf")
+        } else {
+            Err(Error::HarnessRunError {
+                experiment: self.experiment_name()?,
+                err: "Experiment has been executed, but cannot write logs to file.".to_string(),
+            })
+        }
     }
 }
 

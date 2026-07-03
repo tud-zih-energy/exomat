@@ -12,6 +12,13 @@ pub trait CsvWriter {
 pub trait FileWriter {
     fn persist(&mut self, dir: &Path) -> Result<()>;
 
+    fn persist_logs(&mut self) -> Result<()> {
+        Err(Error::WriterError {
+            dir: format!("Log files"),
+            reason: String::from("Tried to persist logs, but struct does keep log files"),
+        })
+    }
+
     /// Helper that creates a new file at `file_path`. The file will be executable.
     fn create_executable(&self, file_path: &PathBuf) -> Result<File> {
         OpenOptions::new()
@@ -44,10 +51,6 @@ pub trait FileWriter {
         std::fs::write(&file_path, content)?;
         Ok(())
     }
-}
-
-pub trait LogWriter {
-    fn persist_logs(&mut self) -> Result<()>;
 }
 
 pub trait FileReader {

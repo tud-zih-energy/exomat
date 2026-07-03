@@ -5,9 +5,7 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use log::{info, trace};
 use std::path::PathBuf;
 
-use crate::experiment::{
-    ExperimentSeries, ExperimentSource, FileReader, FileWriter, LogWriter, Runner,
-};
+use crate::experiment::{ExperimentSeries, ExperimentSource, FileReader, FileWriter, Runner};
 use crate::helper::errors::Result;
 
 /// Creates an experiment series/run directory for the given `experiment`.
