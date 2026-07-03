@@ -38,7 +38,7 @@ pub struct ExperimentRun {
     run_name: String,
     env: Environment,
     exomat_env: ExomatEnvironment,
-    out_files: Option<OutList>,
+    out_files: OutList,
     status: RunStatus,
     location: Option<PathBuf>,
 }
@@ -85,7 +85,7 @@ impl ExperimentRun {
             run_name: dir_name,
             env: environment.1.clone(),
             exomat_env: exomat_environment.clone(),
-            out_files: None,
+            out_files: OutList::new(),
             status: RunStatus::Unknown,
             location: None,
         }
@@ -126,14 +126,11 @@ impl ExperimentRun {
     /// If there is no file with this name, `None` is returned.
     /// The returned Vec may be empty.
     pub fn out_var(&self, var: &str) -> Option<&Vec<String>> {
-        match &self.out_files {
-            Some(outlist) => outlist.outfile(var).map(|outfile| outfile.values()),
-            None => None,
-        }
+        self.out_files.outfile(var).map(|outfile| outfile.values())
     }
 
     /// Returns a reference to the list of out_ files recorded
-    pub fn out_files(&self) -> &Option<OutList> {
+    pub fn out_files(&self) -> &OutList {
         &self.out_files
     }
 
@@ -142,13 +139,8 @@ impl ExperimentRun {
     /// Inserts `new_out` at the end of `self.out_files`.
     ///
     /// The content of `new_out` is not checked in any way.
-    pub fn insert_out_file(&mut self, new_out: OutFile) -> Result<()> {
-        match &mut self.out_files {
-            None => self.out_files = Some(OutList::from(vec![new_out])?),
-            Some(r) => r.push(new_out),
-        };
-
-        Ok(())
+    pub fn insert_out_file(&mut self, new_out: OutFile) {
+        self.out_files.push(new_out);
     }
 
     // ========================= helper ========================================
@@ -166,7 +158,7 @@ impl ExperimentRun {
                 exp_src_dir: PathBuf::new(),
                 repetition: 1,
             },
-            out_files: Some(outlist.clone()),
+            out_files: outlist.clone(),
             status: RunStatus::Unknown,
             location: None,
         }
@@ -180,34 +172,32 @@ impl ExperimentRun {
     /// - Returns an `Empty` Error if there are no Observations, that can be returned
     fn get_observation(&self, index: usize) -> Result<Observation> {
         debug!("looking for out_ files");
-        if let Some(out_files) = &self.out_files {
-            let mut observation: Observation = HashMap::new();
-            for outfile in out_files.iter() {
-                debug!("checking if out_ file is empty");
-                if outfile.is_empty() {
-                    observation.insert(outfile.var_name().clone(), String::from("NA"));
-                    // index is not in range
-                } else if index >= outfile.value_count() {
-                    return Err(Error::IndexOutOfRange {
-                        index,
-                        limit: outfile.value_count(),
-                    });
-                    // everything worked, get value
-                } else {
-                    observation.insert(
-                        outfile.var_name().clone(),
-                        outfile.values()[index].to_string(),
-                    );
-                }
-            }
-
-            debug!("observation found: {:?}", observation);
-            Ok(observation)
-
-        // no out_files in this run
-        } else {
-            Err(Error::Empty(String::from("No Observations found")))
+        if self.out_files.is_empty() {
+            return Err(Error::Empty(String::from("No Observations found")));
         }
+
+        let mut observation: Observation = HashMap::new();
+        for outfile in self.out_files.iter() {
+            debug!("checking if out_ file is empty");
+            if outfile.is_empty() {
+                observation.insert(outfile.var_name().clone(), String::from("NA"));
+                // index is not in range
+            } else if index >= outfile.value_count() {
+                return Err(Error::IndexOutOfRange {
+                    index,
+                    limit: outfile.value_count(),
+                });
+                // everything worked, get value
+            } else {
+                observation.insert(
+                    outfile.var_name().clone(),
+                    outfile.values()[index].to_string(),
+                );
+            }
+        }
+
+        debug!("observation found: {:?}", observation);
+        Ok(observation)
     }
 
     /// Produce log output based on exit_status and err_log content.
@@ -473,7 +463,7 @@ impl FileReader for ExperimentRun {
         // balance values
         trace!("Balancing out_ files of Run {}", exp_run_dir.display());
         let out_balanced = match out_list.is_empty() {
-            true => None,
+            true => out_list,
             false => {
                 let max_length = out_list
                     .iter()
@@ -497,7 +487,7 @@ impl FileReader for ExperimentRun {
                     }
                 }
 
-                Some(out_list)
+                out_list
             }
         };
 

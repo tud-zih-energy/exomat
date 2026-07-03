@@ -233,8 +233,11 @@ impl ExperimentSeries {
         let mut keys: Vec<&str> = self
             .runs
             .iter()
-            .filter_map(|run| run.out_files().as_ref())
-            .flat_map(|outlist| outlist.iter().map(|outfile| outfile.var_name().as_str()))
+            .flat_map(|run| {
+                run.out_files()
+                    .iter()
+                    .map(|outfile| outfile.var_name().as_str())
+            })
             .collect();
 
         // remove duplicate keys
@@ -293,18 +296,16 @@ impl ExperimentSeries {
     ///
     /// If a key is present in one Experiment Run but missing another, the key will be
     /// added with "NA" as it's value.
-    fn fill_missing_keys(&mut self) -> Result<()> {
+    fn fill_missing_keys(&mut self) {
         let keys: Vec<String> = self.keys().into_iter().map(|k| k.to_string()).collect();
 
         for run in self.runs.iter_mut() {
             for key in &keys {
                 if run.out_var(key).is_none() {
-                    run.insert_out_file(OutFile::from(key, vec!["NA".to_string()]))?;
+                    run.insert_out_file(OutFile::from(key, vec!["NA".to_string()]));
                 }
             }
         }
-
-        Ok(())
     }
 
     /// Parses `self.runs` into rows, that can be serialized in a CSV format.
@@ -337,12 +338,7 @@ impl ExperimentSeries {
 
         let max_val_len = sorted_runs
             .iter()
-            .map(|run| {
-                run.out_files()
-                    .as_ref()
-                    .unwrap_or(&OutList::from(vec![]).unwrap())
-                    .max_length()
-            })
+            .map(|run| run.out_files().max_length())
             .max()
             .unwrap_or(0);
 
@@ -374,14 +370,8 @@ impl ExperimentSeries {
     /// Returns `true` if any of this true:
     /// - there are no runs
     /// - there are runs, but none contain out_ files
-    /// - there are runs with out_ files, but all out_ files are empty
     fn runs_are_empty(&self) -> bool {
-        self.runs.is_empty()
-            || self.runs.iter().all(|run| run.out_files().is_none())
-            || self
-                .runs
-                .iter()
-                .all(|run| run.out_files().iter().all(|out| out.is_empty()))
+        self.runs.is_empty() || self.runs.iter().all(|run| run.out_files().is_empty())
     }
 
     /// Checks if the SeriesReader contains a valid trial run.
@@ -643,7 +633,7 @@ impl FileReader for ExperimentSeries {
         };
 
         debug!("adding missing keys");
-        reader.fill_missing_keys()?;
+        reader.fill_missing_keys();
         Ok(reader)
     }
 
@@ -701,9 +691,9 @@ impl std::fmt::Display for ExperimentSeries {
         let outfiles = if self.runs_are_empty() {
             "[{exp_name}] created no output files\n".to_string()
         } else {
-            if let Some(outfiles) = self.runs()[0].out_files() {
+            if !self.runs_are_empty() {
                 let mut out = String::new();
-                for out_file in outfiles.iter() {
+                for out_file in self.runs()[0].out_files().iter() {
                     out.push_str(&format!("[{exp_name}] {out_file}\n"));
                 }
                 out
@@ -961,9 +951,7 @@ mod tests {
 
         assert_eq!(reader.run_count(), 2);
         for expected_outlist in expected_outlists {
-            let found = runs
-                .iter()
-                .any(|run| run.out_files().as_ref().unwrap() == &expected_outlist);
+            let found = runs.iter().any(|run| run.out_files() == &expected_outlist);
             assert!(found, "Expected OutList not found in results");
         }
     }
@@ -1099,7 +1087,7 @@ mod tests {
 
         // since the order of OutFiles per run is not always the same, test it this way
         for run in runs {
-            let outlist = run.out_files().as_ref().unwrap();
+            let outlist = run.out_files();
             assert_eq!(outlist.len(), 3);
 
             assert!(
