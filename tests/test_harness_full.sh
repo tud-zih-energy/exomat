@@ -163,3 +163,22 @@ cd $DIR/One_Out1
     grep sentinel_a $DIR/One_Out1/One_Out1.csv > /dev/null
     grep sentinel_b $DIR/One_Out1/One_Out1.csv > /dev/null
 cd $DIR
+
+
+#
+# summary
+#
+
+# missing experiment
+! "$EXOMAT_BIN" summary
+
+# missing option
+! "$EXOMAT_BIN" summary $DIR/One
+
+# should work
+"$EXOMAT_BIN" summary $DIR/One --full
+"$EXOMAT_BIN" summary $DIR/One --estimate
+"$EXOMAT_BIN" summary $DIR/One --estimate --full
+
+# not an experiment source
+! "$EXOMAT_BIN" summary $DIR/One_Out1 --estimate
