@@ -127,13 +127,7 @@ impl ExperimentRun {
     /// The returned Vec may be empty.
     pub fn out_var(&self, var: &str) -> Option<&Vec<String>> {
         match &self.out_files {
-            Some(out) => {
-                if let Some(outfile) = out.outfile(var) {
-                    Some(outfile.values())
-                } else {
-                    None
-                }
-            }
+            Some(outlist) => outlist.outfile(var).map(|outfile| outfile.values()),
             None => None,
         }
     }
