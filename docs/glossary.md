@@ -30,7 +30,7 @@
        |    |-> run.sh
        |    |-> environment.env
        |    | # experiment output / out_ file
-       |    |-> out_put.txt
+       |    |-> out_[var]
        |    \-> [...]
        |   # experiment run folder
        |-> run_[env_name]_rep[repetition2]
@@ -38,7 +38,7 @@
        |    |-> run.sh
        |    |-> environment.env
        |    | # experiment output / out_ file
-       |    |-> out_put.txt
+       |    |-> out_[var]
        |    \-> [...]
        |   # experiment run folder
        |-> run_[...]
@@ -47,8 +47,11 @@
        \-> exomat.log
 ```
 ---
-Inside of an out_ file, there can be multiple `Observations`.
-For example, given the following out_ files inside of an experiment run:
+
+An experiment run can generate multiple `Observation`s (e.g. multiple power readings during a single run).
+In experiment runs with multiple `Observation`s, the `out_`-files will contain multiple values separated by newlines.
+
+For example, given the following `out_`-files inside of an experiment run:
 ```bash
 # run[...]/out_duration
 0
@@ -61,9 +64,25 @@ For example, given the following out_ files inside of an experiment run:
 69
 420
 67
+
+# run[...]/out_constant
+hello world
 ```
-This experiment run contains the Observations:
-`[0, 42], [1,69], [2,420], [3,67]`
+This experiment run contains the `Observation`s:
+```
+[
+  [0, 42, hello world],
+  [1, 69, hello world],
+  [2, 420, hello world],
+  [3, 67, hello world]
+]
+```
+
+**A few important things:**
+1. If there are multiple `Observation`s in a run, then every `out_`-file has to contain either 1 or as many values/lines as every other `out_`-file
+2. The nth `Observation` in an experiment run is made of the nth line of every out_ file
+3. If there are multiple `Observation`s and there are `out_`-files with only a single value, every `Observation` has that same, single, value
+
 
 ## Environments
 If a function contains one of the following words, this is what you can expect:
