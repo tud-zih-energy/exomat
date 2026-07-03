@@ -46,9 +46,9 @@ fn run_main(args: Cli, log_handler: indicatif::MultiProgress) -> Result<()> {
         Commands::MakeTable { output } => exomat::harness::table::main(output),
         Commands::Summary {
             experiment,
-            estimate,
-            full,
-        } => exomat::harness::summary::main(&experiment, estimate, full),
+            estimated_per_run,
+            estimated_repetitions,
+        } => exomat::harness::summary::main(&experiment, estimated_per_run, estimated_repetitions),
         Commands::Completion { shell } => bin::completion::main(shell),
     }
 }
