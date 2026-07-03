@@ -18,6 +18,13 @@ pub struct OutList {
 }
 
 impl OutList {
+    /// Creates an empty OutList
+    pub fn new() -> Self {
+        Self {
+            out_files: Vec::new(),
+        }
+    }
+
     /// Creates a new OutList.
     ///
     /// Ensures all out_ file names are unique.
