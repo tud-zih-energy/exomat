@@ -94,6 +94,8 @@ value,4
 value,3
 ```
 
+> Note: If an `out_`-file is empty, it will still be recorded with "NA" as its value.
+
 ## Reserved Environment Variables
 Some environment variable names are reserved by `exomat`. When running an
 experiment `exomat` will silently overwrite them:
