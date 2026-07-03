@@ -18,5 +18,7 @@ jobs:
     - uses: actions/checkout@v6
     - name: Build
       run: cargo build --verbose
-    - name: Run tests
+    - name: Run cargo tests
       run: cargo test --verbose
+    - name: Run integration tests
+      run: ./tests/test_harness_full.sh ${GITHUB_WORKSPACE}/target/debug/exomat
