@@ -22,10 +22,15 @@ use crate::helper::errors::Result;
 /// Wrapper around `build_series_directory` and `execute_exp_repetitions`.
 pub fn experiment(
     experiment: &ExperimentSource,
-    output: PathBuf,
+    output: Option<PathBuf>,
     log_progress_handler: MultiProgress,
     is_trial: bool,
 ) -> Result<()> {
+    let output = match output {
+        Some(x) => x,
+        None => ExperimentSeries::generate_series_filepath(&experiment.location())?,
+    };
+
     let mut series = ExperimentSeries::from_source(experiment)?;
     series.generate_runs()?;
     series.persist(&output)?;
@@ -48,7 +53,12 @@ pub fn trial(experiment: &ExperimentSource, log_progress_handler: MultiProgress)
     crate::disable_console_log();
 
     // run experiment once
-    let res = self::experiment(&trial, trial_dir_path.clone(), log_progress_handler, true);
+    let res = self::experiment(
+        &trial,
+        Some(trial_dir_path.clone()),
+        log_progress_handler,
+        true,
+    );
 
     // flush exomat log
     spdlog::default_logger().flush();
@@ -208,7 +218,7 @@ mod tests {
             // run experiment and check logs
             experiment(
                 &src,
-                PathBuf::from(out_name),
+                Some(PathBuf::from(out_name)),
                 MultiProgress::new(), // empty
                 false
             )

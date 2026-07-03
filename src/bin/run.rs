@@ -2,7 +2,7 @@ use indicatif::MultiProgress;
 use std::path::PathBuf;
 
 use crate::Result;
-use exomat::experiment::{ExperimentSeries, ExperimentSource, FileReader};
+use exomat::experiment::{ExperimentSource, FileReader};
 
 pub fn main(
     experiment: PathBuf,
@@ -18,17 +18,7 @@ pub fn main(
     ));
 
     match trial {
-        false => {
-            let output = match output {
-                Some(x) => Ok(x),
-                None => ExperimentSeries::generate_series_filepath(&experiment),
-            };
-
-            match output {
-                Ok(output) => exomat::harness::run::experiment(&src, output, log_handler, false),
-                Err(err) => Err(err),
-            }
-        }
+        false => exomat::harness::run::experiment(&src, output, log_handler, false),
         true => exomat::harness::run::trial(&src, log_handler),
     }
 }
