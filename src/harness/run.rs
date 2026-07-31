@@ -114,7 +114,7 @@ fn execute_exp_repetitions(
     let mut stderr = String::new();
 
     for mut run in series.iter() {
-        trace!("Using envs: {:?}", run.environment());
+        trace!("Using envs: {:?}", run.env());
 
         let (out, err) = run.execute(&series.experiment_name()?)?;
         stderr.push_str(&err);

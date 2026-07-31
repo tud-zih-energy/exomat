@@ -253,7 +253,7 @@ impl ExperimentSeries {
         let mut keys: Vec<&str> = self
             .runs
             .iter()
-            .flat_map(|run| run.environment().to_env_map().keys().map(String::as_str))
+            .flat_map(|run| run.env().to_env_map().keys().map(String::as_str))
             .collect();
 
         keys.sort();
