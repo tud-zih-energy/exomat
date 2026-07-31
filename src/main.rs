@@ -1,5 +1,5 @@
 use clap::Parser;
-use spdlog::prelude::error;
+use spdlog::prelude::{debug, error};
 use std::process::ExitCode;
 
 pub mod bin {
@@ -13,10 +13,24 @@ use exomat::helper::errors::{Error, Result};
 
 fn main() -> ExitCode {
     let args = Cli::parse();
-
     let log_handler = exomat::activate_logging(args.verbose.log_level_filter());
 
-    let res = match args.subcommand {
+    match run_main(args, log_handler) {
+        Err(err) => {
+            error!("{err}");
+            ExitCode::FAILURE
+        }
+        Ok(()) => ExitCode::SUCCESS,
+    }
+}
+
+fn run_main(args: Cli, log_handler: indicatif::MultiProgress) -> Result<()> {
+    if let Some(pwd) = args.cd {
+        debug!("changing pwd to {}", pwd.display());
+        std::env::set_current_dir(pwd)?;
+    }
+
+    match args.subcommand {
         Commands::Run {
             experiment,
             trial,
@@ -31,13 +45,34 @@ fn main() -> ExitCode {
         } => exomat::harness::env::main(add, append, remove),
         Commands::MakeTable {} => exomat::harness::table::main(),
         Commands::Completion { shell } => bin::completion::main(shell),
-    };
+    }
+}
 
-    match res {
-        Err(err) => {
-            error!("{err}");
-            ExitCode::FAILURE
-        }
-        Ok(()) => ExitCode::SUCCESS,
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn log_handler() -> indicatif::MultiProgress {
+        indicatif::MultiProgress::new()
+    }
+
+    #[test]
+    fn change_working_directory() {
+        let workspace = tempfile::tempdir().unwrap();
+        std::env::set_current_dir(workspace.path()).unwrap();
+
+        // initialize experiment dir
+        let args = Cli::parse_from(&["argv0", "skeleton", "exp_dir"]);
+        run_main(args, log_handler()).unwrap();
+
+        // no cd: does not work
+        let args = Cli::parse_from(&["argv0", "env", "--add", "VAR", "1", "2", "3"]);
+        assert!(run_main(args, log_handler()).is_err());
+
+        // but works with cd into new dir
+        let args = Cli::parse_from(&[
+            "argv0", "-C", "exp_dir", "env", "--add", "VAR", "1", "2", "3",
+        ]);
+        run_main(args, log_handler()).unwrap();
     }
 }
