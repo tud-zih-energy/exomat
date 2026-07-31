@@ -328,7 +328,7 @@ impl ExperimentSeries {
     }
 
     /// Parses `self.runs` into rows, that can be serialized in a CSV format.
-    /// Includes a header row, containing `self.keys()`.
+    /// Includes a header row
     ///
     /// Returns a Vector of all rows, with each entry being listed as a separate String.
     /// For example:
@@ -352,8 +352,13 @@ impl ExperimentSeries {
         sorted_runs.sort_by_key(|run| run.run_dir_name().to_owned());
 
         // collect all header
-        let mut rows_vec: Vec<Vec<String>> =
-            vec![self.output_keys().iter().map(|k| k.to_string()).collect()];
+        let header: Vec<String> = [self.env_keys(), self.output_keys()]
+            .concat()
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+
+        let mut rows_vec: Vec<Vec<String>> = vec![header];
 
         let max_val_len = sorted_runs
             .iter()
@@ -367,7 +372,12 @@ impl ExperimentSeries {
             for run in &sorted_runs {
                 let mut row: Vec<String> = Vec::new();
 
-                // ... add ith element of each key to a list ...
+                // add env
+                for env_var in self.env_keys() {
+                    row.push(run.env().get_env_val(env_var).cloned().unwrap_or_default());
+                }
+
+                // add output
                 for key in self.output_keys() {
                     if let Some(vals) = &run.out_var(key) {
                         row.push(vals.get(i).cloned().unwrap_or_else(String::new));
