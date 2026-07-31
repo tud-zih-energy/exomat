@@ -248,6 +248,19 @@ impl ExperimentSeries {
         keys
     }
 
+    /// retrieve all names of variables in all environments
+    pub fn env_keys(&self) -> Vec<&str> {
+        let mut keys: Vec<&str> = self
+            .runs
+            .iter()
+            .flat_map(|run| run.environment().to_env_map().keys().map(String::as_str))
+            .collect();
+
+        keys.sort();
+        keys.dedup();
+        keys
+    }
+
     // ========================= setter ========================================
 
     /// Updates the location of this Experiment Series.
@@ -1121,5 +1134,19 @@ mod tests {
         let reader = ExperimentSeries::parse(&dir).unwrap();
 
         assert!(reader.is_valid_trial());
+    }
+
+    #[rstest]
+    fn seriesreader_env_keys_empty(filled_series_run_na: TempDir) {
+        let dir = filled_series_run_na.path().to_path_buf();
+        let reader = ExperimentSeries::parse(&dir).unwrap();
+        assert!(dbg!(reader.env_keys()).is_empty());
+    }
+
+    #[rstest]
+    fn seriesreader_env_keys_simple(setup_series_dir: TempDir) {
+        let tmp_series = setup_series_dir.path().to_path_buf();
+        let series_reader = ExperimentSeries::parse(&tmp_series).unwrap();
+        assert_eq!(vec!["VAR1", "VAR2"], series_reader.env_keys());
     }
 }
