@@ -37,7 +37,7 @@ pub fn main() -> Result<()> {
     // collect all output from every run in series_dir
     let reader = ExperimentSeries::parse(&series_dir)?;
 
-    let keys = reader.output_keys();
+    let keys = [reader.env_keys(), reader.output_keys()].concat();
     info!("Collected output for {} keys", keys.len());
     info!("Found keys: {:?}", keys);
 
