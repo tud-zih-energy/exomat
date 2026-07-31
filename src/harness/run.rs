@@ -168,7 +168,7 @@ mod tests {
 
             // write something in run.sh
             let mut src = ExperimentSource::new();
-            src.set_run_script(format!("#!/bin/bash\necho $EXP_SRC_DIR\necho $EXP_SRC_DIR >> out_file"));
+            src.set_run_script(format!("#!/usr/bin/env bash\necho $EXP_SRC_DIR\necho $EXP_SRC_DIR >> out_file"));
             src.set_exomat_envs(ExomatEnvironment::new(&exp_source, 1));
             src.persist(&exp_source).unwrap();
 
@@ -205,7 +205,7 @@ mod tests {
             // Write something to run.sh that uses env var
             // make multiple .env files that set $FOO to different values
             let mut src = ExperimentSource::new();
-            src.set_run_script(format!("#!/bin/bash\necho $FOO\necho $FOO >> out_file"));
+            src.set_run_script(format!("#!/usr/bin/env bash\necho $FOO\necho $FOO >> out_file"));
             src.set_envs(HashMap::from([
                 (PathBuf::from("0.env"), Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())])),
                 (PathBuf::from("1.env"), Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())])),
@@ -248,7 +248,7 @@ mod tests {
             // Write something to run.sh that uses env var
             // make multiple .env files that set $FOO to different values
             let mut src = ExperimentSource::new();
-            src.set_run_script(format!("#!/bin/bash\necho $FOO\necho $FOO >> out_file"));
+            src.set_run_script(format!("#!/usr/bin/env bash\necho $FOO\necho $FOO >> out_file"));
             src.set_envs(HashMap::from([
                 (PathBuf::from("0.env"),Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())])),
                 (PathBuf::from("1.env"),Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())])),
