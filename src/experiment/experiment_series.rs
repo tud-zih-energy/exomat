@@ -230,8 +230,8 @@ impl ExperimentSeries {
         &mut self.runs
     }
 
-    /// Returns a list of all keys present in the Experiment Series in an arbitrary order.
-    pub fn keys(&self) -> Vec<&str> {
+    /// retrieve all names of outfiles, i.e. XXX for `out_XXX`
+    pub fn output_keys(&self) -> Vec<&str> {
         let mut keys: Vec<&str> = self
             .runs
             .iter()
@@ -299,7 +299,11 @@ impl ExperimentSeries {
     /// If a key is present in one Experiment Run but missing another, the key will be
     /// added with "NA" as it's value.
     fn fill_missing_keys(&mut self) {
-        let keys: Vec<String> = self.keys().into_iter().map(|k| k.to_string()).collect();
+        let keys: Vec<String> = self
+            .output_keys()
+            .into_iter()
+            .map(|k| k.to_string())
+            .collect();
 
         for run in self.runs.iter_mut() {
             for key in &keys {
@@ -336,7 +340,7 @@ impl ExperimentSeries {
 
         // collect all header
         let mut rows_vec: Vec<Vec<String>> =
-            vec![self.keys().iter().map(|k| k.to_string()).collect()];
+            vec![self.output_keys().iter().map(|k| k.to_string()).collect()];
 
         let max_val_len = sorted_runs
             .iter()
@@ -351,7 +355,7 @@ impl ExperimentSeries {
                 let mut row: Vec<String> = Vec::new();
 
                 // ... add ith element of each key to a list ...
-                for key in self.keys() {
+                for key in self.output_keys() {
                     if let Some(vals) = &run.out_var(key) {
                         row.push(vals.get(i).cloned().unwrap_or_else(String::new));
                     } else {
@@ -825,7 +829,7 @@ mod tests {
         let tmp_series = tmpdir.path().to_path_buf();
 
         let series_reader = ExperimentSeries::parse(&tmp_series).unwrap();
-        let keys = series_reader.keys();
+        let keys = series_reader.output_keys();
 
         assert!(keys.contains(&"number"));
         assert!(keys.contains(&"word"));
@@ -839,7 +843,7 @@ mod tests {
 
         let series_reader = ExperimentSeries::parse(&runs_dir).unwrap();
 
-        let keys = series_reader.keys();
+        let keys = series_reader.output_keys();
         assert!(keys.contains(&"empty"));
         assert!(keys.len() == 1);
 
@@ -854,7 +858,7 @@ mod tests {
         let dir = tmp_run.path().to_path_buf();
 
         let series_reader = ExperimentSeries::parse(&dir).unwrap();
-        let keys = series_reader.keys();
+        let keys = series_reader.output_keys();
 
         assert!(keys.is_empty());
         assert!(series_reader.runs_are_empty());
@@ -911,7 +915,7 @@ mod tests {
 
         assert_eq!(reader.run_count(), 0);
         assert!(reader.runs_are_empty());
-        assert!(reader.keys().is_empty());
+        assert!(reader.output_keys().is_empty());
     }
 
     #[rstest]
@@ -921,7 +925,7 @@ mod tests {
 
         assert_eq!(reader.run_count(), 1);
         assert!(reader.runs_are_empty());
-        assert!(reader.keys().is_empty());
+        assert!(reader.output_keys().is_empty());
     }
 
     #[rstest]
