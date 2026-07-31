@@ -112,7 +112,7 @@ impl ExperimentRun {
     }
 
     /// returns the environment of this Experiment Run
-    pub fn environment(&self) -> &Environment {
+    pub fn env(&self) -> &Environment {
         &self.env
     }
 
