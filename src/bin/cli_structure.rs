@@ -15,6 +15,10 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(version, name = "exomat")]
 pub struct Cli {
+    /// Run exomat as it were started in given path instead of current working directory
+    #[arg(short = 'C', value_name = "PATH")]
+    pub cd: Option<PathBuf>,
+
     /// Subcommand to execute
     #[clap(subcommand)]
     pub subcommand: Commands,
