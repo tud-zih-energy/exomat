@@ -1,6 +1,10 @@
 # exomat
 The `exomat` (experiment-o-matic) is a simple tool for organized creation and running of experiments.
 
+At its core, `exomat` replaces for-loops to iterate over parameters.
+The files for each invocation are recorded and stored for later reference.
+Various related tooling is included, e.g. for managing parameters and compiling all results.
+
 Download a binary from the [releases page](https://github.com/tud-zih-energy/exomat/releases) or install with `cargo install --git https://github.com/tud-zih-energy/exomat`.
 
 ## Overview
