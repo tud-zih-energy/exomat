@@ -3,6 +3,10 @@ name = "exomat"
 version = "0.1.1"
 edition = "2021"
 
+license = "GPL-3.0-or-later"
+description = "A simple tool for organized creation and running of experiments"
+repository = "https://github.com/tud-zih-energy/exomat"
+
 readme = "README.md"
 autobins = false
 autotests = true
