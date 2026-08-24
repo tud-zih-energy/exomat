@@ -154,7 +154,14 @@ pub enum Commands {
     ///
     /// For correct parsing: location / name of your output files need to conform to
     /// this format: ./runs/run_*/out_*
-    MakeTable {},
+    MakeTable {
+        /// Where to store the generated csv file
+        ///
+        /// By default, will derive name based on name of series dir.
+        /// Supply /dev/stdout to print to stdout.
+        #[arg(short = 'o', long)]
+        output: Option<PathBuf>,
+    },
 
     /// Generate exomat autocompletions
     ///

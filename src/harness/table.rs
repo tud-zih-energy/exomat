@@ -31,7 +31,7 @@ use crate::experiment::{CsvWriter, ExperimentSeries, FileReader};
 /// 42, true
 /// 300,false
 /// ```
-pub fn main() -> Result<()> {
+pub fn main(output: Option<PathBuf>) -> Result<()> {
     let series_dir = crate::find_marker_pwd(MARKER_SERIES)?;
 
     // collect all output from every run in series_dir
@@ -42,13 +42,52 @@ pub fn main() -> Result<()> {
     info!("Found keys: {:?}", keys);
 
     // output file will be "series_dir/[series_dir].csv"
-    let mut out_file = PathBuf::from(
-        series_dir
-            .file_name()
-            .expect("Could not read experiment series name"),
-    );
-    out_file.set_extension("csv");
+    let out_file = output.unwrap_or_else(|| {
+        let mut f = PathBuf::from(
+            series_dir
+                .file_name()
+                .expect("Could not read experiment series name"),
+        );
+        f.set_extension("csv");
+        f
+    });
 
     // serialize data and write to file
     reader.to_csv(&series_dir.join(out_file))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::helper::test_fixtures::filled_series_run_na;
+    use rusty_fork::rusty_fork_test;
+    use tempfile::NamedTempFile;
+
+    rusty_fork_test! {
+        #[test]
+        fn output_default() {
+            let filled_series_run_na = filled_series_run_na();
+            std::env::set_current_dir(filled_series_run_na.path()).unwrap();
+            main(None).unwrap();
+        }
+
+        #[test]
+        fn output_set_file() {
+            let output_file_a = NamedTempFile::new().unwrap();
+            let output_file_b = NamedTempFile::new().unwrap();
+
+            let filled_series_run_na = filled_series_run_na();
+            std::env::set_current_dir(filled_series_run_na.path()).unwrap();
+            main(Some(PathBuf::from(output_file_a.path()))).unwrap();
+            main(Some(PathBuf::from(output_file_b.path()))).unwrap();
+
+            let content_file_a = std::fs::read_to_string(output_file_a).unwrap();
+            let content_file_b = std::fs::read_to_string(output_file_b).unwrap();
+
+            assert_ne!("", content_file_a);
+            assert_ne!("", content_file_b);
+            assert_eq!(content_file_a, content_file_b);
+        }
+    }
 }
