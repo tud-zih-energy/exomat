@@ -144,6 +144,8 @@ pub fn filled_series_run_na() -> TempDir {
     let series_dir = TempDir::new().unwrap();
     let series_dir_path = series_dir.path().to_path_buf();
 
+    std::fs::File::create(series_dir_path.join(MARKER_SERIES)).unwrap();
+
     // create multiple repetition dirs
     let run_rep_dir_0 = series_dir_path
         .join(SERIES_RUNS_DIR)
