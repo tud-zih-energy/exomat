@@ -43,7 +43,7 @@ fn run_main(args: Cli, log_handler: indicatif::MultiProgress) -> Result<()> {
             append,
             remove,
         } => exomat::harness::env::main(add, append, remove),
-        Commands::MakeTable {} => exomat::harness::table::main(),
+        Commands::MakeTable { output } => exomat::harness::table::main(output),
         Commands::Completion { shell } => bin::completion::main(shell),
     }
 }
