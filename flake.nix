@@ -70,5 +70,12 @@
     in {
       packages = (self.overlays.default selfpkgs pkgs) //
         { default = selfpkgs.exomat; };
+
+      devShells.default = selfpkgs.default.overrideAttrs (old: {
+        nativeBuildInputs = old.nativeBuildInputs ++ (with pkgs; [
+          rustfmt
+          clippy
+        ]);
+      });
     }));
 }
