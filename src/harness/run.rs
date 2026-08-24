@@ -26,7 +26,7 @@ pub fn experiment(
 ) -> Result<()> {
     let output = match output {
         Some(x) => x,
-        None => ExperimentSeries::generate_series_filepath(&experiment.location())?,
+        None => ExperimentSeries::generate_series_filepath(experiment.location())?,
     };
 
     let mut series = ExperimentSeries::from_source(experiment)?;
