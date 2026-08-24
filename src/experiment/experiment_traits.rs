@@ -14,7 +14,7 @@ pub trait FileWriter {
 
     fn persist_logs(&mut self) -> Result<()> {
         Err(Error::WriterError {
-            dir: format!("Log files"),
+            dir: "Log files".to_string(),
             reason: String::from("Tried to persist logs, but struct does keep log files"),
         })
     }
@@ -48,7 +48,7 @@ pub trait FileWriter {
                 reason: e.to_string(),
             })?;
 
-        std::fs::write(&file_path, content)?;
+        std::fs::write(file_path, content)?;
         Ok(())
     }
 }

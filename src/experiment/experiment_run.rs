@@ -358,7 +358,7 @@ impl FileWriter for ExperimentRun {
 
         debug!("copy ruh.sh and [env].env to runs_dir");
         let mut run_file = self.create_executable(&exp_run_dir.join(RUN_RUN_FILE))?;
-        self.write_to_file(&mut run_file, &self.run_sh.as_bytes())?;
+        self.write_to_file(&mut run_file, self.run_sh.as_bytes())?;
 
         debug!("write envs to file (including exomat envs)");
         let mut serializable_envs = self.env.clone();
