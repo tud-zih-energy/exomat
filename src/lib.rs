@@ -51,7 +51,7 @@ use helper::fs_names::*;
 /// Logging will still work if this function is not called, however, only
 /// messages of info-severity or higher will be recorded.
 ///
-/// Logging messages will be handled by `spdlog` and printed to stdout.
+/// Logging messages will be handled by `spdlog` and printed to stderr.
 ///
 /// ## Usage of return value
 /// The returned `Multiprogress` can be used to stop log messages from interfering
@@ -100,7 +100,7 @@ fn disable_console_log() {
             spdlog::sink::StdStreamSink::builder()
                 .formatter(Box::new(PatternFormatter::new(pattern)))
                 .level_filter(spdlog::LevelFilter::Off)
-                .std_stream(spdlog::sink::StdStream::Stdout)
+                .std_stream(spdlog::sink::StdStream::Stderr)
                 .build()
                 .unwrap(),
         ))
@@ -161,7 +161,7 @@ pub fn reset_logger(verbosity: spdlog::LevelFilter) {
             spdlog::sink::StdStreamSink::builder()
                 .formatter(Box::new(PatternFormatter::new(pattern)))
                 .level_filter(verbosity)
-                .std_stream(spdlog::sink::StdStream::Stdout)
+                .std_stream(spdlog::sink::StdStream::Stderr)
                 .build()
                 .unwrap(),
         ))
