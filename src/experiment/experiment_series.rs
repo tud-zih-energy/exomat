@@ -611,7 +611,7 @@ impl FileWriter for ExperimentSeries {
 
             // append to exomat log
             let exomat_log_path = path.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG);
-            self.append_to_file(&exomat_log_path, "{buf")
+            self.append_to_file(&exomat_log_path, &buf)
         } else {
             Err(Error::HarnessRunError {
                 experiment: self.experiment_name()?,
