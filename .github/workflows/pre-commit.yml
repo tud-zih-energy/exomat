@@ -1,0 +1,34 @@
+name: pre-commit
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install the Rust toolchain with clippy + rustfmt components
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      # Cache cargo + build artifacts for faster runs
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      # Python is preinstalled on ubuntu-latest; set it up explicitly for pinning
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      # Run all hooks
+      - uses: pre-commit/action@v3.0.1
