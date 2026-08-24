@@ -31,7 +31,7 @@ fn smoketest_make_table() {
         .args(&["-C", "exp_out", "make-table"])
         .assert()
         .success()
-        .stdout(predicate::str::contains(VAR_NAME));
+        .stderr(predicate::str::contains(VAR_NAME));
 
     let csv_content =
         std::fs::read_to_string(workspace.path().join("exp_out").join("exp_out.csv")).unwrap();
