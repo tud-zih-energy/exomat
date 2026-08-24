@@ -128,5 +128,8 @@ The `exomat run` command produces three different log files found under `[series
 
 > This log content is also not affected by `-v` or `-q`.
 
+## Contributing
+Install pre-commit hooks with `pre-commit install`.
+
 ## License
 `exomat` is available under GPLv3+ (GPL-3.0-or-later).
