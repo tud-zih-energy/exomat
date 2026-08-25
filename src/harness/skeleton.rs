@@ -10,13 +10,21 @@ pub fn main(exp_src_dir: &Path) -> Result<()> {
     let mut src = ExperimentSource::new();
     src.persist(exp_src_dir)?;
 
-    println!();
-    println!("next steps:");
-    println!("1. add variables with:");
-    println!("   exomat env --add COUNT 1 2 3");
-    println!("2. adjust script in template/run.sh");
-    println!("3. execute experiment with:");
-    println!("   exomat run {}", exp_src_dir.display());
+    println!(
+        r#"
+Next steps:
+
+# add variables
+exomat -C {dir} env COUNT 1 2 3
+
+# adjust script
+vim {dir}/template/run.sh
+
+# execute experiment
+exomat run {dir}
+"#,
+        dir = exp_src_dir.display()
+    );
 
     Ok(())
 }
