@@ -55,6 +55,15 @@ $ exomat env
 └───────┴───────┘
 ```
 
+> Using the `-C` flag makes `exomat` change into the given dir before doing anything else.
+> You can run:
+> ```
+> exomat skeleton loadavg # perhaps edit loadavg/template/run.sh
+> exomat -C loadavg env --add NCPUS 1 2 3 4
+> ```
+>
+> Note that all paths passed to exomat will be interpreted from the dir given via `-C` as well!
+
 ### Run Experiment
 The directory `template/` will be cloned for each env file (and repetition).
 The environment variables will be loaded, and then `run.sh` executed from this new directory.
