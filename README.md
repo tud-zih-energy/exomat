@@ -57,7 +57,7 @@ $ exomat env
 
 > Using the `-C` flag makes `exomat` change into the given dir before doing anything else.
 > You can run:
-> ```
+> ```bash
 > exomat skeleton loadavg # perhaps edit loadavg/template/run.sh
 > exomat -C loadavg env --add NCPUS 1 2 3 4
 > ```
