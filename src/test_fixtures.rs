@@ -45,6 +45,20 @@ pub fn skeleton_out() -> TempDir {
 /// generates a tempdir with the following structure:
 /// ```notest
 /// tempdir/
+/// |- [MARKER_SRC]     [EMPTY]
+/// \- [SRC_ENV_DIR]/
+///     \- 0.env       [EMPTY]
+/// ```
+#[fixture]
+pub fn skeleton_default_env() -> TempDir {
+    let skeleton_out = skeleton_out();
+    create_harness_file(&skeleton_out.path().join(SRC_ENV_DIR).join("0.env")).unwrap();
+    skeleton_out
+}
+
+/// generates a tempdir with the following structure:
+/// ```notest
+/// tempdir/
 /// \- [SERIES_RUNS_DIR]/
 ///     \- [TEST_RUN_REP_DIR0]/
 ///         |- RUN_RUN_FILE   [EMPTY]

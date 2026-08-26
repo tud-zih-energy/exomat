@@ -5,6 +5,7 @@ use std::process::ExitCode;
 pub mod bin {
     pub mod cli_structure;
     pub mod completion;
+    pub mod csv_helper;
     pub mod run;
 }
 
@@ -60,6 +61,11 @@ fn run_main(args: Cli, log_handler: indicatif::MultiProgress) -> Result<()> {
         } => exomat::harness::env::main(add, append, remove),
         Commands::MakeTable { output } => exomat::harness::table::main(output),
         Commands::Completion { shell } => bin::completion::main(shell),
+        Commands::CsvHelper {
+            format,
+            no_rm_default_env,
+            input,
+        } => bin::csv_helper::main(&input, format, no_rm_default_env),
     }
 }
 
