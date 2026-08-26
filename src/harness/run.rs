@@ -146,7 +146,7 @@ fn execute_exp_repetitions(
 #[cfg(test)]
 mod tests {
     use rusty_fork::rusty_fork_test;
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
     use std::path::PathBuf;
     use tempfile::TempDir;
 
@@ -206,7 +206,7 @@ mod tests {
             // make multiple .env files that set $FOO to different values
             let mut src = ExperimentSource::new();
             src.set_run_script(format!("#!/usr/bin/env bash\necho $FOO\necho $FOO >> out_file"));
-            src.set_envs(HashMap::from([
+            src.set_envs(BTreeMap::from([
                 (PathBuf::from("0.env"), Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())])),
                 (PathBuf::from("1.env"), Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())])),
             ])).unwrap();
@@ -249,7 +249,7 @@ mod tests {
             // make multiple .env files that set $FOO to different values
             let mut src = ExperimentSource::new();
             src.set_run_script(format!("#!/usr/bin/env bash\necho $FOO\necho $FOO >> out_file"));
-            src.set_envs(HashMap::from([
+            src.set_envs(BTreeMap::from([
                 (PathBuf::from("0.env"),Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())])),
                 (PathBuf::from("1.env"),Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())])),
             ])).unwrap();

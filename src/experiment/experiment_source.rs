@@ -1,6 +1,5 @@
 use log::{debug, info, warn};
 use std::{
-    collections::HashMap,
     fs::read_to_string,
     path::{Path, PathBuf},
 };
@@ -41,7 +40,7 @@ impl ExperimentSource {
     pub fn new() -> Self {
         ExperimentSource {
             run_sh: include_str!("../harness/run.sh.template").to_string(),
-            envs: HashMap::new(),
+            envs: EnvironmentLocationList::new(),
             exomat_envs: ExomatEnvironment::new(&PathBuf::new(), 1),
         }
     }
@@ -66,10 +65,12 @@ impl ExperimentSource {
         }
 
         let trial_env: EnvironmentLocationList = match self.envs.is_empty() {
-            true => HashMap::from([(PathBuf::from(SRC_ENV_FILE), Environment::new())]),
+            true => {
+                EnvironmentLocationList::from([(PathBuf::from(SRC_ENV_FILE), Environment::new())])
+            }
             false => {
                 let (path, env) = take_first(&self.envs);
-                HashMap::from([(path.clone(), env.clone())])
+                EnvironmentLocationList::from([(path.clone(), env.clone())])
             }
         };
 
