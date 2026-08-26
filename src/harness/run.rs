@@ -154,7 +154,7 @@ mod tests {
     use crate::experiment::{ExperimentRun, ExperimentSource, FileWriter};
     use crate::harness::env::{Environment, ExomatEnvironment};
     use crate::helper::fs_names::*;
-    use crate::helper::test_helper::read_log;
+    use crate::test_helper::read_log;
 
     rusty_fork_test! {
         #[test]

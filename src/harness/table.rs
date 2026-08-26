@@ -60,7 +60,7 @@ pub fn main(output: Option<PathBuf>) -> Result<()> {
 mod tests {
     use super::*;
 
-    use crate::helper::test_fixtures::filled_series_run_na;
+    use crate::test_fixtures::filled_series_run_na;
     use rusty_fork::rusty_fork_test;
     use tempfile::NamedTempFile;
 

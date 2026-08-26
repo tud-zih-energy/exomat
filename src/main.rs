@@ -8,6 +8,21 @@ pub mod bin {
     pub mod run;
 }
 
+// fixtures are not exported by exomat, hence they are re-imported here
+#[cfg(test)]
+pub mod test_fixtures;
+
+// As test_fixtures uses `use super` to refer to the root in the exomat
+// library crate, reimport all symbols from exomat, so this file (in this
+// case `super` from `test_fixtures`s perspective) contains all required
+// modules. Hacky, but it works.
+//
+// The alternative would be moving test_util into a fully stand-alone
+// library crate, which would then involve workspaces, which is
+// overkill just for testing.
+#[cfg(test)]
+use exomat::*;
+
 use bin::cli_structure::{Cli, Commands};
 use exomat::helper::errors::{Error, Result};
 

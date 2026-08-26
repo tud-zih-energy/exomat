@@ -547,8 +547,8 @@ mod tests {
     use super::*;
     use crate::experiment::{ExperimentRun, ExperimentSeries, ExperimentSource, FileWriter};
     use crate::harness::env::Environment;
-    use crate::helper::test_fixtures::{setup_run_dir, setup_run_dir_shadow, setup_series_no_out};
-    use crate::helper::test_helper::populate_src_with_series;
+    use crate::test_fixtures::{setup_run_dir, setup_run_dir_shadow, setup_series_no_out};
+    use crate::test_helper::populate_src_with_series;
 
     use tempfile::TempDir;
 
