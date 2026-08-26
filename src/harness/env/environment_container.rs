@@ -320,7 +320,7 @@ mod tests {
     use rstest::rstest;
     use tempfile::TempDir;
 
-    use crate::helper::test_fixtures::{
+    use crate::test_fixtures::{
         container_multiple, container_single, envlist_mixed, envlist_one_var_no_val,
         envlist_one_var_one_val, envlist_one_var_two_val, envlist_two_var_two_val,
     };

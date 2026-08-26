@@ -218,7 +218,7 @@ impl Display for OutFile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::helper::test_helper::create_out_file;
+    use crate::test_helper::create_out_file;
 
     #[test]
     fn outfile_repeat() {

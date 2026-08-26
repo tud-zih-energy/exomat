@@ -783,13 +783,13 @@ impl<'a> IntoIterator for &'a ExperimentSeries {
 mod tests {
     use super::*;
 
-    use crate::helper::test_fixtures::{
+    use crate::test_fixtures::{
         filled_series_run_duplicate, filled_series_run_invalid, filled_series_run_na, outlist_1a,
         outlist_empty_string, outlist_mixed_weird, outlist_one_var_no_val, setup_series_dir,
         setup_series_empty_out, setup_series_no_out, skeleton_series_run,
         skeleton_series_run_empty, skeleton_src,
     };
-    use crate::helper::test_helper::{contains_either, create_out_file};
+    use crate::test_helper::{contains_either, create_out_file};
     use rstest::rstest;
     use rusty_fork::rusty_fork_test;
     use tempfile::TempDir;

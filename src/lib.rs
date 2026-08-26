@@ -26,13 +26,13 @@ pub mod helper {
     pub mod archivist;
     pub mod errors;
     pub mod fs_names;
-
-    #[cfg(test)]
-    pub mod test_fixtures;
-
-    #[cfg(test)]
-    pub mod test_helper;
 }
+
+#[cfg(test)]
+pub mod test_fixtures;
+
+#[cfg(test)]
+pub mod test_helper;
 
 use indicatif::MultiProgress;
 use indicatif_log_bridge::LogWrapper;

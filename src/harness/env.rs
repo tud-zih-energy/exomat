@@ -415,7 +415,7 @@ mod tests {
 
     use super::*;
 
-    use crate::helper::test_fixtures::{
+    use crate::test_fixtures::{
         env_1a, envlist_1a, envlist_2b, envlist_ab321, filled_src_envs, skeleton_out, skeleton_src,
         skeleton_src_envs, vec_321, vec_ab,
     };
