@@ -3,7 +3,7 @@
 use itertools::Itertools;
 use log::{debug, info, trace};
 use regex::Regex;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 pub mod environment;
@@ -29,7 +29,7 @@ pub use exomat_environment::ExomatEnvironment;
 pub type EnvList = HashMap<String, Vec<String>>;
 
 /// Mapping of file paths to Environments
-pub type EnvironmentLocationList = HashMap<PathBuf, Environment>;
+pub type EnvironmentLocationList = BTreeMap<PathBuf, Environment>;
 
 /// Collects paths of all .env files in `from`. Returns `None` if
 /// no .env files were found.
@@ -223,7 +223,7 @@ fn to_env_list(old_list: &Vec<Vec<String>>) -> Result<EnvList> {
 /// - Panics if `from` could not be read
 /// - Returns an `EnvError` if something went wrong during the deserialization of envs
 pub fn get_existing_environments_by_fname(from: &PathBuf) -> Result<EnvironmentLocationList> {
-    let mut envs: EnvironmentLocationList = HashMap::new();
+    let mut envs = EnvironmentLocationList::new();
 
     // if there are .env files present, read existing vars from them
     if let Some(env_files) = fetch_environment_files(from) {
@@ -601,9 +601,10 @@ mod tests {
             let envs_fname = get_existing_environments_by_fname(&PathBuf::from(".")).unwrap();
             assert_eq!(
                 envs_fname,
-                HashMap::from([(PathBuf::from("01.env"), expected_bar),
-                            (PathBuf::from("two.env"), expected_baz)
-                            ])
+                BTreeMap::from([
+                    (PathBuf::from("01.env"), expected_bar),
+                    (PathBuf::from("two.env"), expected_baz),
+                ])
             );
         }
     }

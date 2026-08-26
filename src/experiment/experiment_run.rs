@@ -546,7 +546,7 @@ impl<'a> IntoIterator for &'a ExperimentRun {
 mod tests {
     use super::*;
     use crate::experiment::{ExperimentRun, ExperimentSeries, ExperimentSource, FileWriter};
-    use crate::harness::env::Environment;
+    use crate::harness::env::{Environment, EnvironmentLocationList};
     use crate::test_fixtures::{setup_run_dir, setup_run_dir_shadow, setup_series_no_out};
     use crate::test_helper::populate_src_with_series;
 
@@ -616,7 +616,7 @@ mod tests {
         // create a source with all needed envs set
         let mut src = ExperimentSource::new();
         src.set_exomat_envs(ExomatEnvironment::new(&tmpdir.join(source_name), 1));
-        src.set_envs(HashMap::from([(
+        src.set_envs(EnvironmentLocationList::from([(
             PathBuf::from(SRC_ENV_FILE),
             Environment::from_env_list(vec![("FOO".to_string(), "bar".to_string())]),
         )]))
