@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use std::path::PathBuf;
@@ -25,6 +25,16 @@ pub struct Cli {
 
     #[command(flatten)]
     pub verbose: Verbosity<InfoLevel>,
+}
+
+/// A format into which CSV files can be transformed
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq)]
+pub enum CsvToFormat {
+    /// out_ files
+    Out,
+
+    /// .env files
+    Env,
 }
 
 #[derive(Debug, Subcommand)]
@@ -161,6 +171,52 @@ pub enum Commands {
         /// Supply /dev/stdout to print to stdout.
         #[arg(short = 'o', long)]
         output: Option<PathBuf>,
+    },
+
+    /// Convert a CSV file to exomat files
+    ///
+    /// Use the -C option to select a different output location. (Note that -C affects the
+    /// interpreation of the given input!)
+    ///
+    /// ## Format `--format out`
+    /// Generate one out_ file per column in CSV.
+    ///
+    /// Can be used to make a CSV file produced by a single env available to make-table.
+    /// E.g., your template/run.sh may contain:
+    ///
+    /// ```bash
+    /// ../helpers/my-program --duration $DURATION --option $OPTION --csv my-data.csv
+    /// exomat csv-helper --format csv --input my-data.csv
+    /// ```
+    ///
+    /// out_ files will be created in current directory.
+    ///
+    /// ## Format `--format env`
+    /// Generate one .env file per row in CSV.
+    ///
+    /// Will generate new extra environments, old ones will not be touched!
+    ///
+    /// Will detect location of envs based on current pwd.
+    #[command(verbatim_doc_comment)]
+    CsvHelper {
+        /// Format into which the csv file should be transformed
+        #[arg(long, short, alias = "to", default_value = "out")]
+        format: CsvToFormat,
+
+        /// Keep default-created 0.env when using --format env
+        ///
+        /// By default exomat skeleton creates an environment 0.env.
+        /// *Iff* there is only this default env, it is destroyed, unless --no-rm-default-env is
+        /// given.
+        ///
+        /// In general, --format env only adds new envs, and leaves old envs untouched.
+        /// 0.env is the exception, which can be disabled with --no-rm-default-env.
+        #[arg(long, default_value_t = false)]
+        no_rm_default_env: bool,
+
+        /// CSV file to read
+        #[arg(long, short, default_value = "/dev/stdin")]
+        input: PathBuf,
     },
 
     /// Generate exomat autocompletions
