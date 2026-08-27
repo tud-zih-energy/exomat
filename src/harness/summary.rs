@@ -42,16 +42,12 @@ pub fn main(estimate_s: Option<Option<u64>>, estimate_rep: Option<Option<u64>>) 
         let mut rep = 1;
 
         // reset values if the user gave custom values
-        if let Some(requested) = estimate_s {
-            if let Some(custom_estimate) = requested {
-                per_run = vec![custom_estimate];
-            }
+        if let Some(Some(custom_estimate)) = estimate_s {
+            per_run = vec![custom_estimate];
         };
 
-        if let Some(requested) = estimate_rep {
-            if let Some(custom_estimate) = requested {
-                rep = custom_estimate;
-            }
+        if let Some(Some(custom_estimate)) = estimate_rep {
+            rep = custom_estimate;
         };
 
         println!("[{exp_name}] estimated runtime per repetition");
@@ -74,7 +70,7 @@ pub fn main(estimate_s: Option<Option<u64>>, estimate_rep: Option<Option<u64>>) 
                 estimation.num_hours(),
                 estimation.num_minutes() % 60,
                 estimation.num_seconds() % 60,
-                eta.format("%H:%M").to_string()
+                eta.format("%H:%M")
             );
         }
     }
