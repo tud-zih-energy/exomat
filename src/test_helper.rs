@@ -42,7 +42,7 @@ pub fn populate_src_with_series(
     src.set_exomat_envs(ExomatEnvironment::new(&source, 1));
     src.persist(&source).unwrap();
 
-    let mut ser = ExperimentSeries::from_source(&src).unwrap();
+    let mut ser = ExperimentSeries::try_from(&src).unwrap();
     ser.set_location(series);
 
     (src, ser)

@@ -33,7 +33,9 @@ pub struct ExperimentSeries {
     pub runs: Vec<ExperimentRun>,
 }
 
-impl ExperimentSeries {
+impl TryFrom<&ExperimentSource> for ExperimentSeries {
+    type Error = Error;
+
     /// Gernerate an Experiment Series based on source
     ///
     /// The ExperimentSeries will have the following values set:
@@ -44,7 +46,7 @@ impl ExperimentSeries {
     /// ## Errors
     /// - retruns a `HarnessRunError` if source.location is PWD
     /// - returns an `IoError` if it cannot parse a valid Series name
-    pub fn from_source(source: &ExperimentSource) -> Result<Self> {
+    fn try_from(source: &ExperimentSource) -> Result<Self> {
         if source.location().display().to_string() == "." {
             return Err(Error::HarnessRunError {
                 experiment: source.name()?,
@@ -64,6 +66,7 @@ impl ExperimentSeries {
             runs: Vec::new(),
         })
     }
+}
 
     /// Return a string describing the overall success of the Experiment Series
     ///
@@ -714,7 +717,7 @@ mod tests {
             source.persist(&exp_source).unwrap();
 
             // create series dir (next to exp_source, named "foo", is not a trial run)
-            let mut series = ExperimentSeries::from_source(&source).unwrap();
+            let mut series = ExperimentSeries::try_from(&source).unwrap();
             series.persist(&exp_series).unwrap();
 
             assert!(tmpdir.join("foo").is_dir());

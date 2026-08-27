@@ -30,7 +30,7 @@ pub fn experiment(
         None => ExperimentSeries::generate_series_filepath(experiment.location())?,
     };
 
-    let mut series = ExperimentSeries::from_source(experiment)?;
+    let mut series = ExperimentSeries::try_from(experiment)?;
     series.generate_runs()?;
     series.persist(&output)?;
 
@@ -146,7 +146,7 @@ mod tests {
             src.set_exomat_envs(ExomatEnvironment::new(&exp_source, 1));
             src.persist(&exp_source).unwrap();
 
-            let mut ser = ExperimentSeries::from_source(&src).unwrap();
+            let mut ser = ExperimentSeries::try_from(&src).unwrap();
             ser.generate_runs().unwrap();
             ser.persist(&exp_series).unwrap();
 

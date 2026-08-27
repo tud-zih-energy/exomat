@@ -558,7 +558,7 @@ mod tests {
         });
         src.persist(&tmpdir.join("FooSource")).unwrap();
 
-        let mut ser = ExperimentSeries::from_source(&src).unwrap();
+        let mut ser = ExperimentSeries::try_from(&src).unwrap();
         ser.generate_runs().unwrap();
         assert_eq!(ser.runs().len(), 15);
         ser.persist(&tmpdir.to_path_buf()).unwrap();
@@ -587,7 +587,7 @@ mod tests {
         src.persist(&tmpdir.join(source_name)).unwrap();
 
         // create a series based on this source
-        let mut ser = ExperimentSeries::from_source(&src).unwrap();
+        let mut ser = ExperimentSeries::try_from(&src).unwrap();
         ser.generate_runs().unwrap();
         assert_eq!(ser.runs().len(), 1);
         ser.persist(&tmpdir.join(series_name)).unwrap();
