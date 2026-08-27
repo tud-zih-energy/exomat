@@ -271,7 +271,7 @@ pub fn envlist_1a() -> EnvList {
 /// generates an OutList with `1: ["a"]`
 #[fixture]
 pub fn outlist_1a() -> OutList {
-    OutList::from(vec![OutFile::from("1", vec!["a".to_string()])]).unwrap()
+    OutList::try_from(vec![OutFile::from("1", vec!["a".to_string()])]).unwrap()
 }
 
 /// generates an EnvList with `2: ["b"]`
@@ -289,7 +289,7 @@ pub fn envlist_empty_string() -> EnvList {
 /// generates an Outlist with `VAR: [""]`
 #[fixture]
 pub fn outlist_empty_string() -> OutList {
-    OutList::from(vec![OutFile::from("VAR", vec!["".to_string()])]).unwrap()
+    OutList::try_from(vec![OutFile::from("VAR", vec!["".to_string()])]).unwrap()
 }
 
 /// generates an EnvList with `VAR: []`
@@ -301,7 +301,7 @@ pub fn envlist_one_var_no_val() -> EnvList {
 /// generates an OutList with `VAR: []`
 #[fixture]
 pub fn outlist_one_var_no_val() -> OutList {
-    OutList::from(vec![OutFile::from("VAR", vec![])]).unwrap()
+    OutList::try_from(vec![OutFile::from("VAR", vec![])]).unwrap()
 }
 
 /// generates an EnvList with `VAR: ["VAL"]`
@@ -358,7 +358,7 @@ pub fn envlist_mixed_weird() -> EnvList {
 /// generates an OutList with `VAR1: ["VALUE", "baz"], VAR2: ["", "a,b"]`
 #[fixture]
 pub fn outlist_mixed_weird() -> OutList {
-    OutList::from(vec![
+    OutList::try_from(vec![
         OutFile::from("VAR1", vec!["VALUE".to_string(), "baz".to_string()]),
         OutFile::from("VAR2", vec![String::new(), "a,b".to_string()]),
     ])

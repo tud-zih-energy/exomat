@@ -17,13 +17,8 @@ pub struct OutList {
     out_files: Vec<OutFile>,
 }
 
-impl OutList {
-    /// Creates an empty OutList
-    pub fn new() -> Self {
-        Self {
-            out_files: Vec::new(),
-        }
-    }
+impl TryFrom<Vec<OutFile>> for OutList {
+    type Error = Error;
 
     /// Creates a new OutList.
     ///
@@ -31,7 +26,7 @@ impl OutList {
     ///
     /// ## Errors
     /// - Returns a `ReaderError` if duplicate out_ file names are found
-    pub fn from(out_files: Vec<OutFile>) -> Result<Self> {
+    fn try_from(out_files: Vec<OutFile>) -> Result<Self> {
         // Ensure all outfile names are unique
         let mut names = HashSet::new();
         for outfile in &out_files {
@@ -44,6 +39,15 @@ impl OutList {
         }
 
         Ok(Self { out_files })
+    }
+}
+
+impl OutList {
+    /// Creates an empty OutList
+    pub fn new() -> Self {
+        Self {
+            out_files: Vec::new(),
+        }
     }
 
     /// Returns the length of the longest OutFile in out_files
@@ -303,7 +307,7 @@ mod tests {
 
     #[test]
     fn outlist_from_outfiles_success() {
-        let list = OutList::from(vec![
+        let list = OutList::try_from(vec![
             OutFile::from("a", vec!["x".to_string()]),
             OutFile::from("b", vec!["y".to_string(), "z".to_string()]),
         ])
@@ -323,6 +327,6 @@ mod tests {
         let a = OutFile::from("dup", vec!["x".to_string()]);
         let b = OutFile::from("dup", vec!["y".to_string()]);
 
-        assert!(OutList::from(vec![a, b]).is_err());
+        assert!(OutList::try_from(vec![a, b]).is_err());
     }
 }

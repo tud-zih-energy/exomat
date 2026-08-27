@@ -875,8 +875,8 @@ mod tests {
         let runs = reader.runs();
 
         let expected_outlists = vec![
-            OutList::from(vec![OutFile::from("empty", vec![String::from("")])]).unwrap(),
-            OutList::from(vec![OutFile::from("empty", vec![String::from("NA")])]).unwrap(),
+            OutList::try_from(vec![OutFile::from("empty", vec![String::from("")])]).unwrap(),
+            OutList::try_from(vec![OutFile::from("empty", vec![String::from("NA")])]).unwrap(),
         ];
 
         assert_eq!(reader.run_count(), 2);
