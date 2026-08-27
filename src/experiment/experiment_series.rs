@@ -302,7 +302,7 @@ impl TryFrom<&ExperimentSource> for ExperimentSeries {
         for run in self.runs.iter_mut() {
             for key in &keys {
                 if run.out_var(key).is_none() {
-                    run.insert_out_file(OutFile::from(key, vec!["NA".to_string()]));
+                    run.insert_out_file(OutFile::new(key, vec!["NA".to_string()]));
                 }
             }
         }
@@ -875,8 +875,8 @@ mod tests {
         let runs = reader.runs();
 
         let expected_outlists = vec![
-            OutList::try_from(vec![OutFile::from("empty", vec![String::from("")])]).unwrap(),
-            OutList::try_from(vec![OutFile::from("empty", vec![String::from("NA")])]).unwrap(),
+            OutList::try_from(vec![OutFile::new("empty", vec![String::from("")])]).unwrap(),
+            OutList::try_from(vec![OutFile::new("empty", vec![String::from("NA")])]).unwrap(),
         ];
 
         assert_eq!(reader.run_count(), 2);
@@ -1005,13 +1005,13 @@ mod tests {
         let runs = reader.runs();
 
         // check results
-        let some0 = OutFile::from("some", vec![String::from("bar")]);
-        let empty0 = OutFile::from("empty", vec![String::from("NA")]);
-        let emptytxt0 = OutFile::from("empty.txt", vec![String::from("NA")]);
+        let some0 = OutFile::new("some", vec![String::from("bar")]);
+        let empty0 = OutFile::new("empty", vec![String::from("NA")]);
+        let emptytxt0 = OutFile::new("empty.txt", vec![String::from("NA")]);
 
-        let some1 = OutFile::from("some", vec![String::from("foo")]);
-        let empty1 = OutFile::from("empty", vec![String::from("")]);
-        let emptytxt1 = OutFile::from("empty.txt", vec![String::from("")]);
+        let some1 = OutFile::new("some", vec![String::from("foo")]);
+        let empty1 = OutFile::new("empty", vec![String::from("")]);
+        let emptytxt1 = OutFile::new("empty.txt", vec![String::from("")]);
 
         assert_eq!(reader.run_count(), 2);
 
