@@ -5,7 +5,7 @@ use crate::helper::errors::{Error, Result};
 
 use chrono::Local;
 use log::{debug, trace};
-use std::path::PathBuf;
+use std::path::Path;
 use std::time::Duration;
 
 /// entrypoint for summary binary
@@ -27,12 +27,12 @@ use std::time::Duration;
 /// - returns a `SummaryError` if the estimated runtime could not be calculated
 /// - panics if the name of the Experiment could not be read from `source`
 pub fn main(
-    source: &PathBuf,
+    source: &Path,
     estimate_s: Option<Option<u64>>,
     estimate_rep: Option<Option<u64>>,
 ) -> Result<()> {
     trace!("Parsing experiment Source...");
-    let source = ExperimentSource::parse(&source)?;
+    let source = ExperimentSource::parse(source)?;
     let exp_name = source.name().unwrap();
 
     // print summary, no matter the other options
@@ -46,16 +46,12 @@ pub fn main(
         let mut rep = 1;
 
         // reset values if the user gave custom values
-        if let Some(requested) = estimate_s {
-            if let Some(custom_estimate) = requested {
-                per_run = vec![custom_estimate];
-            }
+        if let Some(Some(custom_estimate)) = estimate_s {
+            per_run = vec![custom_estimate];
         };
 
-        if let Some(requested) = estimate_rep {
-            if let Some(custom_estimate) = requested {
-                rep = custom_estimate;
-            }
+        if let Some(Some(custom_estimate)) = estimate_rep {
+            rep = custom_estimate;
         };
 
         println!("[{exp_name}] estimated runtime per repetition");
@@ -78,7 +74,7 @@ pub fn main(
                 estimation.num_hours(),
                 estimation.num_minutes() % 60,
                 estimation.num_seconds() % 60,
-                eta.format("%H:%M").to_string()
+                eta.format("%H:%M")
             );
         }
     }

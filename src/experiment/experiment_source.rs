@@ -274,10 +274,10 @@ impl std::fmt::Display for ExperimentSource {
     /// Prints a summary about this Experiment Source
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fn duration_to_string(duration: std::time::SystemTime) -> String {
-            let dt_now_local: DateTime<Local> = duration.clone().into();
+            let dt_now_local: DateTime<Local> = duration.into();
 
             let format = "%d-%m-%Y %H:%M:%S";
-            dt_now_local.format(&format).to_string()
+            dt_now_local.format(format).to_string()
         }
 
         let exp_name = self.name().map_err(|_| std::fmt::Error)?;
@@ -306,9 +306,8 @@ impl std::fmt::Display for ExperimentSource {
         let env_count = self.envs.len();
         let mut env_vars: Vec<&String> = self
             .envs
-            .iter()
-            .map(|(_, env_file)| env_file.get_env_vars())
-            .flatten()
+            .values()
+            .flat_map(|env_file| env_file.get_env_vars())
             .collect();
         env_vars.sort();
         env_vars.dedup();
