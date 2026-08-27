@@ -172,13 +172,9 @@ cd $DIR
 # missing experiment
 ! "$EXOMAT_BIN" summary
 
-# missing option
-! "$EXOMAT_BIN" summary $DIR/One
-
 # should work
-"$EXOMAT_BIN" summary $DIR/One --full
-"$EXOMAT_BIN" summary $DIR/One --estimate
-"$EXOMAT_BIN" summary $DIR/One --estimate --full
+"$EXOMAT_BIN" summary $DIR/One
+"$EXOMAT_BIN" summary $DIR/One --estimated-per-run
 
 # not an experiment source
-! "$EXOMAT_BIN" summary $DIR/One_Out1 --estimate
+! "$EXOMAT_BIN" summary $DIR/One_Out1 --estimated-per-run
