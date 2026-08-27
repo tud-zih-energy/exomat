@@ -98,7 +98,7 @@ fn disable_console_log() {
         .level_filter(spdlog::LevelFilter::All)
         .sink(Arc::new(
             spdlog::sink::StdStreamSink::builder()
-                .formatter(Box::new(PatternFormatter::new(pattern)))
+                .formatter(PatternFormatter::new(pattern))
                 .level_filter(spdlog::LevelFilter::Off)
                 .std_stream(spdlog::sink::StdStream::Stderr)
                 .build()
@@ -128,7 +128,7 @@ pub fn duplicate_log_to_pipe() -> Result<PipeReader> {
         .fork_with(|new| {
             let pipe_sink = Arc::new(
                 WriteSink::builder()
-                    .formatter(Box::new(PatternFormatter::new(pattern)))
+                    .formatter(PatternFormatter::new(pattern))
                     .level_filter(spdlog::LevelFilter::All)
                     .target(wtr)
                     .build()?,
@@ -159,7 +159,7 @@ pub fn reset_logger(verbosity: spdlog::LevelFilter) {
         .level_filter(spdlog::LevelFilter::All)
         .sink(Arc::new(
             spdlog::sink::StdStreamSink::builder()
-                .formatter(Box::new(PatternFormatter::new(pattern)))
+                .formatter(PatternFormatter::new(pattern))
                 .level_filter(verbosity)
                 .std_stream(spdlog::sink::StdStream::Stderr)
                 .build()
