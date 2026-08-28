@@ -29,6 +29,7 @@ use exomat::helper::errors::{Error, Result};
 
 fn main() -> ExitCode {
     let args = Cli::parse();
+    exomat::helper::logging::setup_global_logger(args.verbose);
 
     match run_main(args) {
         Err(err) => {

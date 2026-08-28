@@ -53,4 +53,8 @@ pub enum Error {
     /// Index out of range
     #[error("Index out of range: index is {index} but limit is {limit}")]
     IndexOutOfRange { index: usize, limit: usize },
+
+    /// tracing had a hiccup
+    #[error("logging infrastructure failure: {0}")]
+    LoggingError(String),
 }
