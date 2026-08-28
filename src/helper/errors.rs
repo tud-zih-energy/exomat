@@ -57,4 +57,11 @@ pub enum Error {
     /// tracing had a hiccup
     #[error("logging infrastructure failure: {0}")]
     LoggingError(String),
+
+    #[error("Error in async runtime (tokio): {0:?}")]
+    TokioError(std::io::Error),
+
+    /// Error while joining a sub-task
+    #[error("failure to join async task: {0}")]
+    TokioJoinError(#[from] tokio::task::JoinError),
 }
