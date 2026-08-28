@@ -1,4 +1,3 @@
-use crate::duplicate_log_to_pipe;
 use crate::experiment::{
     experiment_run::RunStatus, out_file::OutFile, CsvWriter, ExperimentRun, ExperimentSource,
     FileReader, FileWriter,
@@ -14,8 +13,6 @@ use chrono::Local;
 use csv::Writer;
 use log::{debug, info, trace, warn};
 use rand::seq::SliceRandom;
-use std::fs::{read_to_string, write};
-use std::io::{PipeReader, Read};
 use std::path::{Path, PathBuf};
 
 #[cfg(test)]
@@ -29,15 +26,11 @@ use crate::experiment::out_file::OutList;
 /// 2. `generate_runs()`
 /// 2. `persist(...)`
 /// 3. `for run in series.iter() { run.execute(); }`
-/// 4. `persist_logs()`
 #[derive(Debug)]
 pub struct ExperimentSeries {
     source: ExperimentSource,
     path: Option<PathBuf>,
     runs: Vec<ExperimentRun>,
-    stdout_log: String,
-    stderr_log: String,
-    exomat_log: PipeReader,
 }
 
 impl ExperimentSeries {
@@ -47,9 +40,6 @@ impl ExperimentSeries {
     /// - `source`: copy of source
     /// - `path`: output of ExperimentSeries::generate_series_filepath()
     /// - `runs`: empty Vector
-    /// - `stdout_log`: empty String
-    /// - `stderr_log`: empty String
-    /// - `exomat_log`: empty String
     ///
     /// ## Errors
     /// - retruns a `HarnessRunError` if source.location is PWD
@@ -72,9 +62,6 @@ impl ExperimentSeries {
             source: source.clone(),
             path: Some(location),
             runs: Vec::new(),
-            stdout_log: String::new(),
-            stderr_log: String::new(),
-            exomat_log: duplicate_log_to_pipe()?,
         })
     }
 
@@ -208,11 +195,6 @@ impl ExperimentSeries {
         self.source.run_script()
     }
 
-    /// Retuns the content of the stderr log
-    pub fn err_log(&self) -> &str {
-        &self.stderr_log
-    }
-
     /// Returns the location in the filesystem of this Experiment Series
     ///
     /// Is `None` if the Series has not been serialized, this
@@ -266,16 +248,6 @@ impl ExperimentSeries {
     /// Updates the location of this Experiment Series.
     pub fn set_location(&mut self, new_path: PathBuf) {
         self.path = Some(new_path)
-    }
-
-    /// Adds `stdout` to the stdout log
-    pub fn log_stdout(&mut self, stdout: String) {
-        self.stdout_log.push_str(&stdout);
-    }
-
-    /// Adds `stderr` to the stderr log
-    pub fn log_stderr(&mut self, stderr: String) {
-        self.stderr_log.push_str(&stderr);
     }
 
     /// Updates the Experiment Source linked to this Experiment Series
@@ -439,16 +411,10 @@ impl ExperimentSeries {
             .map(|envlist| ExperimentRun::from_out_list_unchecked(&envlist))
             .collect();
 
-        let (rdr, wtr) = std::io::pipe().unwrap();
-        drop(wtr);
-
         ExperimentSeries {
             source: ExperimentSource::new(),
             path: None,
             runs: runs,
-            stdout_log: String::new(),
-            stderr_log: String::new(),
-            exomat_log: rdr,
         }
     }
 }
@@ -501,8 +467,6 @@ impl FileWriter for ExperimentSeries {
     ///     | |-> [run rep dir 1]
     ///     | | \-> [see ExperimentRun::persist()]
     ///     | \-> [run rep dir n...]
-    ///     |-> [SERIES_STDOUT_LOG]
-    ///     |-> [SERIES_STDERR_LOG]
     ///     \-> [SERIES_EXOMAT_LOG]
     /// ```
     /// This function will not overwrite an existing series directory.
@@ -562,10 +526,8 @@ impl FileWriter for ExperimentSeries {
         let src = create_harness_dir(&exp_series_dir.join(SERIES_SRC_DIR))?;
         let runs = create_harness_dir(&exp_series_dir.join(SERIES_RUNS_DIR))?;
 
-        let _ = create_harness_file(&exp_series_dir.join(MARKER_SERIES))?;
-        let _ = create_harness_file(&runs.join(SERIES_STDOUT_LOG))?;
-        let _ = create_harness_file(&runs.join(SERIES_STDERR_LOG))?;
-        let _ = create_harness_file(&runs.join(SERIES_EXOMAT_LOG))?;
+        create_harness_file(&exp_series_dir.join(MARKER_SERIES))?;
+        create_harness_file(&runs.join(SERIES_EXOMAT_LOG))?;
 
         // copy exp_source/template to src and replace marker
         copy_harness_dir(self.source.location(), &src)?;
@@ -584,40 +546,6 @@ impl FileWriter for ExperimentSeries {
         self.path = Some(exp_series_dir.to_path_buf());
 
         Ok(())
-    }
-
-    /// Writes the content of `stdout_log`, `stderr_log` and `exomat_log` to their
-    /// repective files in `self.path/SERIES_RUNS_DIR/`
-    ///
-    /// Files will be overwritten if they exist already and created new if they don't.
-    ///
-    /// ## Errors
-    /// - returns a `HarnessRunError` if logs could not be serialized
-    fn persist_logs(&mut self) -> Result<()> {
-        if let Some(path) = self.path.clone() {
-            crate::reset_logger(spdlog::default_logger().level_filter());
-            let mut buf = String::new();
-            let _ = &self.exomat_log.read_to_string(&mut buf)?;
-            self.exomat_log = duplicate_log_to_pipe()?;
-
-            write(
-                path.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG),
-                &self.stdout_log,
-            )?;
-            write(
-                path.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG),
-                &self.stderr_log,
-            )?;
-
-            // append to exomat log
-            let exomat_log_path = path.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG);
-            self.append_to_file(&exomat_log_path, &buf)
-        } else {
-            Err(Error::HarnessRunError {
-                experiment: self.experiment_name()?,
-                err: "Experiment has been executed, but cannot write logs to file.".to_string(),
-            })
-        }
     }
 }
 
@@ -642,21 +570,10 @@ impl FileReader for ExperimentSeries {
                 })
                 .collect::<Result<Vec<_>>>()?;
 
-        debug!("reading log files");
-        let stdout_log =
-            read_to_string(exp_series_dir.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG))
-                .unwrap_or_default();
-        let stderr_log =
-            read_to_string(exp_series_dir.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG))
-                .unwrap_or_default();
-
         let mut reader = ExperimentSeries {
             source: ExperimentSource::new(),
             path: Some(exp_series_dir.to_path_buf()),
             runs,
-            stdout_log,
-            stderr_log,
-            exomat_log: duplicate_log_to_pipe()?,
         };
 
         debug!("adding missing keys");
@@ -716,34 +633,27 @@ impl std::fmt::Display for ExperimentSeries {
 
         // change output based on outfiles
         let outfiles = if self.runs_are_empty() {
-            "[{exp_name}] created no output files\n".to_string()
+            "created no out_ files\n".to_string()
         } else {
             if !self.runs_are_empty() {
                 let mut out = String::new();
                 for out_file in self.runs()[0].out_files().iter() {
-                    out.push_str(&format!("[{exp_name}] {out_file}\n"));
+                    out.push_str(&format!("{out_file}\n"));
                 }
                 out
             } else {
-                "[{exp_name}] error reading output files\n".to_string()
+                "error reading out_ files\n".to_string()
             }
-        };
-
-        let exomat_log = match &self.path {
-            Some(p) => {
-                let log = read_to_string(p.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG));
-                match log {
-                    Ok(l) => format!(":\n{l}"),
-                    Err(_) => " has not been serialized.".to_string(),
-                }
-            }
-            None => " not readable".to_string(),
         };
 
         write!(
             f,
-            "[{exp_name}] exomat log{}\n---\n[{exp_name}] stdout:\n{}\n---\n[{exp_name}] stderr:\n{}\n---\n{}---\n[{exp_name}] returned:\n{}\n",
-            exomat_log, self.stdout_log, self.stderr_log, outfiles, self.series_status()
+            r#"=*= {exp_name} =*=
+status: {status}
+out_ files:
+{outfiles}
+"#,
+            status = self.series_status()
         )
     }
 }
@@ -820,8 +730,6 @@ mod tests {
             assert!(exp_series.join(SERIES_RUNS_DIR).is_dir());
 
             assert!(exp_series.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG).is_file());
-            assert!(exp_series.join(SERIES_RUNS_DIR).join(SERIES_STDOUT_LOG).is_file());
-            assert!(exp_series.join(SERIES_RUNS_DIR).join(SERIES_STDERR_LOG).is_file());
 
             // content of experiment source have been copied to exp_series/src
             // .exomat_source changed to .exomat_source_cp

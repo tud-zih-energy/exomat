@@ -13,8 +13,6 @@ pub const SRC_README: &str = "README";
 pub const SERIES_SRC_DIR: &str = ".src";
 pub const SERIES_RUNS_DIR: &str = "runs";
 pub const SERIES_EXOMAT_LOG: &str = "exomat.log";
-pub const SERIES_STDERR_LOG: &str = "stderr.log";
-pub const SERIES_STDOUT_LOG: &str = "stdout.log";
 
 // experiment run folder
 pub const RUN_RUN_FILE: &str = "run.sh";

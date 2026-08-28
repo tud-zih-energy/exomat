@@ -1,7 +1,7 @@
 //! harness run subcommand
 
 use chrono::Local;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use indicatif::{ProgressBar, ProgressStyle};
 use log::{info, trace};
 use std::path::PathBuf;
 
@@ -21,7 +21,6 @@ use crate::helper::errors::Result;
 pub fn experiment(
     experiment: &ExperimentSource,
     output: Option<PathBuf>,
-    log_progress_handler: MultiProgress,
     is_trial: bool,
 ) -> Result<()> {
     let output = match output {
@@ -33,7 +32,7 @@ pub fn experiment(
     series.generate_runs()?;
     series.persist(&output)?;
 
-    execute_exp_repetitions(&mut series, log_progress_handler, is_trial)
+    execute_exp_repetitions(&mut series, is_trial)
 }
 
 /// Creates an experiment series/run directory for the given `experiment`.
@@ -41,25 +40,15 @@ pub fn experiment(
 /// output/errors/results.
 ///
 /// The new experiment series directory will be created as a tempdir.
-pub fn trial(experiment: &ExperimentSource, log_progress_handler: MultiProgress) -> Result<()> {
+pub fn trial(experiment: &ExperimentSource) -> Result<()> {
     let format = &Local::now()
         .format("exomat_trial-%Y-%m-%d-%H-%M-%S")
         .to_string();
     let trial_dir_path = std::env::temp_dir().join(format);
     let trial = experiment.to_trial_source();
 
-    crate::disable_console_log();
-
     // run experiment once
-    let res = self::experiment(
-        &trial,
-        Some(trial_dir_path.clone()),
-        log_progress_handler,
-        true,
-    );
-
-    // flush exomat log
-    spdlog::default_logger().flush();
+    let res = self::experiment(&trial, Some(trial_dir_path.clone()), true);
 
     // gather results
     let mut reader = ExperimentSeries::parse(&trial_dir_path)?;
@@ -76,11 +65,7 @@ pub fn trial(experiment: &ExperimentSource, log_progress_handler: MultiProgress)
 ///
 /// This functions assumes that `build_series_directory` has been called before it.
 /// Otherwise it will fail, because the files it expects to be there are not.
-fn execute_exp_repetitions(
-    series: &mut ExperimentSeries,
-    log_progress_handler: MultiProgress,
-    is_trial: bool,
-) -> Result<()> {
+fn execute_exp_repetitions(series: &mut ExperimentSeries, is_trial: bool) -> Result<()> {
     // if series
     //     Error::HarnessRunError {
     //         experiment: exp_source_dir.display().to_string(),
@@ -100,25 +85,18 @@ fn execute_exp_repetitions(
     prog_bar.set_style(
         ProgressStyle::with_template("[{elapsed_precise}] [{bar:.green}] {pos}/{len} ({eta})")
             .unwrap()
-            .progress_chars("#>-"),
+            .progress_chars("=>-"),
     );
 
-    // protect progress bar from log interferance
-    let prog_bar = log_progress_handler.add(prog_bar);
     prog_bar.tick(); // show on 0th repetition
 
     info!("Starting experiment runs for {}", series.experiment_name()?);
     trace!("exomat envs are: {:?}", series.exomat_envs());
 
-    let mut stdout = String::new();
-    let mut stderr = String::new();
-
     for mut run in series.iter() {
         trace!("Using envs: {:?}", run.env());
 
-        let (out, err) = run.execute(&series.experiment_name()?)?;
-        stderr.push_str(&err);
-        stdout.push_str(&out);
+        run.execute(&series.experiment_name()?)?;
 
         // update progress
         prog_bar.inc(1);
@@ -128,15 +106,6 @@ fn execute_exp_repetitions(
             break;
         }
     }
-
-    info!("Serializing logs...");
-    series.log_stderr(stderr);
-    series.log_stdout(stdout);
-
-    spdlog::default_logger().flush();
-    crate::reset_logger(spdlog::default_logger().level_filter());
-
-    series.persist_logs()?;
 
     prog_bar.inc(1);
     prog_bar.finish();
@@ -153,7 +122,6 @@ mod tests {
     use super::*;
     use crate::experiment::{ExperimentRun, ExperimentSource, FileWriter};
     use crate::harness::env::{Environment, ExomatEnvironment};
-    use crate::helper::fs_names::*;
     use crate::test_helper::read_log;
 
     rusty_fork_test! {
@@ -180,16 +148,7 @@ mod tests {
             assert_eq!(ser.runs().len(), 1);
             let run: &mut  ExperimentRun = ser.runs_mut().first_mut().unwrap();
 
-            let (out, err) = run.execute(exp_source.file_name().unwrap().to_str().unwrap()).unwrap();
-            ser.log_stderr(err);
-            ser.log_stdout(out);
-            ser.persist_logs().unwrap();
-
-            let out_log = read_log(exp_series.to_path_buf(), SERIES_STDOUT_LOG);
-            let err_log = read_log(exp_series.to_path_buf(), SERIES_STDERR_LOG);
-
-            assert!(out_log.contains(&exp_source.canonicalize().unwrap().display().to_string()));
-            assert!(err_log.is_empty());
+            run.execute(exp_source.file_name().unwrap().to_str().unwrap()).unwrap();
         }
 
         #[test]
@@ -217,19 +176,9 @@ mod tests {
             experiment(
                 &src,
                 Some(PathBuf::from(out_name)),
-                MultiProgress::new(), // empty
                 false
             )
             .unwrap();
-
-            let stderr_log = read_log(tmpdir.join(out_name), SERIES_STDERR_LOG);
-            assert_eq!(stderr_log.lines().count(), 0);
-
-            // two lines for variable
-            let stdout_log = read_log(tmpdir.join(out_name), SERIES_STDOUT_LOG);
-            assert_eq!(stdout_log.lines().count(), 2);
-            assert!(stdout_log.contains("Z"));
-            assert!(stdout_log.contains("BAR"));
 
             // take one out_file and check its content
             let output = read_log(tmpdir.join(out_name), format!("run_0_rep0/out_file").as_str());
@@ -256,7 +205,7 @@ mod tests {
             src.persist(&tmpdir.join("TestSource")).unwrap();
 
             // no error
-            trial(&src, MultiProgress::new()).unwrap();
+            trial(&src).unwrap();
         }
     }
 }

@@ -1,4 +1,3 @@
-use indicatif::MultiProgress;
 use std::path::PathBuf;
 
 use crate::Result;
@@ -9,7 +8,6 @@ pub fn main(
     trial: bool,
     output: Option<PathBuf>,
     repetitions: u64,
-    log_handler: MultiProgress,
 ) -> Result<()> {
     let mut src = ExperimentSource::parse(&experiment)?;
     src.set_exomat_envs(exomat::harness::env::ExomatEnvironment::new(
@@ -18,7 +16,7 @@ pub fn main(
     ));
 
     match trial {
-        false => exomat::harness::run::experiment(&src, output, log_handler, false),
-        true => exomat::harness::run::trial(&src, log_handler),
+        false => exomat::harness::run::experiment(&src, output, false),
+        true => exomat::harness::run::trial(&src),
     }
 }

@@ -126,14 +126,12 @@ Specify `-v` multiple times to increase verbosity.
 
 ### Log Files
 The `exomat run` command produces three different log files found under `[series]/runs/`.
-- `stdout.log`: Output written to stdout by all run repetitions
-- `stderr.log`: Output written to stderr by all run repetitions
 - `exomat.log`: Log output from the exomat itself with timestamps (all levels)
     - Environment variables used for a run
     - Start of a run
     - End of a run
     - Exit code of a run
-    - Did a run produce stderr output?
+    - stderr & stdout output of run
 
 > This log content is also not affected by `-v` or `-q`.
 

@@ -6,7 +6,7 @@ set -euo pipefail
 # Put your experiment code here.                                    #
 #####################################################################
 
-# All output will be collected in the experiment series directory in runs/stdout.log
+# All output will be passed through as log messages, which are stored in exomat.log.
 echo "It is now: $(date)"
 
 # For the make-table command to work, create output files like this.

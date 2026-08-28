@@ -42,8 +42,6 @@
        |    \-> [...]
        |   # experiment run folder
        |-> run_[...]
-       |-> stdout.log
-       |-> stderr.log
        \-> exomat.log
 ```
 ---
@@ -120,8 +118,9 @@ The `runs` folder contains the separate runs of the experiment.
 The repetition numbers in the name of an experiment series are expanded, so that all numbers have the same length, making it easier to sort the folders.
 If 1000 repetitions are given. the numbers run 000-...-023-...-999, not 0-...-23-...-999.
 
-`exomat run` does not give any output from the `run.sh` script it executes. That is completely written to `stderr.log` and `stdout.log`.
-Additionally, any `exomat` output during the experiment is written to `exomat.log`.
+`exomat run` does not give any output from the `run.sh` script it executes.
+Stderr and stdout are passed through as log messages. Enable `-v` to show.
+Any log messages during the experiment is written to `exomat.log`.
 
 ## Environments
 If a function contains one of the following words, this is what you can expect:
