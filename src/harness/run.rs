@@ -79,7 +79,7 @@ fn execute_exp_repetitions(series: &mut ExperimentSeries, is_trial: bool) -> Res
     let prog_bar = if is_trial {
         ProgressBar::new(1)
     } else {
-        ProgressBar::new(series.repetition_count() + 1)
+        ProgressBar::new(series.repetition_count())
     };
 
     prog_bar.set_style(
@@ -107,7 +107,6 @@ fn execute_exp_repetitions(series: &mut ExperimentSeries, is_trial: bool) -> Res
         }
     }
 
-    prog_bar.inc(1);
     prog_bar.finish();
     Ok(())
 }

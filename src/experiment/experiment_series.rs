@@ -527,7 +527,10 @@ impl FileWriter for ExperimentSeries {
         let runs = create_harness_dir(&exp_series_dir.join(SERIES_RUNS_DIR))?;
 
         create_harness_file(&exp_series_dir.join(MARKER_SERIES))?;
-        create_harness_file(&runs.join(SERIES_EXOMAT_LOG))?;
+
+        let logfile = runs.join(SERIES_EXOMAT_LOG);
+        create_harness_file(&logfile)?;
+        crate::helper::logging::set_logfile(&logfile)?;
 
         // copy exp_source/template to src and replace marker
         copy_harness_dir(self.source.location(), &src)?;

@@ -26,6 +26,7 @@ pub mod helper {
     pub mod archivist;
     pub mod errors;
     pub mod fs_names;
+    pub mod logging;
 }
 
 #[cfg(test)]
