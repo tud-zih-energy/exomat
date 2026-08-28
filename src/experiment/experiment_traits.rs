@@ -12,13 +12,6 @@ pub trait CsvWriter {
 pub trait FileWriter {
     fn persist(&mut self, dir: &Path) -> Result<()>;
 
-    fn persist_logs(&mut self) -> Result<()> {
-        Err(Error::WriterError {
-            dir: "Log files".to_string(),
-            reason: String::from("Tried to persist logs, but struct does keep log files"),
-        })
-    }
-
     /// Helper that creates a new file at `file_path`. The file will be executable.
     fn create_executable(&self, file_path: &PathBuf) -> Result<File> {
         OpenOptions::new()

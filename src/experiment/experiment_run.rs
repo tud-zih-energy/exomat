@@ -205,33 +205,19 @@ impl ExperimentRun {
     /// - exit_status:
     ///    - **success**  : log info
     ///    - **failed**   : log error (don't evaluate err_log after)
-    /// - err_log:
-    ///    - **empty**    : log info
-    ///    - **not empty**: log warning
     ///
     /// ## Errors
     /// - Returns a HarnessRunError if `exit_status` shows a failure
-    fn log_run_result(
-        &self,
-        run_name: &str,
-        exit_status: std::process::ExitStatus,
-        err_log: &str,
-    ) -> Result<()> {
+    fn log_run_result(&self, run_name: &str, exit_status: std::process::ExitStatus) -> Result<()> {
         if exit_status.success() {
             info!("{run_name} finished successfully with {exit_status}");
-
-            if err_log.is_empty() {
-                info!("{run_name} did not produce stderr output");
-            } else {
-                warn!("{run_name} produced stderr output");
-            }
         } else {
             error!("{run_name} finished with non-zero {exit_status}");
 
             // fail fast in case of unsuccessful run
             return Err(Error::HarnessRunError {
                 experiment: run_name.to_string(),
-                err: err_log.to_owned(),
+                err: "exit status non-zero, consider reviewing logs".to_string(),
             });
         }
 
@@ -241,7 +227,7 @@ impl ExperimentRun {
 
 // ========================== Runner ==========================
 impl Runner for ExperimentRun {
-    type Item = (String, String);
+    type Item = ();
 
     /// Executes [RUN_RUN_FILE] script found in `run_folder`.
     ///
@@ -249,8 +235,6 @@ impl Runner for ExperimentRun {
     /// 2. add `exomat_envs` (overwrites envs with the same name)
     /// 3. run `run_folder/RUN_RUN_FILE` with these envs
     /// 4. log run results
-    ///     - Appends any stderr/stdout output into their respective log file in the
-    ///       parent series directory of `run_folder`.
     ///     - Exomat output will **not** automatically be duplicated to the log file
     ///       by calling this function.
     ///
@@ -302,8 +286,8 @@ impl Runner for ExperimentRun {
 
         trace!("{exp_name}: Finished run {}", run_folder.display());
         debug!("reading logs");
-        let stdout = String::from_utf8_lossy(&run.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&run.stderr).to_string();
+
+        // TODO pipe stdout/stderr to log::debug or sth similar
 
         debug!("updating run status");
         match run.status.success() {
@@ -318,10 +302,9 @@ impl Runner for ExperimentRun {
                 .display()
                 .to_string(),
             run.status,
-            &stderr,
         )?;
 
-        Ok((stdout, stderr))
+        Ok(())
     }
 }
 

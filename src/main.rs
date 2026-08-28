@@ -1,5 +1,5 @@
 use clap::Parser;
-use spdlog::prelude::{debug, error};
+use log::{debug, error};
 use std::process::ExitCode;
 
 pub mod bin {
@@ -29,9 +29,8 @@ use exomat::helper::errors::{Error, Result};
 
 fn main() -> ExitCode {
     let args = Cli::parse();
-    let log_handler = exomat::activate_logging(args.verbose.log_level_filter());
 
-    match run_main(args, log_handler) {
+    match run_main(args) {
         Err(err) => {
             error!("{err}");
             ExitCode::FAILURE
@@ -40,7 +39,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn run_main(args: Cli, log_handler: indicatif::MultiProgress) -> Result<()> {
+fn run_main(args: Cli) -> Result<()> {
     if let Some(pwd) = args.cd {
         debug!("changing pwd to {}", pwd.display());
         std::env::set_current_dir(pwd)?;
@@ -52,7 +51,7 @@ fn run_main(args: Cli, log_handler: indicatif::MultiProgress) -> Result<()> {
             trial,
             output,
             repetitions,
-        } => bin::run::main(experiment, trial, output, repetitions, log_handler),
+        } => bin::run::main(experiment, trial, output, repetitions),
         Commands::Skeleton { experiment } => exomat::harness::skeleton::main(&experiment),
         Commands::Env {
             add,
@@ -73,10 +72,6 @@ fn run_main(args: Cli, log_handler: indicatif::MultiProgress) -> Result<()> {
 mod tests {
     use super::*;
 
-    fn log_handler() -> indicatif::MultiProgress {
-        indicatif::MultiProgress::new()
-    }
-
     #[test]
     fn change_working_directory() {
         let workspace = tempfile::tempdir().unwrap();
@@ -84,16 +79,16 @@ mod tests {
 
         // initialize experiment dir
         let args = Cli::parse_from(&["argv0", "skeleton", "exp_dir"]);
-        run_main(args, log_handler()).unwrap();
+        run_main(args).unwrap();
 
         // no cd: does not work
         let args = Cli::parse_from(&["argv0", "env", "--add", "VAR", "1", "2", "3"]);
-        assert!(run_main(args, log_handler()).is_err());
+        assert!(run_main(args).is_err());
 
         // but works with cd into new dir
         let args = Cli::parse_from(&[
             "argv0", "-C", "exp_dir", "env", "--add", "VAR", "1", "2", "3",
         ]);
-        run_main(args, log_handler()).unwrap();
+        run_main(args).unwrap();
     }
 }

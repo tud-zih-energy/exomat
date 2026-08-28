@@ -13,9 +13,6 @@ pub enum Error {
     #[error(transparent)]
     RegexError(#[from] regex::Error),
 
-    #[error(transparent)]
-    LoggerError(#[from] spdlog::re_export::log::SetLoggerError),
-
     /// Occurs when the harness command failed to create files/directories.
     #[error("Cannot create {entry:?}: {reason:?}")]
     HarnessCreateError { entry: String, reason: String },

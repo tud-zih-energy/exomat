@@ -108,8 +108,6 @@ test -f $DIR/One_Out1/.src/.exomat_source_copy
 test -f $DIR/One_Out1/.src/envs/0.env
 test -f $DIR/One_Out1/.src/envs/1.env
 test -f $DIR/One_Out1/runs/exomat.log
-test -f $DIR/One_Out1/runs/stderr.log
-test -f $DIR/One_Out1/runs/stdout.log
 test -f $DIR/One_Out1/runs/run_0_rep0/.exomat_run
 test -f $DIR/One_Out1/runs/run_0_rep0/run.sh
 test -f $DIR/One_Out1/runs/run_0_rep0/environment.env
