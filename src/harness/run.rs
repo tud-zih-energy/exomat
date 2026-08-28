@@ -1,9 +1,11 @@
 //! harness run subcommand
 
 use chrono::Local;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::ProgressStyle;
 use log::{info, trace};
 use std::path::PathBuf;
+use tracing::info_span;
+use tracing_indicatif::span_ext::IndicatifSpanExt;
 
 use crate::experiment::{ExperimentSeries, ExperimentSource, FileReader, FileWriter, Runner};
 use crate::helper::errors::Result;
@@ -76,19 +78,23 @@ fn execute_exp_repetitions(series: &mut ExperimentSeries, is_trial: bool) -> Res
     //     }
     // })?;
 
-    let prog_bar = if is_trial {
-        ProgressBar::new(1)
-    } else {
-        ProgressBar::new(series.repetition_count())
-    };
+    let series_span = info_span!("run_series");
 
-    prog_bar.set_style(
-        ProgressStyle::with_template("[{elapsed_precise}] [{bar:.green}] {pos}/{len} ({eta})")
+    let prog_bar_len = match is_trial {
+        true => 1,
+        false => series.repetition_count(),
+    };
+    series_span.pb_set_style(
+        &ProgressStyle::with_template("[{elapsed_precise}] [{bar:.green}] {pos}/{len} ({eta})")
             .unwrap()
             .progress_chars("=>-"),
     );
+    series_span.pb_set_length(prog_bar_len);
+    series_span.pb_set_message("run experiment series");
+    series_span.pb_set_finish_message("all experiments done");
+    let _span_entered = series_span.enter();
 
-    prog_bar.tick(); // show on 0th repetition
+    tracing::Span::current().pb_tick(); // show on 0th repetition
 
     info!("Starting experiment runs for {}", series.experiment_name()?);
     trace!("exomat envs are: {:?}", series.exomat_envs());
@@ -99,7 +105,7 @@ fn execute_exp_repetitions(series: &mut ExperimentSeries, is_trial: bool) -> Res
         run.execute(&series.experiment_name()?)?;
 
         // update progress
-        prog_bar.inc(1);
+        tracing::Span::current().pb_inc(1);
 
         // stop after one run if this is a trial
         if is_trial {
@@ -107,7 +113,7 @@ fn execute_exp_repetitions(series: &mut ExperimentSeries, is_trial: bool) -> Res
         }
     }
 
-    prog_bar.finish();
+    // progress bar closed using RAII
     Ok(())
 }
 

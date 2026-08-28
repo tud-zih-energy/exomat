@@ -11,7 +11,7 @@ use crate::helper::{
 
 use chrono::Local;
 use csv::Writer;
-use log::{debug, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 use rand::seq::SliceRandom;
 use std::path::{Path, PathBuf};
 
@@ -484,7 +484,7 @@ impl FileWriter for ExperimentSeries {
             self.source.location().display()
         );
 
-        debug!("checking if is dir");
+        trace!("checking if is dir");
         if !self.source.location().is_dir() {
             return Err(Error::HarnessRunError {
                 experiment: self.source.location().display().to_string(),
@@ -492,7 +492,7 @@ impl FileWriter for ExperimentSeries {
             });
         }
 
-        debug!("checking if source dir marker exists");
+        trace!("checking if source dir marker exists");
         if !self.source.location().join(MARKER_SRC).is_file() {
             return Err(Error::HarnessRunError {
                 experiment: self.source.location().display().to_string(),
@@ -515,7 +515,7 @@ impl FileWriter for ExperimentSeries {
         debug!("checking if creating series inside of experiment (would be forbidden)");
         if is_child_dir_of_of(exp_series_dir, self.source.location())? {
             // log full paths to debug, but let error be handled (i.e. reported as error) outside
-            debug!("refusing to build series dir inside of experiment dir, experiment dir: {}, to-be-created series dir: {}",
+            error!("refusing to build series dir inside of experiment dir, experiment dir: {}, to-be-created series dir: {}",
                self.source.location().display(),
                exp_series_dir.display());
             return Err(Error::HarnessRunError {
