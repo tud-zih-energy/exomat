@@ -12,7 +12,7 @@ use log::warn;
 use log::{debug, error, info, trace};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 /// Describes the current state of an Experiment Run
 #[derive(Clone, Debug, PartialEq)]
@@ -64,7 +64,7 @@ impl ExperimentRun {
         exomat_environment: &ExomatEnvironment,
         rep_format_length: usize,
     ) -> Self {
-        debug!("checking format length");
+        trace!("checking format length");
         assert!(rep_format_length > 0, "repetition format cannot be 0");
 
         debug!("checking envs for reserved env vars");
@@ -178,7 +178,7 @@ impl ExperimentRun {
 
         let mut observation: Observation = HashMap::new();
         for outfile in self.out_files.iter() {
-            debug!("checking if out_ file is empty");
+            trace!("checking if out_ file is empty");
             if outfile.is_empty() {
                 observation.insert(outfile.var_name().clone(), String::from("NA"));
                 // index is not in range
@@ -198,30 +198,6 @@ impl ExperimentRun {
 
         debug!("observation found: {:?}", observation);
         Ok(observation)
-    }
-
-    /// Produce log output based on exit_status and err_log content.
-    ///
-    /// - exit_status:
-    ///    - **success**  : log info
-    ///    - **failed**   : log error (don't evaluate err_log after)
-    ///
-    /// ## Errors
-    /// - Returns a HarnessRunError if `exit_status` shows a failure
-    fn log_run_result(&self, run_name: &str, exit_status: std::process::ExitStatus) -> Result<()> {
-        if exit_status.success() {
-            info!("{run_name} finished successfully with {exit_status}");
-        } else {
-            error!("{run_name} finished with non-zero {exit_status}");
-
-            // fail fast in case of unsuccessful run
-            return Err(Error::HarnessRunError {
-                experiment: run_name.to_string(),
-                err: "exit status non-zero, consider reviewing logs".to_string(),
-            });
-        }
-
-        Ok(())
     }
 }
 
@@ -244,8 +220,8 @@ impl Runner for ExperimentRun {
     /// - Returns a `HarnessRunError` if there is no [RUN_RUN_FILE] in `run_folder`
     /// - Returns a `HarnessRunError` if there is no [RUN_ENV_FILE] in `run_folder`
     fn execute(&mut self, exp_name: &str) -> Result<Self::Item> {
-        trace!("{exp_name}: Checking run directory {}", self.run_name);
-        debug!("checking if run has been serialized");
+        debug!("{exp_name}: Checking run directory {}", self.run_name);
+        trace!("checking if run has been serialized");
         let run_folder = self
             .location
             .as_ref()
@@ -256,7 +232,7 @@ impl Runner for ExperimentRun {
                 err: format!("Experiment Run has not been written to disk yet: {e}"),
             })?;
 
-        debug!("checking if all files exist in run");
+        trace!("checking if all files exist in run");
         for file in REQUIRED_RUN_FILES {
             if !run_folder.join(file).is_file() {
                 return Err(Error::HarnessRunError {
@@ -266,45 +242,48 @@ impl Runner for ExperimentRun {
             };
         }
 
-        debug!("reading run environment");
+        let run_name = run_folder
+            .file_stem()
+            .expect("run folder name inaccessable")
+            .display()
+            .to_string();
+        let exp_name_full = format!("{exp_name} {run_name}");
+
+        debug!("{exp_name_full}: reading run environment");
         let mut all_envs = self.exomat_env.to_environment_full();
         all_envs.extend_envs(&self.env);
 
-        trace!("{exp_name}: Starting execution of {}", self.run_name);
+        debug!("{exp_name_full}: Starting execution of {}", self.run_name);
 
         // execute command with envs and collect any output in child
-        let run = Command::new(run_folder.join(RUN_RUN_FILE))
-            .stderr(Stdio::piped())
-            .stdout(Stdio::piped())
+        let mut run_command = Command::new(run_folder.join(RUN_RUN_FILE));
+        run_command
             .envs(all_envs.to_env_map())
-            .current_dir(&run_folder)
-            .output()
-            .map_err(|e| Error::HarnessRunError {
-                experiment: exp_name.to_string(),
-                err: e.to_string(),
-            })?;
+            .current_dir(&run_folder);
+        // automatically wrap stderr/stdout into logs
+        let run_output =
+            crate::helper::logging::run_cmd_forwards_output(exp_name_full.as_str(), run_command)?;
 
-        trace!("{exp_name}: Finished run {}", run_folder.display());
-        debug!("reading logs");
-
-        // TODO pipe stdout/stderr to log::debug or sth similar
-
-        debug!("updating run status");
-        match run.status.success() {
-            true => self.status = RunStatus::Success,
-            false => self.status = RunStatus::Fail(run.status.to_string()),
+        trace!("{exp_name_full}: Finished run {}", run_folder.display());
+        self.status = match run_output.status.success() {
+            true => RunStatus::Success,
+            false => RunStatus::Fail(run_output.status.to_string()),
         };
 
-        self.log_run_result(
-            &run_folder
-                .file_stem()
-                .expect("run folder name inaccessable")
-                .display()
-                .to_string(),
-            run.status,
-        )?;
-
-        Ok(())
+        let exit_status = run_output.status;
+        match run_output.status.success() {
+            true => {
+                info!("{exp_name_full} finished successfully with {exit_status}");
+                Ok(())
+            }
+            false => {
+                error!("{exp_name_full} finished with non-zero {exit_status}");
+                Err(Error::HarnessRunError {
+                    experiment: run_name.to_string(),
+                    err: "exit status non-zero, consider reviewing logs".to_string(),
+                })
+            }
+        }
     }
 }
 
@@ -413,7 +392,7 @@ impl FileReader for ExperimentRun {
         let contained_files = <ExperimentRun as FileReader>::find_all_files(exp_run_dir);
 
         for file in contained_files {
-            debug!("checking file {}", file.display());
+            trace!("checking file {}", file.display());
             match OutFile::parse(&file) {
                 Err(Error::Empty(e)) => return Err(Error::Empty(e)), // this means the name is invalid
                 Err(_) => continue,
