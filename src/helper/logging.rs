@@ -7,6 +7,7 @@ use std::fs::OpenOptions;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::sync::{LazyLock, Mutex};
+use tracing_indicatif::IndicatifLayer;
 use tracing_subscriber::{
     fmt, fmt::format::DefaultFields, fmt::format::Format, fmt::writer::BoxMakeWriter, fmt::Layer,
     layer::SubscriberExt, prelude::*, reload, reload::Handle, Registry,
@@ -70,11 +71,18 @@ pub fn setup_global_logger<T: clap_verbosity_flag::LogLevel>(stderr_verbosity: V
         .expect("failed to acquire lock")
         .replace(reload_handle);
 
-    let stderr_layer = fmt::layer().with_writer(std::io::stderr).with_filter(
-        tracing_subscriber::filter::LevelFilter::from(stderr_verbosity),
-    );
+    let stderr_filter = tracing_subscriber::filter::LevelFilter::from(stderr_verbosity);
 
-    let subscriber = Registry::default().with(file_layer).with(stderr_layer);
+    let indicatif_layer = IndicatifLayer::new();
+    let stderr_layer = fmt::layer()
+        .with_writer(indicatif_layer.get_stderr_writer())
+        .with_filter(stderr_filter);
+
+    let subscriber = Registry::default()
+        .with(file_layer) // gets everything
+        .with(stderr_layer) // gets as configured by cli
+        .with(indicatif_layer.with_filter(stderr_filter)); // needs filter again, but can't have it
+                                                           // above due to type-fuckery
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set global subscriber");
     tracing_log::LogTracer::init().expect("failed to connect log to tracing");
 }
