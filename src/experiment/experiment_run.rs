@@ -269,6 +269,7 @@ impl Runner for ExperimentRun {
             true => RunStatus::Success,
             false => RunStatus::Fail(run_output.status.to_string()),
         };
+        trace!("stored status: {:?}", self.status);
 
         let exit_status = run_output.status;
         match run_output.status.success() {

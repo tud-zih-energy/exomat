@@ -662,16 +662,19 @@ impl std::fmt::Display for ExperimentSeries {
             None => "no path set (wtf?!)".to_string(),
         };
 
+        // note: status is not read from disk as of now
+        // mitigation: skip status
+        // see #57
+        // status: {status}
         write!(
             f,
             r#"=*= Summary =*=
 experiment name: {exp_name}
-status: {status}
 path: {path}
 out_ files:
 {outfiles}
 "#,
-            status = self.series_status()
+            // status = self.series_status()
         )
     }
 }
