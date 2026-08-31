@@ -96,13 +96,14 @@ fn execute_exp_repetitions(series: &mut ExperimentSeries, is_trial: bool) -> Res
 
     tracing::Span::current().pb_tick(); // show on 0th repetition
 
-    info!("Starting experiment runs for {}", series.experiment_name()?);
+    let experiment_name = series.experiment_name()?;
+    info!("Starting experiment runs for {experiment_name}");
     trace!("exomat envs are: {:?}", series.exomat_envs());
 
-    for mut run in series.iter() {
+    for run in series.runs.iter_mut() {
         trace!("Using envs: {:?}", run.env());
 
-        run.execute(&series.experiment_name()?)?;
+        run.execute(&experiment_name)?;
 
         // update progress
         tracing::Span::current().pb_inc(1);

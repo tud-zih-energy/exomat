@@ -34,13 +34,13 @@ pub enum RunStatus {
 /// 3. `execute()`
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExperimentRun {
-    run_sh: String,
-    run_name: String,
-    env: Environment,
-    exomat_env: ExomatEnvironment,
-    out_files: OutList,
-    status: RunStatus,
-    location: Option<PathBuf>,
+    pub run_sh: String,
+    pub run_name: String,
+    pub env: Environment,
+    pub exomat_env: ExomatEnvironment,
+    pub out_files: OutList,
+    pub status: RunStatus,
+    pub location: Option<PathBuf>,
 }
 
 impl ExperimentRun {
