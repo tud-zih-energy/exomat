@@ -25,12 +25,12 @@ use crate::experiment::out_file::OutList;
 /// 1. `from_source(...)`
 /// 2. `generate_runs()`
 /// 2. `persist(...)`
-/// 3. `for run in series.iter() { run.execute(); }`
+/// 3. `for run in series.runs.iter_mut() { run.execute(); }`
 #[derive(Debug)]
 pub struct ExperimentSeries {
-    source: ExperimentSource,
-    path: Option<PathBuf>,
-    runs: Vec<ExperimentRun>,
+    pub source: ExperimentSource,
+    pub path: Option<PathBuf>,
+    pub runs: Vec<ExperimentRun>,
 }
 
 impl ExperimentSeries {
@@ -65,37 +65,43 @@ impl ExperimentSeries {
         })
     }
 
-    /// Immutable iteration
-    pub fn iter<'a>(&'a self) -> ExperimentSeriesIter<'a> {
-        ExperimentSeriesIter {
-            series_reader: self,
-            index: 0,
-        }
-    }
-
     /// Return a string describing the overall success of the Experiment Series
     ///
     /// - If any Experiment Run in self.runs failed, return `Failed. Reason: [...]`
     /// - If all Experiment Runs were successful, return `Successful`
     /// - If any Experiment Run has not been executed or its status in Unknown, return `Cannot determine run status`
     pub fn series_status(&self) -> String {
-        if let Some(reason) = self.runs.iter().find_map(|run| {
-            if let RunStatus::Fail(reason) = run.status() {
-                Some(reason.as_str())
-            } else {
-                None
-            }
-        }) {
-            format!("Failed. Reason: {}", reason)
-        } else if self
+        let runs_total = self.runs.len();
+        let runs_success = self
             .runs
             .iter()
-            .all(|run| matches!(run.status(), RunStatus::Success))
-        {
-            "Successful".to_string()
-        } else {
-            "Cannot determine run status".to_string()
-        }
+            .filter(|run| *run.status() == RunStatus::Success)
+            .count();
+        let runs_unknown = self
+            .runs
+            .iter()
+            .filter(|run| *run.status() == RunStatus::Unknown)
+            .count();
+        let runs_failed = runs_total - runs_unknown - runs_success;
+
+        let failure_desc = self
+            .runs
+            .iter()
+            .filter_map(|run| match run.status() {
+                RunStatus::Unknown | RunStatus::Success => None,
+                RunStatus::Fail(reason) => Some(format!(
+                    "\nrun {run_name} at {run_location} failed with: {reason}",
+                    run_name = run.run_name,
+                    run_location = run
+                        .location
+                        .as_ref()
+                        .unwrap_or(&PathBuf::from("unknown"))
+                        .display()
+                )),
+            })
+            .fold(String::new(), |a, b| a + b.as_str());
+
+        format!("{runs_success}/{runs_total} successful, {runs_unknown}/{runs_unknown} unknown (did not run?), {runs_failed}/{runs_total} failed{failure_desc}")
     }
 
     /// Generate Experiment Runs based on the current Experiment Series
@@ -641,52 +647,32 @@ impl std::fmt::Display for ExperimentSeries {
             if !self.runs_are_empty() {
                 let mut out = String::new();
                 for out_file in self.runs()[0].out_files().iter() {
-                    out.push_str(&format!("{out_file}\n"));
+                    out.push_str(&format!("  {out_file}\n"));
                 }
                 out
             } else {
                 "error reading out_ files\n".to_string()
             }
         };
+        let path = match &self.path {
+            Some(path) => path
+                .to_str()
+                .expect("path contains non-UTF8 characters, wtf?!")
+                .to_string(),
+            None => "no path set (wtf?!)".to_string(),
+        };
 
         write!(
             f,
-            r#"=*= {exp_name} =*=
+            r#"=*= Summary =*=
+experiment name: {exp_name}
 status: {status}
+path: {path}
 out_ files:
 {outfiles}
 "#,
             status = self.series_status()
         )
-    }
-}
-
-// ========================== Iterator ==========================
-pub struct ExperimentSeriesIter<'a> {
-    series_reader: &'a ExperimentSeries,
-    index: usize,
-}
-
-impl<'a> Iterator for ExperimentSeriesIter<'a> {
-    type Item = ExperimentRun;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index < self.series_reader.runs.len() {
-            let run = self.series_reader.runs[self.index].clone();
-            self.index += 1;
-
-            Some(run)
-        } else {
-            None
-        }
-    }
-}
-impl<'a> IntoIterator for &'a ExperimentSeries {
-    type Item = ExperimentRun;
-    type IntoIter = ExperimentSeriesIter<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
     }
 }
 
@@ -749,7 +735,7 @@ mod tests {
         assert_eq!(series_reader.run_count(), 3);
 
         // iterate over runs and observations
-        for run in series_reader.iter() {
+        for run in series_reader.runs.iter() {
             for obs in run.iter() {
                 assert!(obs.get("number").is_some());
                 assert!(obs.get("word").is_some());
