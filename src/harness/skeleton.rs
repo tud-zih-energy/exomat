@@ -15,7 +15,7 @@ pub fn main(exp_src_dir: &Path) -> Result<()> {
 Next steps:
 
 # add variables
-exomat -C {dir} env COUNT 1 2 3
+exomat -C {dir} env --add COUNT 1 2 3
 
 # adjust script
 vim {dir}/template/run.sh
