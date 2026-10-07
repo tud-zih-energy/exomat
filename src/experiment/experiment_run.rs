@@ -257,9 +257,7 @@ impl Runner for ExperimentRun {
 
         // execute command with envs and collect any output in child
         let mut run_command = Command::new(run_folder.join(RUN_RUN_FILE));
-        run_command
-            .envs(all_envs.to_env_map())
-            .current_dir(&run_folder);
+        run_command.envs(all_envs).current_dir(&run_folder);
         // automatically wrap stderr/stdout into logs
         let run_output =
             crate::helper::logging::run_cmd_forwards_output(exp_name_full.as_str(), run_command)?;
@@ -380,7 +378,7 @@ impl FileReader for ExperimentRun {
     /// This function might **Panic** if reading/writing failed.
     fn parse(exp_run_dir: &Path) -> Result<Self::Item> {
         debug!("reading environment");
-        let env = Environment::from_file(&exp_run_dir.join(RUN_ENV_FILE)).unwrap_or_else(|_| {
+        let env = Environment::try_from(&exp_run_dir.join(RUN_ENV_FILE)).unwrap_or_else(|_| {
             warn!("No environment found in run {}", exp_run_dir.display());
             Environment::new()
         });
@@ -539,7 +537,7 @@ mod tests {
         // assert!(run_dir.join(RUN_RUN_FILE).executable());
 
         // check that exomat envs are included (or not)
-        let envs = Environment::from_file(&run_dir.join(RUN_ENV_FILE)).unwrap();
+        let envs = Environment::try_from(&run_dir.join(RUN_ENV_FILE)).unwrap();
         assert_eq!(envs.get_env_val("REPETITION"), Some(&String::from("0")));
         assert_eq!(envs.get_env_val("EXP_SRC_DIR"), None);
     }
@@ -558,7 +556,7 @@ mod tests {
         });
         src.persist(&tmpdir.join("FooSource")).unwrap();
 
-        let mut ser = ExperimentSeries::from_source(&src).unwrap();
+        let mut ser = ExperimentSeries::try_from(&src).unwrap();
         ser.generate_runs().unwrap();
         assert_eq!(ser.runs().len(), 15);
         ser.persist(&tmpdir.to_path_buf()).unwrap();
@@ -581,21 +579,21 @@ mod tests {
         src.set_exomat_envs(ExomatEnvironment::new(&tmpdir.join(source_name), 1));
         src.set_envs(EnvironmentLocationList::from([(
             PathBuf::from(SRC_ENV_FILE),
-            Environment::from_env_list(vec![("FOO".to_string(), "bar".to_string())]),
+            Environment::from(vec![("FOO".to_string(), "bar".to_string())]),
         )]))
         .unwrap();
         src.persist(&tmpdir.join(source_name)).unwrap();
 
         // create a series based on this source
-        let mut ser = ExperimentSeries::from_source(&src).unwrap();
+        let mut ser = ExperimentSeries::try_from(&src).unwrap();
         ser.generate_runs().unwrap();
         assert_eq!(ser.runs().len(), 1);
         ser.persist(&tmpdir.join(series_name)).unwrap();
 
         // check contents of env files
         let src_env =
-            Environment::from_file(&src.location().join(SRC_ENV_DIR).join(SRC_ENV_FILE)).unwrap();
-        let run_env = Environment::from_file(
+            Environment::try_from(&src.location().join(SRC_ENV_DIR).join(SRC_ENV_FILE)).unwrap();
+        let run_env = Environment::try_from(
             &ser.location()
                 .as_ref()
                 .unwrap()

@@ -30,7 +30,7 @@ pub fn experiment(
         None => ExperimentSeries::generate_series_filepath(experiment.location())?,
     };
 
-    let mut series = ExperimentSeries::from_source(experiment)?;
+    let mut series = ExperimentSeries::try_from(experiment)?;
     series.generate_runs()?;
     series.persist(&output)?;
 
@@ -146,7 +146,7 @@ mod tests {
             src.set_exomat_envs(ExomatEnvironment::new(&exp_source, 1));
             src.persist(&exp_source).unwrap();
 
-            let mut ser = ExperimentSeries::from_source(&src).unwrap();
+            let mut ser = ExperimentSeries::try_from(&src).unwrap();
             ser.generate_runs().unwrap();
             ser.persist(&exp_series).unwrap();
 
@@ -172,8 +172,8 @@ mod tests {
             let mut src = ExperimentSource::new();
             src.set_run_script(format!("#!/usr/bin/env bash\necho $FOO\necho $FOO >> out_file"));
             src.set_envs(BTreeMap::from([
-                (PathBuf::from("0.env"), Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())])),
-                (PathBuf::from("1.env"), Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())])),
+                (PathBuf::from("0.env"), Environment::from(vec![("FOO".to_string(), "BAR".to_string())])),
+                (PathBuf::from("1.env"), Environment::from(vec![("FOO".to_string(), "Z".to_string())])),
             ])).unwrap();
 
             src.persist(&tmpdir.join(exp_name)).unwrap();
@@ -205,8 +205,8 @@ mod tests {
             let mut src = ExperimentSource::new();
             src.set_run_script(format!("#!/usr/bin/env bash\necho $FOO\necho $FOO >> out_file"));
             src.set_envs(BTreeMap::from([
-                (PathBuf::from("0.env"),Environment::from_env_list(vec![("FOO".to_string(), "BAR".to_string())])),
-                (PathBuf::from("1.env"),Environment::from_env_list(vec![("FOO".to_string(), "Z".to_string())])),
+                (PathBuf::from("0.env"),Environment::from(vec![("FOO".to_string(), "BAR".to_string())])),
+                (PathBuf::from("1.env"),Environment::from(vec![("FOO".to_string(), "Z".to_string())])),
             ])).unwrap();
             src.persist(&tmpdir.join("TestSource")).unwrap();
 

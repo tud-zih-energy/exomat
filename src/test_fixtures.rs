@@ -259,7 +259,7 @@ pub fn filled_src_envs() -> TempDir {
 /// generates an Environment with `1: "a"`
 #[fixture]
 pub fn env_1a() -> Environment {
-    Environment::from_env_list(vec![("1".to_string(), "a".to_string())])
+    Environment::from(vec![("1".to_string(), "a".to_string())])
 }
 
 /// generates an EnvList with `1: ["a"]`
@@ -271,7 +271,7 @@ pub fn envlist_1a() -> EnvList {
 /// generates an OutList with `1: ["a"]`
 #[fixture]
 pub fn outlist_1a() -> OutList {
-    OutList::from(vec![OutFile::from("1", vec!["a".to_string()])]).unwrap()
+    OutList::try_from(vec![OutFile::new("1", vec!["a".to_string()])]).unwrap()
 }
 
 /// generates an EnvList with `2: ["b"]`
@@ -289,7 +289,7 @@ pub fn envlist_empty_string() -> EnvList {
 /// generates an Outlist with `VAR: [""]`
 #[fixture]
 pub fn outlist_empty_string() -> OutList {
-    OutList::from(vec![OutFile::from("VAR", vec!["".to_string()])]).unwrap()
+    OutList::try_from(vec![OutFile::new("VAR", vec!["".to_string()])]).unwrap()
 }
 
 /// generates an EnvList with `VAR: []`
@@ -301,7 +301,7 @@ pub fn envlist_one_var_no_val() -> EnvList {
 /// generates an OutList with `VAR: []`
 #[fixture]
 pub fn outlist_one_var_no_val() -> OutList {
-    OutList::from(vec![OutFile::from("VAR", vec![])]).unwrap()
+    OutList::try_from(vec![OutFile::new("VAR", vec![])]).unwrap()
 }
 
 /// generates an EnvList with `VAR: ["VAL"]`
@@ -358,9 +358,9 @@ pub fn envlist_mixed_weird() -> EnvList {
 /// generates an OutList with `VAR1: ["VALUE", "baz"], VAR2: ["", "a,b"]`
 #[fixture]
 pub fn outlist_mixed_weird() -> OutList {
-    OutList::from(vec![
-        OutFile::from("VAR1", vec!["VALUE".to_string(), "baz".to_string()]),
-        OutFile::from("VAR2", vec![String::new(), "a,b".to_string()]),
+    OutList::try_from(vec![
+        OutFile::new("VAR1", vec!["VALUE".to_string(), "baz".to_string()]),
+        OutFile::new("VAR2", vec![String::new(), "a,b".to_string()]),
     ])
     .unwrap()
 }
@@ -396,7 +396,7 @@ use crate::harness::env::EnvironmentContainer;
 /// generates an Environemnt Container with `VAR: single`
 #[fixture]
 pub fn container_single() -> EnvironmentContainer {
-    EnvironmentContainer::from_env_list(vec![Environment::from_env_list(vec![(
+    EnvironmentContainer::from(vec![Environment::from(vec![(
         "VAR".to_string(),
         "single".to_string(),
     )])])
@@ -405,7 +405,7 @@ pub fn container_single() -> EnvironmentContainer {
 /// generates an Environemnt Container with `VAR1: VAL1, VAR2: VAL2`
 #[fixture]
 pub fn container_multiple() -> EnvironmentContainer {
-    EnvironmentContainer::from_env_list(vec![Environment::from_env_list(vec![
+    EnvironmentContainer::from(vec![Environment::from(vec![
         ("VAR1".to_string(), "VAL1".to_string()),
         ("VAR2".to_string(), "VAL2".to_string()),
     ])])

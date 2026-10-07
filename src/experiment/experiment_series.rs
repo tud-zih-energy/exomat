@@ -33,7 +33,9 @@ pub struct ExperimentSeries {
     pub runs: Vec<ExperimentRun>,
 }
 
-impl ExperimentSeries {
+impl TryFrom<&ExperimentSource> for ExperimentSeries {
+    type Error = Error;
+
     /// Gernerate an Experiment Series based on source
     ///
     /// The ExperimentSeries will have the following values set:
@@ -44,7 +46,7 @@ impl ExperimentSeries {
     /// ## Errors
     /// - retruns a `HarnessRunError` if source.location is PWD
     /// - returns an `IoError` if it cannot parse a valid Series name
-    pub fn from_source(source: &ExperimentSource) -> Result<Self> {
+    fn try_from(source: &ExperimentSource) -> Result<Self> {
         if source.location().display().to_string() == "." {
             return Err(Error::HarnessRunError {
                 experiment: source.name()?,
@@ -64,7 +66,9 @@ impl ExperimentSeries {
             runs: Vec::new(),
         })
     }
+}
 
+impl ExperimentSeries {
     /// Return a string describing the overall success of the Experiment Series
     ///
     /// - If any Experiment Run in self.runs failed, return `Failed. Reason: [...]`
@@ -241,7 +245,7 @@ impl ExperimentSeries {
         let mut keys: Vec<&str> = self
             .runs
             .iter()
-            .flat_map(|run| run.env().to_env_map().keys().map(String::as_str))
+            .flat_map(|run| run.env().get_env_vars().into_iter().map(String::as_str))
             .collect();
 
         keys.sort();
@@ -299,7 +303,7 @@ impl ExperimentSeries {
         for run in self.runs.iter_mut() {
             for key in &keys {
                 if run.out_var(key).is_none() {
-                    run.insert_out_file(OutFile::from(key, vec!["NA".to_string()]));
+                    run.insert_out_file(OutFile::new(key, vec!["NA".to_string()]));
                 }
             }
         }
@@ -714,7 +718,7 @@ mod tests {
             source.persist(&exp_source).unwrap();
 
             // create series dir (next to exp_source, named "foo", is not a trial run)
-            let mut series = ExperimentSeries::from_source(&source).unwrap();
+            let mut series = ExperimentSeries::try_from(&source).unwrap();
             series.persist(&exp_series).unwrap();
 
             assert!(tmpdir.join("foo").is_dir());
@@ -872,8 +876,8 @@ mod tests {
         let runs = reader.runs();
 
         let expected_outlists = vec![
-            OutList::from(vec![OutFile::from("empty", vec![String::from("")])]).unwrap(),
-            OutList::from(vec![OutFile::from("empty", vec![String::from("NA")])]).unwrap(),
+            OutList::try_from(vec![OutFile::new("empty", vec![String::from("")])]).unwrap(),
+            OutList::try_from(vec![OutFile::new("empty", vec![String::from("NA")])]).unwrap(),
         ];
 
         assert_eq!(reader.run_count(), 2);
@@ -1002,13 +1006,13 @@ mod tests {
         let runs = reader.runs();
 
         // check results
-        let some0 = OutFile::from("some", vec![String::from("bar")]);
-        let empty0 = OutFile::from("empty", vec![String::from("NA")]);
-        let emptytxt0 = OutFile::from("empty.txt", vec![String::from("NA")]);
+        let some0 = OutFile::new("some", vec![String::from("bar")]);
+        let empty0 = OutFile::new("empty", vec![String::from("NA")]);
+        let emptytxt0 = OutFile::new("empty.txt", vec![String::from("NA")]);
 
-        let some1 = OutFile::from("some", vec![String::from("foo")]);
-        let empty1 = OutFile::from("empty", vec![String::from("")]);
-        let emptytxt1 = OutFile::from("empty.txt", vec![String::from("")]);
+        let some1 = OutFile::new("some", vec![String::from("foo")]);
+        let empty1 = OutFile::new("empty", vec![String::from("")]);
+        let emptytxt1 = OutFile::new("empty.txt", vec![String::from("")]);
 
         assert_eq!(reader.run_count(), 2);
 

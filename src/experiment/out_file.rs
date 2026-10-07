@@ -17,13 +17,8 @@ pub struct OutList {
     out_files: Vec<OutFile>,
 }
 
-impl OutList {
-    /// Creates an empty OutList
-    pub fn new() -> Self {
-        Self {
-            out_files: Vec::new(),
-        }
-    }
+impl TryFrom<Vec<OutFile>> for OutList {
+    type Error = Error;
 
     /// Creates a new OutList.
     ///
@@ -31,7 +26,7 @@ impl OutList {
     ///
     /// ## Errors
     /// - Returns a `ReaderError` if duplicate out_ file names are found
-    pub fn from(out_files: Vec<OutFile>) -> Result<Self> {
+    fn try_from(out_files: Vec<OutFile>) -> Result<Self> {
         // Ensure all outfile names are unique
         let mut names = HashSet::new();
         for outfile in &out_files {
@@ -44,6 +39,15 @@ impl OutList {
         }
 
         Ok(Self { out_files })
+    }
+}
+
+impl OutList {
+    /// Creates an empty OutList
+    pub fn new() -> Self {
+        Self {
+            out_files: Vec::new(),
+        }
     }
 
     /// Returns the length of the longest OutFile in out_files
@@ -93,7 +97,7 @@ pub struct OutFile {
 
 impl OutFile {
     /// Create a new out_ file
-    pub fn from(name: &str, content: Vec<String>) -> Self {
+    pub fn new(name: &str, content: Vec<String>) -> Self {
         Self {
             name: name.to_string(),
             content,
@@ -222,17 +226,17 @@ mod tests {
 
     #[test]
     fn outfile_repeat() {
-        let mut outfile = OutFile::from("broken", vec!["only".to_string()]);
+        let mut outfile = OutFile::new("broken", vec!["only".to_string()]);
         assert!(outfile.repeat(1, 1).is_err());
     }
     #[test]
     fn outfile_repeat_out_of_bounds() {
-        let mut outfile = OutFile::from("broken", vec!["only".to_string()]);
+        let mut outfile = OutFile::new("broken", vec!["only".to_string()]);
         outfile.repeat(0, 3).unwrap();
 
         assert_eq!(
             outfile,
-            OutFile::from(
+            OutFile::new(
                 "broken",
                 vec![
                     "only".to_string(),
@@ -246,10 +250,10 @@ mod tests {
 
     #[test]
     fn outfile_display() {
-        let outfile_empty = OutFile::from("nothing", Vec::new());
-        let outfile_less = OutFile::from("one", vec!["value".to_string()]);
-        let outfile_equal = OutFile::from("few", (0..5).map(|n| n.to_string()).collect());
-        let outfile_more = OutFile::from("many", (0..7).map(|n| n.to_string()).collect());
+        let outfile_empty = OutFile::new("nothing", Vec::new());
+        let outfile_less = OutFile::new("one", vec!["value".to_string()]);
+        let outfile_equal = OutFile::new("few", (0..5).map(|n| n.to_string()).collect());
+        let outfile_more = OutFile::new("many", (0..7).map(|n| n.to_string()).collect());
 
         assert_eq!(outfile_empty.value_count(), 0);
         assert_eq!(outfile_less.value_count(), 1);
@@ -303,9 +307,9 @@ mod tests {
 
     #[test]
     fn outlist_from_outfiles_success() {
-        let list = OutList::from(vec![
-            OutFile::from("a", vec!["x".to_string()]),
-            OutFile::from("b", vec!["y".to_string(), "z".to_string()]),
+        let list = OutList::try_from(vec![
+            OutFile::new("a", vec!["x".to_string()]),
+            OutFile::new("b", vec!["y".to_string(), "z".to_string()]),
         ])
         .unwrap();
 
@@ -314,15 +318,15 @@ mod tests {
         assert_eq!(list.outfile("missing"), None);
         assert_eq!(
             list.outfile("a").unwrap(),
-            &OutFile::from("a", vec!["x".to_string()])
+            &OutFile::new("a", vec!["x".to_string()])
         );
     }
 
     #[test]
     fn out_list_from_duplicate_name_error() {
-        let a = OutFile::from("dup", vec!["x".to_string()]);
-        let b = OutFile::from("dup", vec!["y".to_string()]);
+        let a = OutFile::new("dup", vec!["x".to_string()]);
+        let b = OutFile::new("dup", vec!["y".to_string()]);
 
-        assert!(OutList::from(vec![a, b]).is_err());
+        assert!(OutList::try_from(vec![a, b]).is_err());
     }
 }

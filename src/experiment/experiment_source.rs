@@ -238,8 +238,11 @@ impl FileWriter for ExperimentSource {
         if self.envs.is_empty() {
             create_harness_file(&exp_source_dir.join(SRC_ENV_DIR).join(SRC_ENV_FILE))?;
         } else {
-            let envs =
-                EnvironmentContainer::from_env_list(self.envs.clone().into_values().collect());
+            let envs = self
+                .envs
+                .clone()
+                .into_values()
+                .collect::<EnvironmentContainer>();
             envs.serialize_environments(&exp_source_dir.join(SRC_ENV_DIR))?;
         }
 
