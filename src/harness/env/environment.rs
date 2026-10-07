@@ -130,20 +130,20 @@ impl Environment {
     /// let mock_env_file = mock_env_file.path().to_path_buf();
     /// std::fs::write(&mock_env_file, "TEST=true").unwrap();
     ///
-    /// let envs = Environment::try_from_file_with_load(&mock_env_file).unwrap();
+    /// let envs = Environment::load_from_file(&mock_env_file).unwrap();
     ///
-    /// // try_from_file_with_load returns **all** currently loaded envs, so there will be more
+    /// // load_from_file returns **all** currently loaded envs, so there will be more
     /// // than just the one we set
     /// assert!(envs.get_env_vars().len() > 1);
     ///
-    /// // try_from_file_with_load has created a variable called "TEST" with the value "true"
+    /// // load_from_file has created a variable called "TEST" with the value "true"
     /// assert!(envs.contains_env_var("TEST"));
     /// assert_eq!(envs.get_env_val("TEST"), Some(&String::from("true")));
     ///
     /// // and it is actually loaded
     /// assert_eq!(dotenvy::var("TEST").unwrap(), "true");
     /// ```
-    pub fn try_from_file_with_load(env_file: &Path) -> Result<Self> {
+    pub fn load_from_file(env_file: &Path) -> Result<Self> {
         dotenvy::from_path_override(env_file)?;
         Ok(dotenvy::vars().collect())
     }
