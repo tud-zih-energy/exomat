@@ -1,7 +1,7 @@
 //! Implementation of the Environment struct
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::helper::errors::{Error, Result};
 
@@ -17,13 +17,8 @@ impl Default for Environment {
     }
 }
 
-impl Environment {
-    /// Constructs an empty Environment
-    pub fn new() -> Self {
-        Environment {
-            envs: HashMap::new(),
-        }
-    }
+impl TryFrom<&PathBuf> for Environment {
+    type Error = Error;
 
     /// Constructs a new Environment with all variables and values from a file.
     /// Does not include process environment variables.
@@ -36,13 +31,13 @@ impl Environment {
     /// - Returns an `EnvError` if `file` isn't a valid .env file (defined by
     ///   the `dotenvy` crate)
     /// - Returns an `EnvError` if an error occured during parsing
-    pub fn from_file(file: &Path) -> Result<Self> {
+    fn try_from(file: &PathBuf) -> Result<Self> {
         // check for .env extension
-        assert!(
-            file.extension().unwrap() == "env",
-            "env file with missing extension: {}",
-            file.display()
-        );
+        if file.extension().unwrap() != "env" {
+            return Err(Error::EnvError {
+                reason: format!("env file with missing extension: {}", file.display()),
+            });
+        }
 
         let mut env = Environment::new();
 
@@ -57,11 +52,63 @@ impl Environment {
 
         Ok(env)
     }
+}
 
+impl From<Vec<(String, String)>> for Environment {
     /// Returns a new Environment with `list` as it's variables.
-    pub fn from_env_list(list: Vec<(String, String)>) -> Self {
+    fn from(env_list: Vec<(String, String)>) -> Self {
+        env_list.into_iter().collect()
+    }
+}
+
+impl FromIterator<(String, String)> for Environment {
+    /// Collects `(variable, value)` pairs into a new Environment.
+    fn from_iter<I: IntoIterator<Item = (String, String)>>(iter: I) -> Self {
         Environment {
-            envs: list.into_iter().collect(),
+            envs: iter.into_iter().collect(),
+        }
+    }
+}
+
+impl From<Environment> for HashMap<String, String> {
+    /// Returns a map of all envs saved in `env`.
+    fn from(env: Environment) -> Self {
+        env.envs
+    }
+}
+
+impl From<Environment> for HashMap<String, Vec<String>> {
+    /// Returns a map with the env values of `env` in a vector
+    fn from(env: Environment) -> Self {
+        env.envs.into_iter().map(|(k, v)| (k, vec![v])).collect()
+    }
+}
+
+impl IntoIterator for Environment {
+    type Item = (String, String);
+    type IntoIter = std::collections::hash_map::IntoIter<String, String>;
+
+    /// Iterates over all `(variable, value)` pairs, consuming this Environment.
+    fn into_iter(self) -> Self::IntoIter {
+        self.envs.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a Environment {
+    type Item = (&'a String, &'a String);
+    type IntoIter = std::collections::hash_map::Iter<'a, String, String>;
+
+    /// Iterates over all `(variable, value)` pairs.
+    fn into_iter(self) -> Self::IntoIter {
+        self.envs.iter()
+    }
+}
+
+impl Environment {
+    /// Constructs an empty Environment
+    pub fn new() -> Self {
+        Environment {
+            envs: HashMap::new(),
         }
     }
 
@@ -83,22 +130,22 @@ impl Environment {
     /// let mock_env_file = mock_env_file.path().to_path_buf();
     /// std::fs::write(&mock_env_file, "TEST=true").unwrap();
     ///
-    /// let envs = Environment::from_file_with_load(&mock_env_file).unwrap();
+    /// let envs = Environment::try_from_file_with_load(&mock_env_file).unwrap();
     ///
-    /// // from_file_with_load returns **all** currently loaded envs, so there will be more than
-    /// // just the one we set
-    /// assert!(envs.to_env_map().len() > 1);
+    /// // try_from_file_with_load returns **all** currently loaded envs, so there will be more
+    /// // than just the one we set
+    /// assert!(envs.get_env_vars().len() > 1);
     ///
-    /// // from_file_with_load has created a variable called "TEST" with the value "true"
+    /// // try_from_file_with_load has created a variable called "TEST" with the value "true"
     /// assert!(envs.contains_env_var("TEST"));
     /// assert_eq!(envs.get_env_val("TEST"), Some(&String::from("true")));
     ///
     /// // and it is actually loaded
     /// assert_eq!(dotenvy::var("TEST").unwrap(), "true");
     /// ```
-    pub fn from_file_with_load(env_file: &Path) -> Result<Self> {
+    pub fn try_from_file_with_load(env_file: &Path) -> Result<Self> {
         dotenvy::from_path_override(env_file)?;
-        Ok(Environment::from_env_list(dotenvy::vars().collect()))
+        Ok(dotenvy::vars().collect())
     }
 
     /// Serialize current envs to `file_path`.
@@ -112,19 +159,6 @@ impl Environment {
         serde_envfile::to_file(file_path, &self.envs).map_err(|e| Error::EnvError {
             reason: e.to_string(),
         })
-    }
-
-    /// Returns a map of all envs saved in this Environment.
-    pub fn to_env_map(&self) -> &HashMap<String, String> {
-        &self.envs
-    }
-
-    /// Returns a map with the env values in a vector
-    pub fn to_env_list(&self) -> HashMap<String, Vec<String>> {
-        self.envs
-            .iter()
-            .map(|(k, v)| (k.clone(), vec![v.clone()]))
-            .collect()
     }
 
     /// Returns `true` if the variable exists in this Environment.
@@ -144,7 +178,7 @@ impl Environment {
 
     /// Append all variables from `other_env` onto this Environment.
     pub fn extend_envs(&mut self, other_env: &Environment) {
-        self.envs.extend(other_env.to_env_map().to_owned());
+        self.envs.extend(other_env.envs.clone());
     }
 
     /// Returns the value associated with `var`.
