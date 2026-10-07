@@ -68,6 +68,7 @@ impl TryFrom<&ExperimentSource> for ExperimentSeries {
     }
 }
 
+impl ExperimentSeries {
     /// Return a string describing the overall success of the Experiment Series
     ///
     /// - If any Experiment Run in self.runs failed, return `Failed. Reason: [...]`
@@ -244,7 +245,7 @@ impl TryFrom<&ExperimentSource> for ExperimentSeries {
         let mut keys: Vec<&str> = self
             .runs
             .iter()
-            .flat_map(|run| run.env().to_env_map().keys().map(String::as_str))
+            .flat_map(|run| run.env().get_env_vars().into_iter().map(String::as_str))
             .collect();
 
         keys.sort();

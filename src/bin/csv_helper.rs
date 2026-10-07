@@ -356,8 +356,6 @@ mod tests {
 
         #[test]
         fn generate_env() {
-            use std::collections::HashMap;
-
             let csv = csv_env_file();
 
             let source_dir = skeleton_default_env();
@@ -369,18 +367,18 @@ mod tests {
             let all_envs_by_fname = exomat::harness::env::get_existing_environments_by_fname(&env_dir).unwrap();
             let all_envs: Vec<Environment> = all_envs_by_fname.into_values().collect();
 
-            fn helper_env_map(value_foo: &str, value_bar: &str) -> HashMap<String, String> {
-                HashMap::from([
+            fn helper_environment(value_foo: &str, value_bar: &str) -> Environment {
+                Environment::from(Vec::from([
                     ("FOO".to_string(), value_foo.to_string()),
                     ("BAR".to_string(), value_bar.to_string())
-                ])
+                ]))
             }
 
             assert_eq!(3, all_envs.len());
             // note: row order is preserved in filenames
-            assert_eq!(all_envs[0].to_env_map(), &helper_env_map("1", "2"));
-            assert_eq!(all_envs[1].to_env_map(), &helper_env_map("3", "4"));
-            assert_eq!(all_envs[2].to_env_map(), &helper_env_map("17", "42"));
+            assert_eq!(all_envs[0], helper_environment("1", "2"));
+            assert_eq!(all_envs[1], helper_environment("3", "4"));
+            assert_eq!(all_envs[2], helper_environment("17", "42"));
 
             // note: by extension, default env is now destroyed (as it should be)
         }
