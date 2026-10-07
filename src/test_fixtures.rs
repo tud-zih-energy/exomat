@@ -396,7 +396,7 @@ use crate::harness::env::EnvironmentContainer;
 /// generates an Environemnt Container with `VAR: single`
 #[fixture]
 pub fn container_single() -> EnvironmentContainer {
-    EnvironmentContainer::from_env_list(vec![Environment::from_env_list(vec![(
+    EnvironmentContainer::from(vec![Environment::from_env_list(vec![(
         "VAR".to_string(),
         "single".to_string(),
     )])])
@@ -405,7 +405,7 @@ pub fn container_single() -> EnvironmentContainer {
 /// generates an Environemnt Container with `VAR1: VAL1, VAR2: VAL2`
 #[fixture]
 pub fn container_multiple() -> EnvironmentContainer {
-    EnvironmentContainer::from_env_list(vec![Environment::from_env_list(vec![
+    EnvironmentContainer::from(vec![Environment::from_env_list(vec![
         ("VAR1".to_string(), "VAL1".to_string()),
         ("VAR2".to_string(), "VAL2".to_string()),
     ])])

@@ -146,22 +146,18 @@ where
 /// - Returns `EnvError` if a key from `to_add` is already in `given`
 fn try_assemble_all(given: &Environment, to_add: &EnvList) -> Result<Vec<Environment>> {
     // combine all values from to_add
-    let mut combinations = EnvironmentContainer::from_env_list(
-        to_add
-            .values()
-            .multi_cartesian_product()
-            .collect::<Vec<_>>() // list of all possible value combinations without keys
-            .into_iter()
-            .map(|val_combos| {
-                let pairs = to_add
-                    .keys()
-                    .cloned()
-                    .zip(val_combos.iter().map(|s| s.to_string()))
-                    .collect::<Vec<(String, String)>>();
-                Environment::from_env_list(pairs)
-            })
-            .collect(),
-    );
+    let mut combinations = to_add
+        .values()
+        .multi_cartesian_product() // all possible value combinations without keys
+        .map(|val_combos| {
+            let pairs = to_add
+                .keys()
+                .cloned()
+                .zip(val_combos.iter().map(|s| s.to_string()))
+                .collect::<Vec<(String, String)>>();
+            Environment::from_env_list(pairs)
+        })
+        .collect::<EnvironmentContainer>();
 
     trace!("Adding env combinations: {combinations:?}");
 
@@ -169,7 +165,7 @@ fn try_assemble_all(given: &Environment, to_add: &EnvList) -> Result<Vec<Environ
     combinations.extend_environments(given);
     debug!("Finished assembling environments: {combinations:?}");
 
-    Ok(combinations.to_environments().to_owned())
+    Ok(combinations.into())
 }
 
 /// Takes a list of `Vec<Vec<String>>` and turns it into a `HashMap<String, Vec<String>>`.
@@ -281,7 +277,7 @@ fn generate_environments(
     to_append: EnvList,
     to_remove: EnvList,
 ) -> Result<()> {
-    let mut env = EnvironmentContainer::from_files(&env_path)?;
+    let mut env = EnvironmentContainer::try_from(&env_path)?;
 
     fn contains_reserved(env_list: &EnvList) -> bool {
         env_list
@@ -594,9 +590,10 @@ mod tests {
             let expected_bar = Environment::from_env_list(vec![("FOO".to_string(), "bar".to_string())]);
             let expected_baz = Environment::from_env_list(vec![("FOO".to_string(), "baz".to_string())]);
 
-            let envs_no_fname = EnvironmentContainer::from_files(&PathBuf::from(".")).unwrap();
-            assert!(envs_no_fname.to_environments().contains(&expected_baz));
-            assert!(envs_no_fname.to_environments().contains(&expected_bar));
+            let envs_no_fname: Vec<Environment> =
+                EnvironmentContainer::try_from(&PathBuf::from(".")).unwrap().into();
+            assert!(envs_no_fname.contains(&expected_baz));
+            assert!(envs_no_fname.contains(&expected_bar));
 
             let envs_fname = get_existing_environments_by_fname(&PathBuf::from(".")).unwrap();
             assert_eq!(
