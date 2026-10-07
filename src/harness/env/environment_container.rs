@@ -22,19 +22,39 @@ impl Default for EnvironmentContainer {
     }
 }
 
-impl EnvironmentContainer {
-    /// Creates a new, empty EnvironmentContainer
-    pub fn new() -> Self {
+impl From<Vec<Environment>> for EnvironmentContainer {
+    /// Returns a new EnvironmentContainer from the content of `list`.
+    fn from(list: Vec<Environment>) -> Self {
         EnvironmentContainer {
-            environment_list: vec![],
+            environment_list: list,
         }
     }
+}
+
+impl FromIterator<Environment> for EnvironmentContainer {
+    /// Collects Environments into a new EnvironmentContainer.
+    fn from_iter<I: IntoIterator<Item = Environment>>(iter: I) -> Self {
+        EnvironmentContainer {
+            environment_list: iter.into_iter().collect(),
+        }
+    }
+}
+
+impl From<EnvironmentContainer> for Vec<Environment> {
+    /// Returns a list of all Environments currently set in `container`.
+    fn from(container: EnvironmentContainer) -> Self {
+        container.environment_list
+    }
+}
+
+impl TryFrom<&PathBuf> for EnvironmentContainer {
+    type Error = Error;
 
     /// Fetch and deserialize existing environment variables from (multiple) .env files.
     ///
     /// Might return an empty EnvironmentContainer.
     /// Delegates to get_existing_envs_by_fname(), has same errors & panics.
-    pub fn from_files(from: &PathBuf) -> Result<Self> {
+    fn try_from(from: &PathBuf) -> Result<Self> {
         let environments_by_fname = get_existing_environments_by_fname(from)?;
 
         // create an Environment from each file
@@ -44,17 +64,14 @@ impl EnvironmentContainer {
                 .collect::<Vec<Environment>>(),
         })
     }
+}
 
-    /// Returns a new EnvironmentContainer from the content of `list`.
-    pub fn from_env_list(list: Vec<Environment>) -> Self {
+impl EnvironmentContainer {
+    /// Creates a new, empty EnvironmentContainer
+    pub fn new() -> Self {
         EnvironmentContainer {
-            environment_list: list,
+            environment_list: vec![],
         }
-    }
-
-    /// Returns a list of all Environments currently set in this EnvironmentContainer.
-    pub fn to_environments(&self) -> &Vec<Environment> {
-        &self.environment_list
     }
 
     /// Writes all currently defined envs to `exp_src_envs/[i].env`.
@@ -443,7 +460,7 @@ mod tests {
     #[rstest]
     fn env_remove_valid(envlist_mixed: EnvList) {
         // list with "VAR1" and "VAR2"
-        let mut env = EnvironmentContainer::from_env_list(vec![
+        let mut env = EnvironmentContainer::from(vec![
             Environment::from_env_list(vec![
                 ("VAR1".to_string(), "VAL".to_string()),
                 ("VAR2".to_string(), "VAL".to_string()),
@@ -473,7 +490,7 @@ mod tests {
         }
 
         // list with a lot of Environments (10)
-        let many_env = EnvironmentContainer::from_env_list(vec![Environment::new(); 11]);
+        let many_env = EnvironmentContainer::from(vec![Environment::new(); 11]);
 
         let tmpdir = TempDir::new().unwrap();
         let tmpdir = tmpdir.path().to_path_buf();
