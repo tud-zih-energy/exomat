@@ -222,16 +222,16 @@ pub enum Commands {
     Summary {
         /// Print an estimated run time for the entire experiment Source.
         ///
-        /// You can provide your own estimation for how long one run takes.
+        /// Provide your own estimation for how long one run takes.
         /// If you don't, a small selection of possibilities will be printed.
         #[arg(short = 'e', long, value_name = "SECONDS")]
         estimated_per_run: Option<Option<u64>>,
 
         /// Print an estimated run time for the entire experiment Source.
         ///
-        /// You can provide your own estimation for how long one run takes.
-        /// If you don't, a small selection of possibilities will be printed.
-        #[arg(short = 'r', long, value_name = "SECONDS")]
+        /// Provide how many repetitions per run your expect.
+        /// If you don't, the default (1) will be used.
+        #[arg(short = 'r', long, value_name = "COUNT")]
         estimated_repetitions: Option<Option<u64>>,
     },
 
