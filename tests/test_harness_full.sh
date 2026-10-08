@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -euox pipefail
 
 #
 # integration test of all  commands
@@ -171,8 +171,10 @@ cd $DIR
 ! "$EXOMAT_BIN" summary
 
 # should work
-"$EXOMAT_BIN" summary $DIR/One
-"$EXOMAT_BIN" summary $DIR/One --estimated-per-run
+"$EXOMAT_BIN" -C $DIR/One summary
+"$EXOMAT_BIN" -C $DIR/One summary --estimated-repetitions
+"$EXOMAT_BIN" -C $DIR/One summary --estimated-per-run
+"$EXOMAT_BIN" -C $DIR/One summary --estimated-per-run 10 --estimated-repetitions 2
 
 # not an experiment source
-! "$EXOMAT_BIN" summary $DIR/One_Out1 --estimated-per-run
+! "$EXOMAT_BIN" -C $DIR/One_Out1 summary --estimated-per-run
