@@ -280,9 +280,6 @@ impl std::fmt::Display for ExperimentSource {
             let format = "%d-%m-%Y %H:%M:%S";
             dt_now_local.format(format).to_string()
         }
-
-        let exp_name = self.name().map_err(|_| std::fmt::Error)?;
-
         if !self.exomat_envs.exp_src_dir.is_dir() {
             return Err(std::fmt::Error);
         }
@@ -313,9 +310,11 @@ impl std::fmt::Display for ExperimentSource {
         env_vars.sort();
         env_vars.dedup();
 
+        let location = self.location().display();
+
         write!(
             f,
-            "[{exp_name}]\ncreated:       {}\nlast modified: {}\n\n[{exp_name}] environments\ncount:         {}\nvariables:     {:?}\n",
+            "Experiment:      {location}\n\ncreated:         {}\nlast modified:   {}\n\n{} environment(s)\nvariables:       {:?}\n",
             created_at, modified, env_count, env_vars
         )
     }
