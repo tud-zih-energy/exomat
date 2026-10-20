@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -euox pipefail
 
 #
 # integration test of all  commands
@@ -161,3 +161,20 @@ cd $DIR/One_Out1
     grep sentinel_a $DIR/One_Out1/One_Out1.csv > /dev/null
     grep sentinel_b $DIR/One_Out1/One_Out1.csv > /dev/null
 cd $DIR
+
+
+#
+# summary
+#
+
+# missing experiment
+! "$EXOMAT_BIN" summary
+
+# should work
+"$EXOMAT_BIN" -C $DIR/One summary
+"$EXOMAT_BIN" -C $DIR/One summary --estimated-repetitions
+"$EXOMAT_BIN" -C $DIR/One summary --estimated-per-run
+"$EXOMAT_BIN" -C $DIR/One summary --estimated-per-run 10 --estimated-repetitions 2
+
+# not an experiment source
+! "$EXOMAT_BIN" -C $DIR/One_Out1 summary --estimated-per-run
