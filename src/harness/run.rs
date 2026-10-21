@@ -1,13 +1,13 @@
 //! harness run subcommand
 
-use chrono::Local;
+// use chrono::Local;
 use indicatif::ProgressStyle;
 use log::{info, trace};
 use std::path::PathBuf;
 use tracing::info_span;
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 
-use crate::experiment::{ExperimentSeries, ExperimentSource, FileReader, FileWriter, Runner};
+use crate::experiment::{ExperimentSeries, ExperimentSource, FileWriter, Runner};
 use crate::helper::errors::Result;
 
 /// Creates an experiment series/run directory for the given `experiment`.
@@ -42,22 +42,23 @@ pub fn experiment(
 /// output/errors/results.
 ///
 /// The new experiment series directory will be created as a tempdir.
-pub fn trial(experiment: &ExperimentSource) -> Result<()> {
-    let format = &Local::now()
-        .format("exomat_trial-%Y-%m-%d-%H-%M-%S")
-        .to_string();
-    let trial_dir_path = std::env::temp_dir().join(format);
-    let trial = experiment.to_trial_source();
-
-    // run experiment once
-    let res = self::experiment(&trial, Some(trial_dir_path.clone()), true);
-
-    // gather results
-    let mut reader = ExperimentSeries::parse(&trial_dir_path)?;
-    reader.include_source(&trial);
-    println!("{reader}");
-
-    res
+pub fn trial(_experiment: &ExperimentSource) -> Result<()> {
+    todo!();
+    // let format = &Local::now()
+    //     .format("exomat_trial-%Y-%m-%d-%H-%M-%S")
+    //     .to_string();
+    // let trial_dir_path = std::env::temp_dir().join(format);
+    // let trial = experiment.to_trial_source();
+    //
+    // // run experiment once
+    // let res = self::experiment(&trial, Some(trial_dir_path.clone()), true);
+    //
+    // // gather results
+    // let mut reader = ExperimentSeries::parse(&trial_dir_path)?;
+    // reader.include_source(&trial);
+    // println!("{reader}");
+    //
+    // res
 }
 
 /// Runs the experiment defined in `exp_source_dir` `repetitions` times for each
@@ -82,7 +83,7 @@ fn execute_exp_repetitions(series: &mut ExperimentSeries, is_trial: bool) -> Res
 
     let prog_bar_len = match is_trial {
         true => 1,
-        false => series.repetition_count(),
+        false => todo!("get total repetition count"),
     };
     series_span.pb_set_style(
         &ProgressStyle::with_template("[{elapsed_precise}] [{bar:.green}] {pos}/{len} ({eta})")

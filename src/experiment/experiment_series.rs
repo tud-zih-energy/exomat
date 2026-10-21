@@ -11,7 +11,7 @@ use crate::helper::{
 
 use chrono::Local;
 use csv::Writer;
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, trace};
 use rand::seq::SliceRandom;
 use std::path::{Path, PathBuf};
 
@@ -119,49 +119,50 @@ impl ExperimentSeries {
     /// ## Errors
     /// - returns an `Empty` Error, if self.path is empty
     pub fn generate_runs(&mut self) -> Result<()> {
-        if self.path.is_none() {
-            return Err(Error::Empty(String::from("Series location not set")));
-        }
-
-        if *self.source.repetitions() > 1 {
-            warn!("Repetition set to less than 1. No Experiment Runs will be created.");
-        }
-
-        // helper
-        fn generate_run_from(
-            series: &ExperimentSeries,
-            env: (&PathBuf, &Environment),
-            repetition: u64,
-        ) -> ExperimentRun {
-            let exomat_envs = ExomatEnvironment::new(series.source.location(), repetition);
-
-            ExperimentRun::new(
-                series.source.run_script(),
-                env,
-                &exomat_envs,
-                series.source.repetitions().to_string().len(),
-            )
-        }
-
-        let mut run_list = Vec::new();
-
-        if self.source.envs().is_empty() {
-            for rep in 0..*self.source.repetitions() {
-                // cannot edit self.runs directly here, beucase of the borrow checker :)
-                run_list.push(generate_run_from(
-                    self,
-                    (&PathBuf::from(SRC_ENV_FILE), &Environment::new()),
-                    rep,
-                ));
-            }
-        } else {
-            for (environment, rep) in self.shuffled_environments() {
-                run_list.push(generate_run_from(self, environment, rep));
-            }
-        }
-
-        self.runs.extend(run_list);
-        Ok(())
+        todo!("refactor after experiment run refactor");
+        // if self.path.is_none() {
+        //     return Err(Error::Empty(String::from("Series location not set")));
+        // }
+        //
+        // if *self.source.repetitions() > 1 {
+        //     warn!("Repetition set to less than 1. No Experiment Runs will be created.");
+        // }
+        //
+        // // helper
+        // fn generate_run_from(
+        //     series: &ExperimentSeries,
+        //     env: (&PathBuf, &Environment),
+        //     repetition: u64,
+        // ) -> ExperimentRun {
+        //     let exomat_envs = ExomatEnvironment::new(series.source.location(), repetition);
+        //
+        //     ExperimentRun::new(
+        //         series.source.run_script(),
+        //         env,
+        //         &exomat_envs,
+        //         series.source.repetitions().to_string().len(),
+        //     )
+        // }
+        //
+        // let mut run_list = Vec::new();
+        //
+        // if self.source.envs().is_empty() {
+        //     for rep in 0..*self.source.repetitions() {
+        //         // cannot edit self.runs directly here, beucase of the borrow checker :)
+        //         run_list.push(generate_run_from(
+        //             self,
+        //             (&PathBuf::from(SRC_ENV_FILE), &Environment::new()),
+        //             rep,
+        //         ));
+        //     }
+        // } else {
+        //     for (environment, rep) in self.shuffled_environments() {
+        //         run_list.push(generate_run_from(self, environment, rep));
+        //     }
+        // }
+        //
+        // self.runs.extend(run_list);
+        // Ok(())
     }
 
     /// Build the filepath to a new series directory.
@@ -181,13 +182,6 @@ impl ExperimentSeries {
 
     // ========================= getter ========================================
 
-    /// Returns the number of Experiment Run repetitions in this Experiment Series
-    ///
-    /// Calculated with the number of repetitions and the number of environments
-    pub fn repetition_count(&self) -> u64 {
-        self.source.repetitions() * self.source.envs().len() as u64
-    }
-
     /// Returns the Experiment name, taken from the Experiment Source of this Experiment Series
     ///
     /// For errors, see `ExperimentSource::name()`
@@ -198,11 +192,6 @@ impl ExperimentSeries {
     /// Returns the internal exomat Environment of the Experiment Source of this Experiment Series
     pub fn exomat_envs(&self) -> &ExomatEnvironment {
         self.source.exomat_envs()
-    }
-
-    /// Returns the run script of the Experiment Source of this Experiment Series
-    pub fn run_script(&self) -> &str {
-        self.source.run_script()
     }
 
     /// Returns the location in the filesystem of this Experiment Series
@@ -272,11 +261,13 @@ impl ExperimentSeries {
     /// The shuffled list is then sorted by repetition, so that all n-repetitions run
     /// before all n+1-repetitions.
     fn shuffled_environments(&self) -> Vec<((&PathBuf, &Environment), u64)> {
-        let mut running_order = vec![];
-        let max_rep = self.source.repetitions();
+        // let mut running_order = vec![];
+        let running_order = vec![];
+        // let max_rep = self.source.repetitions();
+        let max_rep: u64 = todo!();
 
         trace!("Randomizing environments...");
-        for rep in 0..*max_rep {
+        for rep in 0..max_rep {
             for env in self.source.envs() {
                 // include the repetition in a tuple, so that it can be sorted correctly later
                 running_order.push((env, rep));
@@ -584,7 +575,7 @@ impl FileReader for ExperimentSeries {
                 .collect::<Result<Vec<_>>>()?;
 
         let mut reader = ExperimentSeries {
-            source: ExperimentSource::new(),
+            source: todo!(),
             path: Some(exp_series_dir.to_path_buf()),
             runs,
         };

@@ -2,13 +2,12 @@
 
 use std::path::Path;
 
-use crate::experiment::{ExperimentSource, FileWriter};
+use crate::experiment::ExperimentSource;
 use crate::helper::errors::Result;
 
 /// entrypoint for skeleton binary
 pub fn main(exp_src_dir: &Path) -> Result<()> {
-    let mut src = ExperimentSource::new();
-    src.persist(exp_src_dir)?;
+    let _ = ExperimentSource::create_skeleton(exp_src_dir.to_path_buf())?;
 
     println!(
         r#"

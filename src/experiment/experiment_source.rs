@@ -1,98 +1,42 @@
-use log::{debug, info, warn};
-use std::{
-    fs::read_to_string,
-    path::{Path, PathBuf},
-};
+use log::debug;
+use std::path::{Path, PathBuf};
 
-use crate::experiment::{FileReader, FileWriter};
-use crate::harness::env::{
-    get_existing_environments_by_fname, Environment, EnvironmentContainer, EnvironmentLocationList,
-    ExomatEnvironment,
-};
-use crate::helper::archivist::{create_harness_dir, create_harness_file};
+use crate::experiment::FileReader;
+use crate::helper::archivist::create_harness_file;
 use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
 
-/// Container for an Experiment Source
+/// Representation of an experiment source dir on disk
 #[derive(Debug, Clone)]
 pub struct ExperimentSource {
-    run_sh: String,
-    envs: EnvironmentLocationList,
-    exomat_envs: ExomatEnvironment,
-}
-
-/// Default implementation because clippy said so
-impl Default for ExperimentSource {
-    fn default() -> Self {
-        Self::new()
-    }
+    dir: PathBuf,
 }
 
 impl ExperimentSource {
-    /// Create a new Experiment Source.
-    ///
-    /// The following default values are set:
-    /// - `run_sh`: content of `harness/run.sh.template`
-    /// - `envs`: empty HashMap
-    /// - `exomat_envs`:
-    ///     - `exp_src_dir`: empty PathBuf
-    ///     - `repetition`: 1
-    pub fn new() -> Self {
-        ExperimentSource {
-            run_sh: include_str!("../harness/run.sh.template").to_string(),
-            envs: EnvironmentLocationList::new(),
-            exomat_envs: ExomatEnvironment::new(&PathBuf::new(), 1),
-        }
-    }
-
     /// Create a skeleton of an experiment source on disk
-    pub fn create_skeleton(_dir: PathBuf) -> Result<Self> {
-        todo!();
-    }
+    pub fn create_skeleton(dir: PathBuf) -> Result<Self> {
+        use std::io::Write;
 
-    /// Generates a valid trial source based on an ExperimentSource.
-    ///
-    /// The following default values are set:
-    /// - `run_sh`: copied
-    /// - `envs`: one random Environment from self.envs (or an empty Environment, if self.envs is empty)
-    /// - `exomat_envs`:
-    ///     - `exp_src_dir`: copied
-    ///     - `repetition`: 1
-    ///
-    /// ## Panics
-    /// - panics if the randomly chosen Environment is inaccessable
-    pub fn to_trial_source(&self) -> Self {
-        fn take_first<I>(list: I) -> I::Item
-        where
-            I: IntoIterator,
-        {
-            list.into_iter().next().expect("Could not get first item")
-        }
+        debug!("creating dir");
+        let dir = dir.canonicalize()?;
+        std::fs::create_dir(&dir)?;
 
-        let trial_env: EnvironmentLocationList = match self.envs.is_empty() {
-            true => {
-                EnvironmentLocationList::from([(PathBuf::from(SRC_ENV_FILE), Environment::new())])
-            }
-            false => {
-                let (path, env) = take_first(&self.envs);
-                EnvironmentLocationList::from([(path.clone(), env.clone())])
-            }
-        };
+        debug!("dumping run.sh");
+        let template_dir = dir.join(SRC_TEMPLATE_DIR);
+        std::fs::create_dir(&template_dir)?;
+        let mut run_file = std::fs::File::create(template_dir.join(SRC_RUN_FILE))?;
+        run_file.write_all(include_bytes!("../harness/run.sh.template"))?;
 
-        info!(
-            "Created trial with environment \"{}\": {:?}",
-            take_first(trial_env.keys()).display(),
-            take_first(trial_env.values())
-        );
+        debug!("setting up initial env");
+        // note: just create empty file, don't even bother using the wrappers
+        let env_dir = dir.join(SRC_ENV_DIR);
+        std::fs::create_dir(&env_dir)?;
+        create_harness_file(&env_dir.join(SRC_ENV_FILE))?;
 
-        Self {
-            run_sh: self.run_sh.clone(),
-            envs: trial_env,
-            exomat_envs: ExomatEnvironment {
-                exp_src_dir: self.location().to_path_buf(),
-                repetition: 1,
-            },
-        }
+        debug!("done, adding marker file");
+        create_harness_file(&dir.join(MARKER_SRC))?;
+
+        Ok(Self { dir })
     }
 
     // ========================= getter ========================================
@@ -100,79 +44,32 @@ impl ExperimentSource {
     /// A reference to the map of Environments with their file names as keys
     ///
     /// Stores the content of `[experiment]/SRC_ENV_DIR/`
-    pub fn envs(&self) -> &EnvironmentLocationList {
-        &self.envs
+    pub fn envs(&self) -> &crate::harness::env::EnvironmentLocationList {
+        todo!("remove or refactor")
+        // &self.envs
     }
 
     /// Returns the directory name of the Experiment Source.
-    ///
-    /// ## Errors
-    /// - returns an `Empty`Error, if `exp_src_dir` is not set in exomat_envs
     pub fn name(&self) -> Result<String> {
-        if self.exomat_envs.exp_src_dir == PathBuf::new() {
-            warn!("Run cannot determine it's source.");
-            Err(Error::Empty(
-                "EXP_SRC_DIR not set in Experiment Source".to_string(),
-            ))
-        } else {
-            Ok(file_name_string(&self.exomat_envs.exp_src_dir))
-        }
+        Ok(self
+            .dir
+            .file_name()
+            .ok_or(Error::Empty(
+                "experiment source had empty path, wtf?".to_string(),
+            ))?
+            .to_string_lossy()
+            .to_string())
     }
 
     /// A reference to the internal variables of this Experiment Source
-    pub fn exomat_envs(&self) -> &ExomatEnvironment {
-        &self.exomat_envs
-    }
-
-    /// A reference to the number of repetitions the Experiment should execute
-    pub fn repetitions(&self) -> &u64 {
-        &self.exomat_envs.repetition
+    pub fn exomat_envs(&self) -> &crate::harness::env::ExomatEnvironment {
+        todo!("remove or refactor")
+        // &self.exomat_envs
     }
 
     /// Location of the Experiment Source in the Filesystem
-    ///
-    /// May be empty if the Experiment Source has not been persisted yet.
     pub fn location(&self) -> &PathBuf {
-        &self.exomat_envs.exp_src_dir
-    }
-
-    /// A reference to the run script this Experiment will execute.
-    ///
-    /// Stores the content of `self.location()/SRC_TEMPLATE_DIR/SRC_RUN_FILE``
-    pub fn run_script(&self) -> &str {
-        &self.run_sh
-    }
-
-    // ========================= setter ========================================
-
-    /// Replace the run script
-    pub fn set_run_script(&mut self, script: String) {
-        //TODO: warn if script does not start with #!/bin/bash or similar
-        self.run_sh = script;
-    }
-
-    /// Replace envs
-    ///
-    /// ## Errors
-    /// - returns an `EnvError` if any key does not end with ".env"
-    pub fn set_envs(&mut self, envs: EnvironmentLocationList) -> Result<()> {
-        debug!("checking env extension");
-        if let Some(invalid_env) = envs
-            .keys()
-            .find(|env_file_name| env_file_name.extension().unwrap_or_default() != "env")
-        {
-            return Err(Error::EnvError {
-                reason: format!("Invalid env file name at {}", invalid_env.display()),
-            });
-        }
-
-        self.envs = envs;
-        Ok(())
-    }
-
-    /// Replace internal exomat variables
-    pub fn set_exomat_envs(&mut self, exomat_envs: ExomatEnvironment) {
-        self.exomat_envs = exomat_envs;
+        &self.dir
     }
 }
 
@@ -193,87 +90,16 @@ impl FileReader for ExperimentSource {
     /// - returns an `IoError` if the run script could not be read
     /// - returns an `EnvError` if Environments could not be parsed
     /// - panics if the absolute path of `dir` cannot be build
-    fn parse(exp_source_dir: &Path) -> Result<Self::Item> {
-        let exomat_envs = ExomatEnvironment::new(
-            &exp_source_dir
-                .to_path_buf()
-                .canonicalize()
-                .expect("Could not resolve Source path"),
-            1,
-        );
-        let run_sh = read_to_string(exp_source_dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE))?;
-        let envs = get_existing_environments_by_fname(&exp_source_dir.join(SRC_ENV_DIR))?;
-
-        Ok(Self {
-            run_sh,
-            envs,
-            exomat_envs,
-        })
-    }
-}
-
-// ========================== Writer ==========================
-impl FileWriter for ExperimentSource {
-    /// Creates an experiment source folder from an ExperimentSource.
-    ///
-    /// ```notest
-    /// dir
-    ///   |-> .exomat_source
-    ///   |-> SRC_TEMPLATE_DIR/
-    ///   | \-> SRC_RUN_FILE [executable, content: self.run_sh]
-    ///   \-> SRC_ENV_DIR/
-    ///     | # if self.envs.is_empty
-    ///     |-> SRC_ENV_FILE [EMPTY]
-    ///     | # else: one .env file for each environment in self.envs
-    ///     | # see EnvironmentContainer::serialize_environments()
-    ///     \-> ...
-    /// ```
-    ///
-    /// ## Errors
-    /// - returns an `HarnessCreateError` if any entry of the list above could not be created.
-    /// - returns an `IoError` if the run script could not be written
-    /// - returns an `EnvError` if Environment serialization failed
-    fn persist(&mut self, exp_source_dir: &Path) -> Result<()> {
-        create_harness_dir(&exp_source_dir.to_path_buf())?;
-        create_harness_file(&exp_source_dir.join(MARKER_SRC))?;
-
-        // create envs if some are given, otherwise just create an empty env file
-        debug!("persisting env dir");
-        create_harness_dir(&exp_source_dir.join(SRC_ENV_DIR))?;
-        if self.envs.is_empty() {
-            create_harness_file(&exp_source_dir.join(SRC_ENV_DIR).join(SRC_ENV_FILE))?;
-        } else {
-            let envs = self
-                .envs
-                .clone()
-                .into_values()
-                .collect::<EnvironmentContainer>();
-            envs.serialize_environments(&exp_source_dir.join(SRC_ENV_DIR))?;
+    fn parse(dir: &Path) -> Result<Self::Item> {
+        let dir = dir.canonicalize()?;
+        if !dir.join(MARKER_SRC).is_file() {
+            return Err(Error::ReaderError {
+                dir: dir.to_string_lossy().to_string(),
+                reason: "marker file for source dir is missing".to_string(),
+            });
         }
 
-        // create run.sh as executable
-        debug!("persisting run script");
-        create_harness_dir(&exp_source_dir.join(SRC_TEMPLATE_DIR))?;
-        let mut run_file =
-            self.create_executable(&exp_source_dir.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE))?;
-
-        // write content to run.sh
-        let run_sh_bytes = if self.run_sh.is_empty() {
-            warn!("Tried to serialize empty run.sh; Used default template instead.");
-            include_bytes!("../harness/run.sh.template")
-        } else {
-            self.run_sh.as_bytes()
-        };
-
-        self.write_to_file(&mut run_file, run_sh_bytes)?;
-
-        info!(
-            "Experiment harness created under {}",
-            exp_source_dir.display()
-        );
-
-        self.exomat_envs.exp_src_dir = exp_source_dir.to_path_buf();
-        Ok(())
+        Ok(Self { dir })
     }
 }
 
@@ -281,125 +107,47 @@ impl FileWriter for ExperimentSource {
 pub mod tests {
     use super::*;
 
-    use faccess::PathExt;
-    use rusty_fork::rusty_fork_test;
     use std::fs::read_to_string;
-    use std::path::PathBuf;
     use tempfile::TempDir;
 
     #[test]
-    fn test_create_source_multiple_times() {
-        let tmpdir = TempDir::new().unwrap();
-        let tmpdir = tmpdir.path().to_path_buf();
-
-        let mut src = ExperimentSource::new();
-        assert!(src.persist(&tmpdir).is_ok());
-        assert!(src.persist(&tmpdir).is_err());
-    }
-
-    rusty_fork_test! {
-        #[test]
-        fn persist_source_default() {
-            let template = read_to_string(PathBuf::from("src/harness/run.sh.template")).unwrap();
-
-            // create base tempdir, to act as parent
-            let tmpdir = TempDir::new().unwrap();
-            let tmpdir = tmpdir.path();
-            std::env::set_current_dir(&tmpdir).unwrap();
-
-            // create experiment source dir (relative to current dir)
-            let src_path = tmpdir.join("FooSource");
-            let mut src = ExperimentSource::new();
-
-            src.persist(&src_path).unwrap();
-
-            assert!(&tmpdir.join("FooSource").is_dir());
-            assert!(src_path.join(SRC_ENV_DIR).is_dir());
-            assert!(src_path.join(SRC_ENV_DIR).join(SRC_ENV_FILE).is_file());
-            assert!(src_path.join(SRC_TEMPLATE_DIR).is_dir());
-
-            let run_file = PathBuf::from(&src_path.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE));
-
-            // new run.sh contains template, is executable
-            assert!(run_file.is_file());
-            let run = read_to_string(&run_file).unwrap();
-
-            assert_eq!(run, template);
-            assert!(&run_file.executable());
-        }
-
-        #[test]
-        fn persist_source_custom() {
-            // create base tempdir, to act as parent
-            let tmpdir = TempDir::new().unwrap();
-            let tmpdir = tmpdir.path();
-            std::env::set_current_dir(&tmpdir).unwrap();
-
-            let custom_script = "!#/bin/bash\necho Something";
-
-            // create experiment source dir (relative to current dir)
-            let src_path = tmpdir.join("FooSource");
-            let mut src = ExperimentSource::new();
-
-            src.set_run_script(custom_script.to_string());
-            src.persist(&src_path).unwrap();
-
-            assert!(&tmpdir.join("FooSource").is_dir());
-            assert!(src_path.join(SRC_ENV_DIR).is_dir());
-            assert!(src_path.join(SRC_ENV_DIR).join(SRC_ENV_FILE).is_file());
-            assert!(src_path.join(SRC_TEMPLATE_DIR).is_dir());
-
-            let run_file = PathBuf::from(&src_path.join(SRC_TEMPLATE_DIR).join(SRC_RUN_FILE));
-
-            // new run.sh contains template, is executable
-            assert!(run_file.is_file());
-            let run = read_to_string(&run_file).unwrap();
-
-            assert_eq!(run, custom_script);
-            assert!(&run_file.executable());
-        }
-
-        #[test]
-        fn test_create_source_missing_parents() {
-            let tmpdir = TempDir::new().unwrap();
-            let tmpdir = tmpdir.path().to_path_buf();
-            std::env::set_current_dir(&tmpdir).unwrap();
-
-            let with_parents = PathBuf::from("foo/bar");
-            assert!(!PathBuf::from("foo").exists());
-            assert!(!PathBuf::from("foo/bar").exists());
-
-            let mut src = ExperimentSource::new();
-            assert!(src.persist(&with_parents).is_ok());
-
-            assert!(PathBuf::from("foo").exists());
-            assert!(PathBuf::from("foo/bar").exists());
-
-            // template is ONLY in foo/bar
-            assert!(PathBuf::from("foo/bar/envs").exists());
-            assert!(!PathBuf::from("foo/envs").exists());
-        }
-    }
-
-    #[test]
     fn skeleton_regular() {
-        let work_dir = tempfile::TempDir::new().unwrap();
+        let work_dir = TempDir::new().unwrap();
         let new_dir = work_dir.path().join("new_dir");
         ExperimentSource::create_skeleton(new_dir.clone()).unwrap();
 
         assert!(new_dir.join("envs").is_dir());
+        assert!(new_dir.join("envs").join("0.env").is_file());
         assert!(new_dir.join(MARKER_SRC).is_file());
         let run_file_path = new_dir.join("template").join("run.sh");
         assert!(run_file_path.is_file());
-        let run_file_content = std::fs::read_to_string(&run_file_path).unwrap();
+        let run_file_content = read_to_string(&run_file_path).unwrap();
         assert_eq!(run_file_content, include_str!("../harness/run.sh.template"));
     }
 
     #[test]
     fn skeleton_target_exists() {
-        let existing_dir = tempfile::TempDir::new().unwrap();
+        let existing_dir = TempDir::new().unwrap();
         let error =
             ExperimentSource::create_skeleton(existing_dir.path().to_path_buf()).unwrap_err();
         assert!(error.to_string().contains("exist"));
+    }
+
+    #[test]
+    fn parse_skeleton() {
+        let existing_dir = TempDir::new().unwrap();
+        let dir = existing_dir.path().join("my_dir");
+        ExperimentSource::create_skeleton(dir.clone()).unwrap();
+        let parsed = ExperimentSource::parse(&dir).unwrap();
+        assert_eq!(dir, parsed.dir);
+    }
+
+    #[test]
+    fn parse_no_marker() {
+        let existing_dir = TempDir::new().unwrap();
+        let dir = existing_dir.path().join("my_dir");
+        ExperimentSource::create_skeleton(dir.clone()).unwrap();
+        std::fs::remove_file(dir.join(MARKER_SRC));
+        let _ = ExperimentSource::parse(&dir).unwrap_err();
     }
 }

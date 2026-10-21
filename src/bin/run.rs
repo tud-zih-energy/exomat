@@ -9,14 +9,15 @@ pub fn main(
     output: Option<PathBuf>,
     repetitions: u64,
 ) -> Result<()> {
-    let mut src = ExperimentSource::parse(&experiment)?;
-    src.set_exomat_envs(exomat::harness::env::ExomatEnvironment::new(
-        &experiment,
-        repetitions,
-    ));
-
-    match trial {
-        false => exomat::harness::run::experiment(&src, output, false),
-        true => exomat::harness::run::trial(&src),
-    }
+    todo!();
+    // let mut src = ExperimentSource::parse(&experiment)?;
+    // src.set_exomat_envs(exomat::harness::env::ExomatEnvironment::new(
+    //     &experiment,
+    //     repetitions,
+    // ));
+    //
+    // match trial {
+    //     false => exomat::harness::run::experiment(&src, output, false),
+    //     true => exomat::harness::run::trial(&src),
+    // }
 }
