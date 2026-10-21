@@ -45,6 +45,11 @@ impl ExperimentSource {
         }
     }
 
+    /// Create a skeleton of an experiment source on disk
+    pub fn create_skeleton(_dir: PathBuf) -> Result<Self> {
+        todo!();
+    }
+
     /// Generates a valid trial source based on an ExperimentSource.
     ///
     /// The following default values are set:
@@ -374,5 +379,27 @@ pub mod tests {
             assert!(PathBuf::from("foo/bar/envs").exists());
             assert!(!PathBuf::from("foo/envs").exists());
         }
+    }
+
+    #[test]
+    fn skeleton_regular() {
+        let work_dir = tempfile::TempDir::new().unwrap();
+        let new_dir = work_dir.path().join("new_dir");
+        ExperimentSource::create_skeleton(new_dir.clone()).unwrap();
+
+        assert!(new_dir.join("envs").is_dir());
+        assert!(new_dir.join(MARKER_SRC).is_file());
+        let run_file_path = new_dir.join("template").join("run.sh");
+        assert!(run_file_path.is_file());
+        let run_file_content = std::fs::read_to_string(&run_file_path).unwrap();
+        assert_eq!(run_file_content, include_str!("../harness/run.sh.template"));
+    }
+
+    #[test]
+    fn skeleton_target_exists() {
+        let existing_dir = tempfile::TempDir::new().unwrap();
+        let error =
+            ExperimentSource::create_skeleton(existing_dir.path().to_path_buf()).unwrap_err();
+        assert!(error.to_string().contains("exist"));
     }
 }
