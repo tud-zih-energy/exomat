@@ -142,10 +142,11 @@ mod tests {
             let exp_series = &tmpdir.join("TestSeries");
 
             // write something in run.sh
-            let mut src = ExperimentSource::new();
-            src.set_run_script(format!("#!/usr/bin/env bash\necho $EXP_SRC_DIR\necho $EXP_SRC_DIR >> out_file"));
-            src.set_exomat_envs(ExomatEnvironment::new(&exp_source, 1));
-            src.persist(&exp_source).unwrap();
+            let src: ExperimentSource = todo!("rework exp src init");
+            // let mut src = ExperimentSource::new();
+            // src.set_run_script(format!("#!/usr/bin/env bash\necho $EXP_SRC_DIR\necho $EXP_SRC_DIR >> out_file"));
+            // src.set_exomat_envs(ExomatEnvironment::new(&exp_source, 1));
+            // src.persist(&exp_source).unwrap();
 
             let mut ser = ExperimentSeries::try_from(&src).unwrap();
             ser.generate_runs().unwrap();
@@ -170,14 +171,15 @@ mod tests {
             // build basic experiment
             // Write something to run.sh that uses env var
             // make multiple .env files that set $FOO to different values
-            let mut src = ExperimentSource::new();
-            src.set_run_script(format!("#!/usr/bin/env bash\necho $FOO\necho $FOO >> out_file"));
-            src.set_envs(BTreeMap::from([
-                (PathBuf::from("0.env"), Environment::from(vec![("FOO".to_string(), "BAR".to_string())])),
-                (PathBuf::from("1.env"), Environment::from(vec![("FOO".to_string(), "Z".to_string())])),
-            ])).unwrap();
-
-            src.persist(&tmpdir.join(exp_name)).unwrap();
+            let src: ExperimentSource = todo!("rework init");
+            // let mut src = ExperimentSource::new();
+            // src.set_run_script(format!("#!/usr/bin/env bash\necho $FOO\necho $FOO >> out_file"));
+            // src.set_envs(BTreeMap::from([
+            //     (PathBuf::from("0.env"), Environment::from(vec![("FOO".to_string(), "BAR".to_string())])),
+            //     (PathBuf::from("1.env"), Environment::from(vec![("FOO".to_string(), "Z".to_string())])),
+            // ])).unwrap();
+            //
+            // src.persist(&tmpdir.join(exp_name)).unwrap();
 
             // run experiment and check logs
             experiment(
@@ -195,24 +197,25 @@ mod tests {
 
         #[test]
         fn trial_e2e() {
-            // create ouput dir
-            let tmpdir = TempDir::new().unwrap();
-            let tmpdir = tmpdir.path().to_path_buf();
-            std::env::set_current_dir(&tmpdir).unwrap();
-
-            // build basic experiment
-            // Write something to run.sh that uses env var
-            // make multiple .env files that set $FOO to different values
-            let mut src = ExperimentSource::new();
-            src.set_run_script(format!("#!/usr/bin/env bash\necho $FOO\necho $FOO >> out_file"));
-            src.set_envs(BTreeMap::from([
-                (PathBuf::from("0.env"),Environment::from(vec![("FOO".to_string(), "BAR".to_string())])),
-                (PathBuf::from("1.env"),Environment::from(vec![("FOO".to_string(), "Z".to_string())])),
-            ])).unwrap();
-            src.persist(&tmpdir.join("TestSource")).unwrap();
-
-            // no error
-            trial(&src).unwrap();
+            todo!("rework");
+            // // create ouput dir
+            // let tmpdir = TempDir::new().unwrap();
+            // let tmpdir = tmpdir.path().to_path_buf();
+            // std::env::set_current_dir(&tmpdir).unwrap();
+            //
+            // // build basic experiment
+            // // Write something to run.sh that uses env var
+            // // make multiple .env files that set $FOO to different values
+            // let mut src = ExperimentSource::new();
+            // src.set_run_script(format!("#!/usr/bin/env bash\necho $FOO\necho $FOO >> out_file"));
+            // src.set_envs(BTreeMap::from([
+            //     (PathBuf::from("0.env"),Environment::from(vec![("FOO".to_string(), "BAR".to_string())])),
+            //     (PathBuf::from("1.env"),Environment::from(vec![("FOO".to_string(), "Z".to_string())])),
+            // ])).unwrap();
+            // src.persist(&tmpdir.join("TestSource")).unwrap();
+            //
+            // // no error
+            // trial(&src).unwrap();
         }
     }
 }

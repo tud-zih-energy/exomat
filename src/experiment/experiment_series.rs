@@ -413,7 +413,7 @@ impl ExperimentSeries {
             .collect();
 
         ExperimentSeries {
-            source: ExperimentSource::new(),
+            source: todo!(),
             path: None,
             runs: runs,
         }
@@ -705,8 +705,7 @@ mod tests {
             let exp_source = tmpdir.join("FooSource");
             let exp_series = tmpdir.join("foo");
 
-            let mut source = ExperimentSource::new();
-            source.persist(&exp_source).unwrap();
+            let source = ExperimentSource::create_skeleton(exp_source).unwrap();
 
             // create series dir (next to exp_source, named "foo", is not a trial run)
             let mut series = ExperimentSeries::try_from(&source).unwrap();

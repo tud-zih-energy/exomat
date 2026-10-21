@@ -549,12 +549,13 @@ mod tests {
         let tmpdir = tmpdir.path();
 
         // create an experiment source and set repetition to something higher, to get leading zeros in directory names
-        let mut src = ExperimentSource::new();
-        src.set_exomat_envs(ExomatEnvironment {
-            exp_src_dir: tmpdir.join("FooSource"),
-            repetition: 15,
-        });
-        src.persist(&tmpdir.join("FooSource")).unwrap();
+        // let mut src = ExperimentSource::new();
+        // src.set_exomat_envs(ExomatEnvironment {
+        //     exp_src_dir: tmpdir.join("FooSource"),
+        //     repetition: 15,
+        // });
+        // src.persist(&tmpdir.join("FooSource")).unwrap();
+        let src: ExperimentSource = todo!("rework experiment source init");
 
         let mut ser = ExperimentSeries::try_from(&src).unwrap();
         ser.generate_runs().unwrap();
@@ -569,51 +570,52 @@ mod tests {
 
     #[test]
     fn test_internal_envs_not_in_files() {
-        let tmpdir = TempDir::new().unwrap();
-        let tmpdir = tmpdir.path();
-        let source_name = "FooSource";
-        let series_name = "FooSeries";
-
-        // create a source with all needed envs set
-        let mut src = ExperimentSource::new();
-        src.set_exomat_envs(ExomatEnvironment::new(&tmpdir.join(source_name), 1));
-        src.set_envs(EnvironmentLocationList::from([(
-            PathBuf::from(SRC_ENV_FILE),
-            Environment::from(vec![("FOO".to_string(), "bar".to_string())]),
-        )]))
-        .unwrap();
-        src.persist(&tmpdir.join(source_name)).unwrap();
-
-        // create a series based on this source
-        let mut ser = ExperimentSeries::try_from(&src).unwrap();
-        ser.generate_runs().unwrap();
-        assert_eq!(ser.runs().len(), 1);
-        ser.persist(&tmpdir.join(series_name)).unwrap();
-
-        // check contents of env files
-        let src_env =
-            Environment::try_from(&src.location().join(SRC_ENV_DIR).join(SRC_ENV_FILE)).unwrap();
-        let run_env = Environment::try_from(
-            &ser.location()
-                .as_ref()
-                .unwrap()
-                .join(SERIES_RUNS_DIR)
-                .join("run_0_rep0")
-                .join(RUN_ENV_FILE),
-        )
-        .unwrap();
-
-        // exomat variable, never serialized
-        assert!(!src_env.contains_env_var("EXP_SRC_DIR"));
-        assert!(!run_env.contains_env_var("EXP_SRC_DIR"));
-
-        // exomat variable, serialized
-        assert!(!src_env.contains_env_var("REPETITION"));
-        assert!(run_env.contains_env_var("REPETITION"));
-
-        // user variable, always serialized
-        assert!(src_env.contains_env_var("FOO"));
-        assert!(run_env.contains_env_var("FOO"));
+        todo!("rework");
+        // let tmpdir = TempDir::new().unwrap();
+        // let tmpdir = tmpdir.path();
+        // let source_name = "FooSource";
+        // let series_name = "FooSeries";
+        //
+        // // create a source with all needed envs set
+        // let mut src = ExperimentSource::new();
+        // src.set_exomat_envs(ExomatEnvironment::new(&tmpdir.join(source_name), 1));
+        // src.set_envs(EnvironmentLocationList::from([(
+        //     PathBuf::from(SRC_ENV_FILE),
+        //     Environment::from(vec![("FOO".to_string(), "bar".to_string())]),
+        // )]))
+        // .unwrap();
+        // src.persist(&tmpdir.join(source_name)).unwrap();
+        //
+        // // create a series based on this source
+        // let mut ser = ExperimentSeries::try_from(&src).unwrap();
+        // ser.generate_runs().unwrap();
+        // assert_eq!(ser.runs().len(), 1);
+        // ser.persist(&tmpdir.join(series_name)).unwrap();
+        //
+        // // check contents of env files
+        // let src_env =
+        //     Environment::try_from(&src.location().join(SRC_ENV_DIR).join(SRC_ENV_FILE)).unwrap();
+        // let run_env = Environment::try_from(
+        //     &ser.location()
+        //         .as_ref()
+        //         .unwrap()
+        //         .join(SERIES_RUNS_DIR)
+        //         .join("run_0_rep0")
+        //         .join(RUN_ENV_FILE),
+        // )
+        // .unwrap();
+        //
+        // // exomat variable, never serialized
+        // assert!(!src_env.contains_env_var("EXP_SRC_DIR"));
+        // assert!(!run_env.contains_env_var("EXP_SRC_DIR"));
+        //
+        // // exomat variable, serialized
+        // assert!(!src_env.contains_env_var("REPETITION"));
+        // assert!(run_env.contains_env_var("REPETITION"));
+        //
+        // // user variable, always serialized
+        // assert!(src_env.contains_env_var("FOO"));
+        // assert!(run_env.contains_env_var("FOO"));
     }
 
     #[test]
