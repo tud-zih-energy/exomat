@@ -231,4 +231,26 @@ pub enum Commands {
         /// Tries to use current shell by default.
         shell: Option<Shell>,
     },
+
+    RunNg(RunNgArgs),
+}
+
+/// Execute an experiment
+#[derive(Debug, Clone, Parser)]
+pub struct RunNgArgs {
+    /// How the experiment should be executed
+    #[command(subcommand)]
+    pub run_kind: RunKind,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum RunKind {
+    /// Run all envs
+    All,
+
+    /// Pick a single env, and attempt to run it in tmp/
+    Trial,
+
+    /// Run with the `env.env` in pwd
+    Single,
 }

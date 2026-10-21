@@ -7,6 +7,7 @@ pub mod bin {
     pub mod completion;
     pub mod csv_helper;
     pub mod run;
+    pub mod run_ng;
 }
 
 // fixtures are not exported by exomat, hence they are re-imported here
@@ -66,6 +67,7 @@ fn run_main(args: Cli) -> Result<()> {
             no_rm_default_env,
             input,
         } => bin::csv_helper::main(&input, format, no_rm_default_env),
+        Commands::RunNg(args) => bin::run_ng::main(args),
     }
 }
 
