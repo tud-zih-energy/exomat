@@ -664,4 +664,29 @@ mod tests {
         assert_eq!(obs.get("VAR1").unwrap(), "1");
         assert_eq!(obs.get("word").unwrap(), "one");
     }
+
+    #[test]
+    fn create_run() {
+        todo!("create new run from scratch");
+    }
+
+    #[test]
+    fn create_run_template_all_copied() {
+        todo!("all files from template are copied recursively");
+    }
+
+    #[test]
+    fn run_env_set() {
+        todo!("run sets env vars");
+    }
+
+    #[test]
+    fn run_status_dumped() {
+        todo!("status of run is dumped");
+    }
+
+    #[test]
+    fn read_status_from_disk() {
+        todo!("status is correctly inferred from disk");
+    }
 }
