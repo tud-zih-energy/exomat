@@ -17,11 +17,13 @@ use std::process::Command;
 /// Describes the current state of an Experiment Run
 #[derive(Clone, Debug, PartialEq)]
 pub enum RunStatus {
-    /// Run hsn't been executed yet, status is unknown
-    Unknown,
-    /// Run didn't produce errors
+    /// Run hsn't been executed yet
+    NotStarted,
+    /// Run finished, and did not produce errors
     Success,
-    /// Run produced an error
+    /// Run finished, but exited with non-zero exit code
+    ExitNonZero(u8),
+    /// Run did not finish/could not be started with a given message
     Fail(String),
 }
 
@@ -29,66 +31,91 @@ pub enum RunStatus {
 ///
 /// An Experiment Run must be written to the filesystem before it can be exeucted.
 /// A normal workflow would be:
-/// 1. `new(...)`
-/// 2. `persist(...)`
-/// 3. `execute()`
+/// 1. `create(...)`
+/// 2. `execute()`
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExperimentRun {
-    pub run_sh: String,
-    pub run_name: String,
-    pub env: Environment,
-    pub exomat_env: ExomatEnvironment,
-    pub out_files: OutList,
-    pub status: RunStatus,
-    pub location: Option<PathBuf>,
+    /// location on disk
+    pub dir: PathBuf,
 }
 
 impl ExperimentRun {
-    /// Creates a new Experiment Run
+    /// create a new run dir at `run_dir`
     ///
-    /// The following values will be set:
-    /// - `run_sh`: `run_sh`
-    /// - `run_name`: built from `environment.0`, `exomat_environment.repetition` and `rep_format_length`
-    /// - `env`: `environment.1`
-    /// - `exomat_env`: `exomat_environment`
-    /// - `out_files`: None
-    /// - `status`: RunStatus::Unknown
-    /// - `location`: None
-    ///
-    /// ## Panics
-    /// - panics if `rep_format_length` is <= 0
-    /// - panics if environment.1 contains reserved Environemnt variables (see ExomatEnvironment)
-    pub fn new(
-        run_sh: &str,
-        environment: (&PathBuf, &Environment),
-        exomat_environment: &ExomatEnvironment,
-        rep_format_length: usize,
-    ) -> Self {
-        trace!("checking format length");
-        assert!(rep_format_length > 0, "repetition format cannot be 0");
-
-        debug!("checking envs for reserved env vars");
-        assert!(!ExomatEnvironment::RESERVED_ENV_VARS
-            .iter()
-            .any(|k| environment.1.contains_env_var(k)));
-
-        let dir_name = format!(
-            "run_{}_rep{:0length$}",
-            environment.0.file_prefix().unwrap().display(),
-            exomat_environment.repetition,
-            length = rep_format_length
-        );
-
-        trace!("Created new Experiment Run \"{dir_name}\"");
-        Self {
-            run_sh: run_sh.to_string(),
-            run_name: dir_name,
-            env: environment.1.clone(),
-            exomat_env: exomat_environment.clone(),
-            out_files: OutList::new(),
-            status: RunStatus::Unknown,
-            location: None,
+    /// use given template & env
+    pub fn create(template: &Path, env: &Environment, run_dir: PathBuf) -> Result<Self> {
+        if run_dir.exists() {
+            return Err(Error::HarnessCreateError {
+                entry: run_dir.to_string_lossy().to_string(),
+                reason: "dir already exists".to_string(),
+            });
         }
+
+        fn cp_recursive_content(src_dir: &Path, dst_dir: &Path) -> Result<()> {
+            for entry in std::fs::read_dir(src_dir)? {
+                let entry = entry?;
+                let entry_src = entry.path();
+                let entry_dst = dst_dir.join(entry.file_name());
+
+                if entry_src.is_dir() {
+                    trace!("traversing into {}", entry_src.display());
+                    std::fs::create_dir(&entry_dst)?;
+                    cp_recursive_content(&entry_src, &entry_dst)?;
+                } else if entry_src.is_file() || entry_src.is_symlink() {
+                    trace!("copying {} to {}", entry_src.display(), entry_dst.display());
+                    std::fs::copy(&entry_src, &entry_dst)?;
+                }
+            }
+
+            Ok(())
+        }
+
+        std::fs::create_dir(&run_dir).map_err(|err| Error::HarnessCreateError {
+            entry: run_dir.to_string_lossy().to_string(),
+            reason: format!("failed to create run dir: {err}"),
+        })?;
+
+        debug!("copying template");
+        cp_recursive_content(template, &run_dir)?;
+
+        if !run_dir.join(RUN_RUN_FILE).is_file() {
+            warn!(
+                "{RUN_RUN_FILE} missing in {}, will error when executed",
+                run_dir.display()
+            );
+        }
+
+        debug!("writing environment");
+        env.to_file(&run_dir.join(RUN_ENV_FILE));
+
+        create_harness_file(&run_dir.join(MARKER_RUN))?;
+
+        Ok(Self { dir: run_dir })
+    }
+
+    /// path to run dir on disk
+    pub fn location(&self) -> &Path {
+        todo!();
+    }
+
+    /// read execution status from disk
+    pub fn status(&self) -> Result<Status> {
+        todo!();
+    }
+
+    /// read out_ files from disk
+    pub fn out_files(&self) -> Result<OutList> {
+        todo!();
+    }
+
+    /// read environment from disk
+    pub fn env(&self) -> Environment {
+        todo!();
+    }
+
+    /// shorthand to get basename of location
+    pub fn run_name(&self) -> &str {
+        todo!();
     }
 
     /// Immutable iteration
@@ -96,71 +123,6 @@ impl ExperimentRun {
         ExperimentRunIter {
             run_reader: self,
             index: 0,
-        }
-    }
-
-    // ========================= getter ========================================
-
-    /// Returns the run name
-    pub fn run_dir_name(&self) -> &str {
-        &self.run_name
-    }
-
-    /// Returns the current repetition
-    pub fn repetition(&self) -> &u64 {
-        &self.exomat_env.repetition
-    }
-
-    /// returns the environment of this Experiment Run
-    pub fn env(&self) -> &Environment {
-        &self.env
-    }
-
-    /// Returns the run status
-    pub fn status(&self) -> &RunStatus {
-        &self.status
-    }
-
-    /// Returns the content of an out_ file `out_[var]`
-    ///
-    /// If there is no file with this name, `None` is returned.
-    /// The returned Vec may be empty.
-    pub fn out_var(&self, var: &str) -> Option<&Vec<String>> {
-        self.out_files.outfile(var).map(|outfile| outfile.values())
-    }
-
-    /// Returns a reference to the list of out_ files recorded
-    pub fn out_files(&self) -> &OutList {
-        &self.out_files
-    }
-
-    // ========================= setter ========================================
-
-    /// Inserts `new_out` at the end of `self.out_files`.
-    ///
-    /// The content of `new_out` is not checked in any way.
-    pub fn insert_out_file(&mut self, new_out: OutFile) {
-        self.out_files.push(new_out);
-    }
-
-    // ========================= helper ========================================
-
-    /// Generates an ExperimentRun from `outlist`.
-    ///
-    /// Sets an empty Environemnt.
-    #[cfg(test)]
-    pub fn from_out_list_unchecked(outlist: &OutList) -> Self {
-        ExperimentRun {
-            run_sh: String::new(),
-            run_name: TEST_RUN_REP_DIR0.to_string(),
-            env: Environment::new(),
-            exomat_env: ExomatEnvironment {
-                exp_src_dir: PathBuf::new(),
-                repetition: 1,
-            },
-            out_files: outlist.clone(),
-            status: RunStatus::Unknown,
-            location: None,
         }
     }
 
@@ -286,74 +248,6 @@ impl Runner for ExperimentRun {
     }
 }
 
-// ========================== Writer ==========================
-impl FileWriter for ExperimentRun {
-    /// Creates a ready-to-use experiment run for **one interation** with **one environment**
-    /// of an experiment.
-    ///
-    /// ## out_ files in `self.out_files` will not be created
-    /// as they should created by the run script
-    ///
-    /// The new directory will be created in the given `dir`.
-    /// This will result in the following structure:
-    /// ```notest
-    /// series_folder
-    ///   |-> ...
-    ///   \-> runs/
-    ///     |-> ...
-    ///     \-> dir
-    ///       |-> .exomat_run
-    ///       |-> RUN_RUN_FILE     (copy of SRC_RUN_FILE)
-    ///       \-> RUN_ENV_FILE     (copy of env_file)
-    /// ```
-    ///
-    /// If no Errors occured, the path to the created experiment run folder will be returned.
-    ///
-    /// ## Errors and Panics
-    /// - Returns a `HarnessCreateError` if there is no [SERIES_RUNS_DIR] found inside `series_folder`
-    /// - Returns a `HarnessCreateError` if any file or directory could not be created or copied
-    /// - Panics if `it_format_length` is 0
-    fn persist(&mut self, exp_run_dir: &Path) -> Result<()> {
-        create_harness_dir(&exp_run_dir.to_path_buf())?;
-        create_harness_file(&exp_run_dir.join(MARKER_RUN))?;
-
-        debug!("copy ruh.sh and [env].env to runs_dir");
-        let mut run_file = self.create_executable(&exp_run_dir.join(RUN_RUN_FILE))?;
-        self.write_to_file(&mut run_file, self.run_sh.as_bytes())?;
-
-        debug!("write envs to file (including exomat envs)");
-        let mut serializable_envs = self.env.clone();
-        serializable_envs.extend_envs(&self.exomat_env.to_environment_serializable());
-        serializable_envs.to_file(&exp_run_dir.join(RUN_ENV_FILE))?;
-
-        trace!("Persisted Experiment Run at {}", exp_run_dir.display());
-        debug!("update run location");
-        self.location = Some(exp_run_dir.to_path_buf());
-
-        Ok(())
-    }
-}
-
-// ========================== Display ==========================
-impl std::fmt::Display for ExperimentRun {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Experiment Run \"{}\" at {:?}:\n    Run script: {}\n    Environment: {:?}\n    Internat envs: {:?}\n    Status: {:?}\n    contains out files: {:#?}",
-            self.run_name,
-            self.location,
-            match self.run_sh.is_empty() {
-                true => "not set",
-                false => "set"
-            },
-            self.env,
-            self.exomat_env.to_environment_full(),
-            self.status,
-            self.out_files,
-        )
-    }
-}
-
 // ========================== Reader ==========================
 impl FileReader for ExperimentRun {
     type Item = ExperimentRun;
@@ -472,221 +366,180 @@ impl FileReader for ExperimentRun {
     }
 }
 
-// ========================== Iterator ==========================
-/// Iterator for RunReader
-///
-/// Iterates over the Observations in an EXperiment Run.
-#[derive(Debug)]
-pub struct ExperimentRunIter<'a> {
-    run_reader: &'a ExperimentRun,
-    index: usize,
-}
-
-impl<'a> Iterator for ExperimentRunIter<'a> {
-    type Item = Observation;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let obs = self.run_reader.get_observation(self.index);
-        self.index += 1;
-
-        obs.ok()
-    }
-}
-impl<'a> IntoIterator for &'a ExperimentRun {
-    type Item = Observation;
-    type IntoIter = ExperimentRunIter<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
-
 // ========================== Tests ==========================
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::experiment::{ExperimentRun, ExperimentSeries, ExperimentSource, FileWriter};
-    use crate::harness::env::{Environment, EnvironmentLocationList};
-    use crate::test_fixtures::{setup_run_dir, setup_run_dir_shadow, setup_series_no_out};
-    use crate::test_helper::populate_src_with_series;
+    use crate::experiment::ExperimentRun;
+    use crate::harness::env::Environment;
+    use crate::test_fixtures::{env_1a, env_foo, template_dir};
+    use rstest::{fixture, rstest};
 
     use tempfile::TempDir;
 
-    #[test]
-    fn build_run_directory_simple() {
-        // create base tempdir, to act as parent
-        let tmpdir = TempDir::new().unwrap();
-        let tmpdir = tmpdir.path();
-
-        // create an experiment source, and an experiment series
-        let src_name = "FooSource";
-        let ser_name = "FooSeries";
-        let (_, mut ser) = populate_src_with_series(&tmpdir.to_path_buf(), src_name, ser_name);
-
-        // create Experiment Run in ser, equals to one repetition of one environment)
-        ser.generate_runs().unwrap();
-        assert_eq!(ser.runs().len(), 1);
-        ser.persist(&tmpdir.join(ser_name)).unwrap();
-
-        let runs_dir = ser.location().as_ref().unwrap().join(SERIES_RUNS_DIR);
-        let run_dir = runs_dir.join("run_0_rep0");
-        assert!(run_dir.is_dir());
-        assert!(run_dir.join(RUN_ENV_FILE).is_file());
-        assert!(run_dir.join(RUN_RUN_FILE).is_file());
-        // assert!(run_dir.join(RUN_RUN_FILE).executable());
-
-        // check that exomat envs are included (or not)
-        let envs = Environment::try_from(&run_dir.join(RUN_ENV_FILE)).unwrap();
-        assert_eq!(envs.get_env_val("REPETITION"), Some(&String::from("0")));
-        assert_eq!(envs.get_env_val("EXP_SRC_DIR"), None);
+    #[fixture]
+    fn run(template_dir: TempDir, env_foo: Environment) -> ExperimentRun {
+        let new_dir = tempfile::TempDir::new().unwrap();
+        let dst = new_dir.path().join("run_dir");
+        ExperimentRun::create(template_dir.path(), &env_foo, dst.clone()).unwrap()
     }
 
-    #[test]
-    fn test_run_repetition_format() {
-        // create base tempdir, to act as parent
-        let tmpdir = TempDir::new().unwrap();
-        let tmpdir = tmpdir.path();
+    #[rstest]
+    fn create_run(template_dir: TempDir, env_foo: Environment) {
+        let new_dir = tempfile::TempDir::new().unwrap();
+        let dst = new_dir.path().join("run_dir");
 
-        // create an experiment source and set repetition to something higher, to get leading zeros in directory names
-        // let mut src = ExperimentSource::new();
-        // src.set_exomat_envs(ExomatEnvironment {
-        //     exp_src_dir: tmpdir.join("FooSource"),
-        //     repetition: 15,
-        // });
-        // src.persist(&tmpdir.join("FooSource")).unwrap();
-        let src: ExperimentSource = todo!("rework experiment source init");
+        let run = ExperimentRun::create(template_dir.path(), &env_foo, dst.clone()).unwrap();
+        let dir = run.location();
 
-        let mut ser = ExperimentSeries::try_from(&src).unwrap();
-        ser.generate_runs().unwrap();
-        assert_eq!(ser.runs().len(), 15);
-        ser.persist(&tmpdir.to_path_buf()).unwrap();
+        assert_eq!(dir.canonicalize().unwrap(), dst.canonicalize().unwrap());
 
-        let runs_dir = ser.location().as_ref().unwrap().join(SERIES_RUNS_DIR);
-        assert!(runs_dir.join("run_0_rep00").is_dir());
-        assert!(runs_dir.join("run_0_rep14").is_dir());
-        assert!(!runs_dir.join("run_0_rep15").is_dir());
+        assert!(dir.is_dir());
+        assert!(dir.join(MARKER_RUN).is_file());
+        assert!(dir.join("run.sh").is_file());
+        assert!(dir.join("file").is_file());
+        assert!(dir.join("subdir").join("file").is_file());
+
+        let env_from_file = Environment::load_from_file(&dir.join("environment.env")).unwrap();
+        assert_eq!(env_from_file, env_foo);
     }
 
-    #[test]
-    fn test_internal_envs_not_in_files() {
-        todo!("rework");
-        // let tmpdir = TempDir::new().unwrap();
-        // let tmpdir = tmpdir.path();
-        // let source_name = "FooSource";
-        // let series_name = "FooSeries";
-        //
-        // // create a source with all needed envs set
-        // let mut src = ExperimentSource::new();
-        // src.set_exomat_envs(ExomatEnvironment::new(&tmpdir.join(source_name), 1));
-        // src.set_envs(EnvironmentLocationList::from([(
-        //     PathBuf::from(SRC_ENV_FILE),
-        //     Environment::from(vec![("FOO".to_string(), "bar".to_string())]),
-        // )]))
-        // .unwrap();
-        // src.persist(&tmpdir.join(source_name)).unwrap();
-        //
-        // // create a series based on this source
-        // let mut ser = ExperimentSeries::try_from(&src).unwrap();
-        // ser.generate_runs().unwrap();
-        // assert_eq!(ser.runs().len(), 1);
-        // ser.persist(&tmpdir.join(series_name)).unwrap();
-        //
-        // // check contents of env files
-        // let src_env =
-        //     Environment::try_from(&src.location().join(SRC_ENV_DIR).join(SRC_ENV_FILE)).unwrap();
-        // let run_env = Environment::try_from(
-        //     &ser.location()
-        //         .as_ref()
-        //         .unwrap()
-        //         .join(SERIES_RUNS_DIR)
-        //         .join("run_0_rep0")
-        //         .join(RUN_ENV_FILE),
-        // )
-        // .unwrap();
-        //
-        // // exomat variable, never serialized
-        // assert!(!src_env.contains_env_var("EXP_SRC_DIR"));
-        // assert!(!run_env.contains_env_var("EXP_SRC_DIR"));
-        //
-        // // exomat variable, serialized
-        // assert!(!src_env.contains_env_var("REPETITION"));
-        // assert!(run_env.contains_env_var("REPETITION"));
-        //
-        // // user variable, always serialized
-        // assert!(src_env.contains_env_var("FOO"));
-        // assert!(run_env.contains_env_var("FOO"));
+    #[rstest]
+    fn create_run_dst_exists(template_dir: TempDir, env_foo: Environment) {
+        let new_dir = tempfile::TempDir::new().unwrap();
+
+        assert!(
+            ExperimentRun::create(template_dir.path(), &env_foo, new_dir.path().to_path_buf())
+                .is_err()
+        );
     }
 
-    #[test]
-    fn runreader_iter_working() {
-        let tmp_run = setup_run_dir();
-        let runs_dir = tmp_run.path().to_path_buf();
+    #[rstest]
+    fn run_env_set(mut run: ExperimentRun) {
+        let debug_script = r#"#!/usr/bin/env bash
+set -euo pipefail
 
-        let run_reader = ExperimentRun::parse(&runs_dir).unwrap();
-        let mut run_iter = run_reader.iter();
+echo $FOO > out_foo_val
+"#;
+        std::fs::write(run.location().join(RUN_RUN_FILE), debug_script).unwrap();
 
-        // iterate over runs, should work
-        let obs1 = run_iter.next().unwrap();
-        assert_eq!(obs1.get("number").unwrap(), "1");
-        assert_eq!(obs1.get("word").unwrap(), "one");
+        run.execute("name").unwrap();
 
-        let obs2 = run_iter.next().unwrap();
-        assert_eq!(obs2["number"], "2");
-        assert_eq!(obs2["word"], "two");
-
-        assert!(run_iter.next().is_none());
+        let foo_file = run.location().join("out_foo_val");
+        assert!(foo_file.is_file());
+        assert_eq!("foo", std::fs::read_to_string(foo_file).unwrap());
     }
 
-    #[test]
-    fn runreader_empty_out_files() {
-        let tmp = setup_series_no_out();
-        let series = tmp.path().to_path_buf();
+    #[rstest]
+    #[case(0)]
+    #[case(1)]
+    #[case(42)]
+    fn run_status_dumped(mut run: ExperimentRun, #[case] return_code: u32) {
+        let debug_script = format!(
+            r#"#!/usr/bin/env bash
+set -euo pipefail
 
-        // iterator is created, but no observations
-        let run_reader =
-            ExperimentRun::parse(&series.join(SERIES_RUNS_DIR).join(TEST_RUN_REP_DIR0)).unwrap();
-        let mut run_iter = run_reader.iter();
-        println!("{run_iter:?}");
-        assert!(run_iter.next().is_none());
+exit {return_code}
+"#
+        );
+        std::fs::write(run.location().join(RUN_RUN_FILE), debug_script).unwrap();
+
+        let exp_started_file = run
+            .location()
+            .join(todo!("path to start timestamp outfile"));
+        let exp_done_file = run.location().join(todo!("path to result outfile"));
+
+        assert!(!exp_started_file.is_file());
+        assert!(!exp_done_file.is_file());
+
+        run.execute("name").unwrap();
+
+        assert!(exp_started_file.is_file());
+        assert!(exp_done_file.is_file());
+
+        todo!("check return code");
     }
 
-    #[test]
-    fn runreader_out_file_shadows_env_var() {
-        let tmp = setup_run_dir_shadow();
-        let run_dir = tmp.path().to_path_buf();
+    #[rstest]
+    #[case(RunStatus::NotStarted)]
+    #[case(RunStatus::Success)]
+    #[case(RunStatus::ExitNonZero(42))]
+    #[case(RunStatus::Fail("foo".to_string()))]
+    fn read_status_from_disk(
+        run: ExperimentRun,
+        #[values(true, false)] exp_started: bool,
+        #[case] given_status: RunStatus,
+    ) {
+        let exp_started_file = run
+            .location()
+            .join(todo!("path to start timestamp outfile"));
+        let exp_done_file = run.location().join(todo!("path to result outfile"));
 
-        // Should not panic, but log a warning
-        let run_reader = ExperimentRun::parse(&run_dir).unwrap();
-        let mut iter = run_reader.iter();
+        if exp_started {
+            std::fs::write(exp_started_file, "0").unwrap();
+        }
 
-        let obs = iter.next().unwrap();
-        assert_eq!(obs.get("VAR1").unwrap(), "1");
-        assert_eq!(obs.get("word").unwrap(), "one");
+        todo!("write exit status");
+
+        // check status corectly read from disk
+        let run: ExperimentRun = todo!("read exprun from disk");
+
+        match (exp_started, given_status) {
+            (false, RunStatus::NotStarted) => assert_eq!(given_status, run.status().unwrap()),
+            (false, _) => assert!(run.status().is_err()),
+            (true, RunStatus::NotStarted) => assert!(run.status().is_err()),
+            (true, _) => assert_eq!(given_status, run.status().unwrap()),
+        }
     }
 
-    #[test]
-    fn create_run() {
-        todo!("create new run from scratch");
+    #[rstest]
+    fn read_out_files(
+        run: ExperimentRun,
+        #[values(true, false)] out_a: bool,
+        #[values(true, false)] out_b: bool,
+    ) {
+        if out_a {
+            std::fs::write(run.location().join("out_a"), "foo").unwrap();
+        }
+        if out_b {
+            std::fs::write(run.location().join("out_b"), "bar").unwrap();
+        }
+
+        let out_files = run.out_files().unwrap();
+
+        let expected_len = out_a as usize + out_b as usize;
+        assert_eq!(expected_len, out_files.len());
+
+        if out_a {
+            let found_out_a = out_files
+                .iter()
+                .find(|out_file| "a" == out_file.var_name())
+                .unwrap();
+            assert_eq!(vec!["foo".to_string()], *found_out_a.values());
+        }
+
+        if out_b {
+            let found_out_a = out_files
+                .iter()
+                .find(|out_file| "b" == out_file.var_name())
+                .unwrap();
+            assert_eq!(vec!["bar".to_string()], *found_out_a.values());
+        }
     }
 
-    #[test]
-    fn create_run_template_all_copied() {
-        todo!("all files from template are copied recursively");
+    #[rstest]
+    #[case(env_foo())]
+    #[case(env_1a())]
+    fn read_env(run: ExperimentRun, #[case] env: Environment) {
+        env.to_file(run.location().join(RUN_ENV_FILE).as_path())
+            .unwrap();
+
+        assert_eq!(env, run.env());
     }
 
-    #[test]
-    fn run_env_set() {
-        todo!("run sets env vars");
-    }
-
-    #[test]
-    fn run_status_dumped() {
-        todo!("status of run is dumped");
-    }
-
-    #[test]
-    fn read_status_from_disk() {
-        todo!("status is correctly inferred from disk");
+    #[rstest]
+    fn read_run_name(run: ExperimentRun) {
+        assert_eq!(run.run_name(), run.location().file_name().unwrap());
     }
 }

@@ -262,6 +262,12 @@ pub fn env_1a() -> Environment {
     Environment::from(vec![("1".to_string(), "a".to_string())])
 }
 
+/// generates an Environment with `FOO: "foo"`
+#[fixture]
+pub fn env_foo() -> Environment {
+    Environment::from(vec![("FOO".to_string(), "foo".to_string())])
+}
+
 /// generates an EnvList with `1: ["a"]`
 #[fixture]
 pub fn envlist_1a() -> EnvList {
@@ -576,4 +582,22 @@ pub fn setup_run_dir() -> TempDir {
     std::fs::write(&run.join("out_word"), "one\ntwo").unwrap();
 
     tmp_run
+}
+
+#[fixture]
+pub fn template_dir() -> TempDir {
+    let dir = tempfile::tempdir().expect("Could not create tempdir");
+
+    std::fs::write(
+        &dir.path().join(RUN_ENV_FILE),
+        include_str!("./harness/run.sh.template"),
+    )
+    .unwrap();
+
+    let subdir = dir.path().join("subdir");
+    std::fs::create_dir(&subdir).unwrap();
+    std::fs::write(&subdir.join("file"), "").unwrap();
+    std::fs::write(&dir.path().join("file"), "").unwrap();
+
+    dir
 }
