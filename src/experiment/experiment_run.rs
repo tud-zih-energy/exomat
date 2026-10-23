@@ -23,8 +23,6 @@ pub enum RunStatus {
     Success,
     /// Run finished, but exited with non-zero exit code
     ExitNonZero(u8),
-    /// Run did not finish/could not be started with a given message
-    Fail(String),
 }
 
 /// Container for an Experiment Run
@@ -86,7 +84,7 @@ impl ExperimentRun {
         }
 
         debug!("writing environment");
-        env.to_file(&run_dir.join(RUN_ENV_FILE));
+        env.to_file(&run_dir.join(RUN_ENV_FILE))?;
 
         create_harness_file(&run_dir.join(MARKER_RUN))?;
 
@@ -95,27 +93,46 @@ impl ExperimentRun {
 
     /// path to run dir on disk
     pub fn location(&self) -> &Path {
-        todo!();
+        self.dir.as_path()
     }
 
     /// read execution status from disk
     pub fn status(&self) -> Result<RunStatus> {
-        todo!();
+        let start_timestamp_file = self.location().join(RUN_OUT_EXOMAT_START_TIMESTAMP);
+        let exit_code_file = self.location().join(RUN_OUT_EXOMAT_RUN_EXIT_CODE);
+
+        match start_timestamp_file.is_file() {
+            false => Ok(RunStatus::NotStarted),
+            true => match std::fs::read_to_string(exit_code_file)?.parse::<u8>() {
+                Ok(0) => Ok(RunStatus::Success),
+                Ok(exit_code) => Ok(RunStatus::ExitNonZero(exit_code)),
+                Err(err) => Err(Error::HarnessRunError {
+                    experiment: self.run_name().to_string(),
+                    err: format!(
+                        "stored exit code (in {RUN_OUT_EXOMAT_RUN_EXIT_CODE}) is not a valid exit code (unsigned 8 bit integer): {err}"
+                    ),
+                }),
+            },
+        }
     }
 
     /// read out_ files from disk
     pub fn out_files(&self) -> Result<OutList> {
-        todo!();
+        OutList::parse(self.location())
     }
 
     /// read environment from disk
-    pub fn env(&self) -> Environment {
-        todo!();
+    pub fn env(&self) -> Result<Environment> {
+        Environment::load_from_file(self.location())
     }
 
     /// shorthand to get basename of location
     pub fn run_name(&self) -> &str {
-        todo!();
+        self.location()
+            .file_name()
+            .expect("basename of dir must be available")
+            .to_str()
+            .expect("basename contains non-utf8 characters, wtf?!")
     }
 }
 
@@ -338,6 +355,7 @@ mod tests {
 
     #[fixture]
     fn run(template_dir: TempDir, env_foo: Environment) -> ExperimentRun {
+        todo!("also emit TempDir handle, otherwise run dir will be destroyed as well");
         let new_dir = tempfile::TempDir::new().unwrap();
         let dst = new_dir.path().join("run_dir");
         ExperimentRun::create(template_dir.path(), &env_foo, dst.clone()).unwrap()
@@ -421,7 +439,6 @@ exit {return_code}
     #[case(RunStatus::NotStarted)]
     #[case(RunStatus::Success)]
     #[case(RunStatus::ExitNonZero(42))]
-    #[case(RunStatus::Fail("foo".to_string()))]
     fn read_status_from_disk(
         run: ExperimentRun,
         #[values(true, false)] exp_started: bool,
@@ -489,7 +506,7 @@ exit {return_code}
         env.to_file(run.location().join(RUN_ENV_FILE).as_path())
             .unwrap();
 
-        assert_eq!(env, run.env());
+        assert_eq!(env, run.env().unwrap());
     }
 
     #[rstest]

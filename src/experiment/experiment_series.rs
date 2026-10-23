@@ -101,9 +101,6 @@ impl ExperimentSeries {
                     Ok(RunStatus::NotStarted) | Ok(RunStatus::Success) => None,
                     Ok(RunStatus::ExitNonZero(exit_code)) => Some(format!(
                             "run {run_name} at {run_location} exited non-zero, please review logs. exit code: {exit_code}")),
-                        Ok(RunStatus::Fail(reason)) => Some(format!(
-                                "run {run_name} at {run_location} failed with: {reason}",
-                        )),
                 }}
             )
             .fold(String::new(), |a, b| a + "\n" + b.as_str());
@@ -235,22 +232,26 @@ impl ExperimentSeries {
     }
 
     /// retrieve all names of variables in all environments
-    pub fn env_keys(&self) -> Vec<String> {
+    pub fn env_keys(&self) -> Result<Vec<String>> {
         let mut keys: Vec<String> = self
             .runs
             .iter()
-            .flat_map(|run| {
-                run.env()
+            .map(|run| {
+                Ok(run
+                    .env()?
                     .get_env_vars()
                     .iter()
                     .map(|s| s.to_string())
-                    .collect::<Vec<String>>()
+                    .collect::<Vec<String>>())
             })
+            .collect::<Result<Vec<Vec<String>>>>()?
+            .into_iter()
+            .flatten()
             .collect();
 
         keys.sort();
         keys.dedup();
-        keys
+        Ok(keys)
     }
 
     // ========================= setter ========================================
@@ -336,8 +337,9 @@ impl ExperimentSeries {
         let mut sorted_runs = self.runs.clone();
         sorted_runs.sort_by_key(|run| run.run_name().to_owned());
 
+        todo!("rm unwrap");
         // collect all header
-        let header: Vec<String> = [self.env_keys(), self.output_keys()]
+        let header: Vec<String> = [self.env_keys().unwrap(), self.output_keys()]
             .concat()
             .iter()
             .map(|s| s.to_string())
@@ -985,14 +987,14 @@ mod tests {
     fn seriesreader_env_keys_empty(filled_series_run_na: TempDir) {
         let dir = filled_series_run_na.path().to_path_buf();
         let reader = ExperimentSeries::parse(&dir).unwrap();
-        assert!(dbg!(reader.env_keys()).is_empty());
+        assert!(dbg!(reader.env_keys().unwrap()).is_empty());
     }
 
     #[rstest]
     fn seriesreader_env_keys_simple(setup_series_dir: TempDir) {
         let tmp_series = setup_series_dir.path().to_path_buf();
         let series_reader = ExperimentSeries::parse(&tmp_series).unwrap();
-        assert_eq!(vec!["VAR1", "VAR2"], series_reader.env_keys());
+        assert_eq!(vec!["VAR1", "VAR2"], series_reader.env_keys().unwrap());
     }
 
     #[rstest]

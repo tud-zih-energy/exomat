@@ -77,6 +77,31 @@ impl DerefMut for OutList {
     }
 }
 
+impl FileReader for OutList {
+    type Item = OutList;
+
+    fn parse(dir: &Path) -> Result<Self::Item> {
+        let mut out_files = Vec::new();
+        for entry in dir.read_dir()? {
+            let entry = entry?;
+
+            if !entry.path().is_file() {
+                // note: no recursive decent
+                continue;
+            }
+
+            if !entry.file_name().to_string_lossy().starts_with("out_") {
+                continue;
+            }
+
+            let out_file = OutFile::parse(entry.path().as_path())?;
+            out_files.push(out_file);
+        }
+
+        Ok(Self { out_files })
+    }
+}
+
 /// Represents one out_ file in an Experiment Run
 #[derive(PartialEq, Clone, Debug)]
 pub struct OutFile {
@@ -212,6 +237,8 @@ impl Display for OutFile {
 mod tests {
     use super::*;
     use crate::test_helper::create_out_file;
+    use rstest::rstest;
+    use tempfile::TempDir;
 
     #[test]
     fn outfile_repeat() {
@@ -316,5 +343,45 @@ mod tests {
         let b = OutFile::new("dup", vec!["y".to_string()]);
 
         assert!(OutList::try_from(vec![a, b]).is_err());
+    }
+
+    fn helper_mk_file(dir: &Path, fname: &str, content: &str) {
+        std::fs::write(dir.join(fname), content).unwrap();
+    }
+
+    #[rstest]
+    fn parse_out_list_empty() {
+        let dir = TempDir::new().unwrap();
+        let outlist = OutList::parse(dir.path()).unwrap();
+        assert!(outlist.is_empty());
+    }
+
+    #[rstest]
+    fn parse_out_list_ignore_other_files() {
+        let dir = TempDir::new().unwrap();
+        helper_mk_file(dir.path(), "hajsd", "abc");
+
+        let outlist = OutList::parse(dir.path()).unwrap();
+        assert!(outlist.is_empty());
+    }
+
+    #[rstest]
+    fn parse_out_list_regular() {
+        let dir = TempDir::new().unwrap();
+        helper_mk_file(dir.path(), "hajsd", "abc");
+        helper_mk_file(dir.path(), "out_a", "foo");
+        helper_mk_file(dir.path(), "out_b", "bar\nbaz");
+
+        let outlist = OutList::parse(dir.path()).unwrap();
+
+        assert_eq!(2, outlist.len());
+        assert_eq!(
+            vec!["foo".to_string()],
+            *outlist.outfile("a").unwrap().values()
+        );
+        assert_eq!(
+            vec!["bar".to_string(), "baz".to_string()],
+            *outlist.outfile("b").unwrap().values()
+        );
     }
 }
