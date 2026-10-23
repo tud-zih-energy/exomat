@@ -99,7 +99,7 @@ impl ExperimentRun {
     }
 
     /// read execution status from disk
-    pub fn status(&self) -> Result<Status> {
+    pub fn status(&self) -> Result<RunStatus> {
         todo!();
     }
 
@@ -116,50 +116,6 @@ impl ExperimentRun {
     /// shorthand to get basename of location
     pub fn run_name(&self) -> &str {
         todo!();
-    }
-
-    /// Immutable iteration
-    pub fn iter<'a>(&'a self) -> ExperimentRunIter<'a> {
-        ExperimentRunIter {
-            run_reader: self,
-            index: 0,
-        }
-    }
-
-    /// Helper, that returns the value at `index` for all keys in the current run.
-    ///
-    /// If a value is empty "NA" will be returned as the key's value.
-    ///
-    /// - Returns an `IndexOutOfRange` Error if the index is out of range (unbelievable, I know)
-    /// - Returns an `Empty` Error if there are no Observations, that can be returned
-    fn get_observation(&self, index: usize) -> Result<Observation> {
-        debug!("looking for out_ files");
-        if self.out_files.is_empty() {
-            return Err(Error::Empty(String::from("No Observations found")));
-        }
-
-        let mut observation: Observation = HashMap::new();
-        for outfile in self.out_files.iter() {
-            trace!("checking if out_ file is empty");
-            if outfile.is_empty() {
-                observation.insert(outfile.var_name().clone(), String::from("NA"));
-                // index is not in range
-            } else if index >= outfile.value_count() {
-                return Err(Error::IndexOutOfRange {
-                    index,
-                    limit: outfile.value_count(),
-                });
-                // everything worked, get value
-            } else {
-                observation.insert(
-                    outfile.var_name().clone(),
-                    outfile.values()[index].to_string(),
-                );
-            }
-        }
-
-        debug!("observation found: {:?}", observation);
-        Ok(observation)
     }
 }
 
@@ -182,69 +138,70 @@ impl Runner for ExperimentRun {
     /// - Returns a `HarnessRunError` if there is no [RUN_RUN_FILE] in `run_folder`
     /// - Returns a `HarnessRunError` if there is no [RUN_ENV_FILE] in `run_folder`
     fn execute(&mut self, exp_name: &str) -> Result<Self::Item> {
-        debug!("{exp_name}: Checking run directory {}", self.run_name);
-        trace!("checking if run has been serialized");
-        let run_folder = self
-            .location
-            .as_ref()
-            .unwrap()
-            .canonicalize()
-            .map_err(|e| Error::HarnessRunError {
-                experiment: exp_name.to_string(),
-                err: format!("Experiment Run has not been written to disk yet: {e}"),
-            })?;
-
-        trace!("checking if all files exist in run");
-        for file in REQUIRED_RUN_FILES {
-            if !run_folder.join(file).is_file() {
-                return Err(Error::HarnessRunError {
-                    experiment: exp_name.to_string(),
-                    err: format!("Missing {file} in experiment run directory"),
-                });
-            };
-        }
-
-        let run_name = run_folder
-            .file_stem()
-            .expect("run folder name inaccessable")
-            .display()
-            .to_string();
-        let exp_name_full = format!("{exp_name} {run_name}");
-
-        debug!("{exp_name_full}: reading run environment");
-        let mut all_envs = self.exomat_env.to_environment_full();
-        all_envs.extend_envs(&self.env);
-
-        debug!("{exp_name_full}: Starting execution of {}", self.run_name);
-
-        // execute command with envs and collect any output in child
-        let mut run_command = Command::new(run_folder.join(RUN_RUN_FILE));
-        run_command.envs(all_envs).current_dir(&run_folder);
-        // automatically wrap stderr/stdout into logs
-        let run_output =
-            crate::helper::logging::run_cmd_forwards_output(exp_name_full.as_str(), run_command)?;
-
-        trace!("{exp_name_full}: Finished run {}", run_folder.display());
-        self.status = match run_output.status.success() {
-            true => RunStatus::Success,
-            false => RunStatus::Fail(run_output.status.to_string()),
-        };
-        trace!("stored status: {:?}", self.status);
-
-        let exit_status = run_output.status;
-        match run_output.status.success() {
-            true => {
-                info!("{exp_name_full} finished successfully with {exit_status}");
-                Ok(())
-            }
-            false => {
-                error!("{exp_name_full} finished with non-zero {exit_status}");
-                Err(Error::HarnessRunError {
-                    experiment: run_name.to_string(),
-                    err: "exit status non-zero, consider reviewing logs".to_string(),
-                })
-            }
-        }
+        todo!("refactor");
+        // debug!("{exp_name}: Checking run directory {}", self.run_name);
+        // trace!("checking if run has been serialized");
+        // let run_folder = self
+        //     .location
+        //     .as_ref()
+        //     .unwrap()
+        //     .canonicalize()
+        //     .map_err(|e| Error::HarnessRunError {
+        //         experiment: exp_name.to_string(),
+        //         err: format!("Experiment Run has not been written to disk yet: {e}"),
+        //     })?;
+        //
+        // trace!("checking if all files exist in run");
+        // for file in REQUIRED_RUN_FILES {
+        //     if !run_folder.join(file).is_file() {
+        //         return Err(Error::HarnessRunError {
+        //             experiment: exp_name.to_string(),
+        //             err: format!("Missing {file} in experiment run directory"),
+        //         });
+        //     };
+        // }
+        //
+        // let run_name = run_folder
+        //     .file_stem()
+        //     .expect("run folder name inaccessable")
+        //     .display()
+        //     .to_string();
+        // let exp_name_full = format!("{exp_name} {run_name}");
+        //
+        // debug!("{exp_name_full}: reading run environment");
+        // let mut all_envs = self.exomat_env.to_environment_full();
+        // all_envs.extend_envs(&self.env);
+        //
+        // debug!("{exp_name_full}: Starting execution of {}", self.run_name);
+        //
+        // // execute command with envs and collect any output in child
+        // let mut run_command = Command::new(run_folder.join(RUN_RUN_FILE));
+        // run_command.envs(all_envs).current_dir(&run_folder);
+        // // automatically wrap stderr/stdout into logs
+        // let run_output =
+        //     crate::helper::logging::run_cmd_forwards_output(exp_name_full.as_str(), run_command)?;
+        //
+        // trace!("{exp_name_full}: Finished run {}", run_folder.display());
+        // self.status = match run_output.status.success() {
+        //     true => RunStatus::Success,
+        //     false => RunStatus::Fail(run_output.status.to_string()),
+        // };
+        // trace!("stored status: {:?}", self.status());
+        //
+        // let exit_status = run_output.status;
+        // match run_output.status.success() {
+        //     true => {
+        //         info!("{exp_name_full} finished successfully with {exit_status}");
+        //         Ok(())
+        //     }
+        //     false => {
+        //         error!("{exp_name_full} finished with non-zero {exit_status}");
+        //         Err(Error::HarnessRunError {
+        //             experiment: run_name.to_string(),
+        //             err: "exit status non-zero, consider reviewing logs".to_string(),
+        //         })
+        //     }
+        // }
     }
 }
 
@@ -354,15 +311,16 @@ impl FileReader for ExperimentRun {
             .display()
             .to_string();
 
-        Ok(ExperimentRun {
-            run_sh,
-            run_name,
-            env,
-            exomat_env,
-            out_files: out_balanced,
-            status: RunStatus::Unknown,
-            location: Some(exp_run_dir.to_path_buf()),
-        })
+        todo!();
+        // Ok(ExperimentRun {
+        //     run_sh,
+        //     run_name,
+        //     env,
+        //     exomat_env,
+        //     out_files: out_balanced,
+        //     status: RunStatus::Unknown,
+        //     location: Some(exp_run_dir.to_path_buf()),
+        // })
     }
 }
 
@@ -445,10 +403,8 @@ exit {return_code}
         );
         std::fs::write(run.location().join(RUN_RUN_FILE), debug_script).unwrap();
 
-        let exp_started_file = run
-            .location()
-            .join(todo!("path to start timestamp outfile"));
-        let exp_done_file = run.location().join(todo!("path to result outfile"));
+        let exp_started_file = run.location().join(RUN_OUT_EXOMAT_START_TIMESTAMP);
+        let exp_done_file = run.location().join(RUN_OUT_EXOMAT_RUN_EXIT_CODE);
 
         assert!(!exp_started_file.is_file());
         assert!(!exp_done_file.is_file());
@@ -471,10 +427,8 @@ exit {return_code}
         #[values(true, false)] exp_started: bool,
         #[case] given_status: RunStatus,
     ) {
-        let exp_started_file = run
-            .location()
-            .join(todo!("path to start timestamp outfile"));
-        let exp_done_file = run.location().join(todo!("path to result outfile"));
+        let exp_started_file = run.location().join(RUN_OUT_EXOMAT_START_TIMESTAMP);
+        let exp_done_file = run.location().join(RUN_OUT_EXOMAT_RUN_EXIT_CODE);
 
         if exp_started {
             std::fs::write(exp_started_file, "0").unwrap();

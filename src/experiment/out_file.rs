@@ -50,17 +50,6 @@ impl OutList {
         }
     }
 
-    /// Returns the length of the longest OutFile in out_files
-    ///
-    /// If the maximum length cannot be determined, 0 is returned.
-    pub fn max_length(&self) -> usize {
-        self.out_files
-            .iter()
-            .map(|out| out.value_count())
-            .max()
-            .unwrap_or(0)
-    }
-
     /// Returns the out_ file, where out_file.name == var_name
     pub fn outfile(&self, var_name: &str) -> Option<&OutFile> {
         self.out_files
@@ -313,7 +302,6 @@ mod tests {
         ])
         .unwrap();
 
-        assert_eq!(list.max_length(), 2);
         assert_eq!(list.len(), 2);
         assert_eq!(list.outfile("missing"), None);
         assert_eq!(

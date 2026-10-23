@@ -79,33 +79,36 @@ impl ExperimentSeries {
         let runs_success = self
             .runs
             .iter()
-            .filter(|run| *run.status() == RunStatus::Success)
+            .filter(|run| matches!(run.status(), Ok(RunStatus::Success)))
             .count();
-        let runs_unknown = self
+        let runs_not_started = self
             .runs
             .iter()
-            .filter(|run| *run.status() == RunStatus::Unknown)
+            .filter(|run| matches!(run.status(), Ok(RunStatus::NotStarted)))
             .count();
-        let runs_failed = runs_total - runs_unknown - runs_success;
+        let runs_failed = runs_total - runs_not_started - runs_success;
 
         let failure_desc = self
             .runs
             .iter()
-            .filter_map(|run| match run.status() {
-                RunStatus::Unknown | RunStatus::Success => None,
-                RunStatus::Fail(reason) => Some(format!(
-                    "\nrun {run_name} at {run_location} failed with: {reason}",
-                    run_name = run.run_name,
-                    run_location = run
-                        .location
-                        .as_ref()
-                        .unwrap_or(&PathBuf::from("unknown"))
-                        .display()
-                )),
-            })
-            .fold(String::new(), |a, b| a + b.as_str());
+            .filter_map(|run| {
+                let run_name = run.run_name();
+                let run_location = run
+                    .location()
+                    .display();
+                match run.status() {
+                    Err(err) => Some(format!("failed to read status of {run_name} at {run_location}: {err}")),
+                    Ok(RunStatus::NotStarted) | Ok(RunStatus::Success) => None,
+                    Ok(RunStatus::ExitNonZero(exit_code)) => Some(format!(
+                            "run {run_name} at {run_location} exited non-zero, please review logs. exit code: {exit_code}")),
+                        Ok(RunStatus::Fail(reason)) => Some(format!(
+                                "run {run_name} at {run_location} failed with: {reason}",
+                        )),
+                }}
+            )
+            .fold(String::new(), |a, b| a + "\n" + b.as_str());
 
-        format!("{runs_success}/{runs_total} successful, {runs_unknown}/{runs_unknown} unknown (did not run?), {runs_failed}/{runs_total} failed{failure_desc}")
+        format!("{runs_success}/{runs_total} successful, {runs_not_started}/{runs_not_started} not started, {runs_failed}/{runs_total} failed{failure_desc}")
     }
 
     /// Generate Experiment Runs based on the current Experiment Series
@@ -212,14 +215,16 @@ impl ExperimentSeries {
     }
 
     /// retrieve all names of outfiles, i.e. XXX for `out_XXX`
-    pub fn output_keys(&self) -> Vec<&str> {
-        let mut keys: Vec<&str> = self
+    pub fn output_keys(&self) -> Vec<String> {
+        let mut keys: Vec<String> = self
             .runs
             .iter()
             .flat_map(|run| {
                 run.out_files()
+                    .unwrap()
                     .iter()
-                    .map(|outfile| outfile.var_name().as_str())
+                    .map(|outfile| outfile.var_name().to_string())
+                    .collect::<Vec<String>>()
             })
             .collect();
 
@@ -230,11 +235,17 @@ impl ExperimentSeries {
     }
 
     /// retrieve all names of variables in all environments
-    pub fn env_keys(&self) -> Vec<&str> {
-        let mut keys: Vec<&str> = self
+    pub fn env_keys(&self) -> Vec<String> {
+        let mut keys: Vec<String> = self
             .runs
             .iter()
-            .flat_map(|run| run.env().get_env_vars().into_iter().map(String::as_str))
+            .flat_map(|run| {
+                run.env()
+                    .get_env_vars()
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<String>>()
+            })
             .collect();
 
         keys.sort();
@@ -280,25 +291,26 @@ impl ExperimentSeries {
         running_order
     }
 
-    /// Adds missing out_ files to each Experiment Run.
-    ///
-    /// If a key is present in one Experiment Run but missing another, the key will be
-    /// added with "NA" as it's value.
-    fn fill_missing_keys(&mut self) {
-        let keys: Vec<String> = self
-            .output_keys()
-            .into_iter()
-            .map(|k| k.to_string())
-            .collect();
-
-        for run in self.runs.iter_mut() {
-            for key in &keys {
-                if run.out_var(key).is_none() {
-                    run.insert_out_file(OutFile::new(key, vec!["NA".to_string()]));
-                }
-            }
-        }
-    }
+    // TODO remove
+    // /// Adds missing out_ files to each Experiment Run.
+    // ///
+    // /// If a key is present in one Experiment Run but missing another, the key will be
+    // /// added with "NA" as it's value.
+    // fn fill_missing_keys(&mut self) {
+    //     let keys: Vec<String> = self
+    //         .output_keys()
+    //         .into_iter()
+    //         .map(|k| k.to_string())
+    //         .collect();
+    //
+    //     for run in self.runs.iter_mut() {
+    //         for key in &keys {
+    //             if run.out_var(key).is_none() {
+    //                 run.insert_out_file(OutFile::new(key, vec!["NA".to_string()]));
+    //             }
+    //         }
+    //     }
+    // }
 
     /// Parses `self.runs` into rows, that can be serialized in a CSV format.
     /// Includes a header row
@@ -322,7 +334,7 @@ impl ExperimentSeries {
     fn to_csv_rows(&self) -> Vec<Vec<String>> {
         // sort runs by their repetition/env
         let mut sorted_runs = self.runs.clone();
-        sorted_runs.sort_by_key(|run| run.run_dir_name().to_owned());
+        sorted_runs.sort_by_key(|run| run.run_name().to_owned());
 
         // collect all header
         let header: Vec<String> = [self.env_keys(), self.output_keys()]
@@ -335,34 +347,42 @@ impl ExperimentSeries {
 
         let max_val_len = sorted_runs
             .iter()
-            .map(|run| run.out_files().max_length())
+            .map(|run| {
+                run.out_files()
+                    .unwrap()
+                    .iter()
+                    .map(|out_file| out_file.values().len())
+                    .max()
+                    .unwrap_or(0)
+            })
             .max()
             .unwrap_or(0);
 
+        todo!("refactor to not rely on key ordering");
         // collect content (one entry = every ith element of each key)
-        for i in 0..max_val_len {
-            // for each run ...
-            for run in &sorted_runs {
-                let mut row: Vec<String> = Vec::new();
-
-                // add env
-                for env_var in self.env_keys() {
-                    row.push(run.env().get_env_val(env_var).cloned().unwrap_or_default());
-                }
-
-                // add output
-                for key in self.output_keys() {
-                    if let Some(vals) = &run.out_var(key) {
-                        row.push(vals.get(i).cloned().unwrap_or_else(String::new));
-                    } else {
-                        row.push(String::new())
-                    }
-                }
-
-                // ... and save the list for this run
-                rows_vec.push(row);
-            }
-        }
+        // for i in 0..max_val_len {
+        //     // for each run ...
+        //     for run in &sorted_runs {
+        //         let mut row: Vec<String> = Vec::new();
+        //
+        //         // add env
+        //         for env_var in self.env_keys() {
+        //             row.push(run.env().get_env_val(env_var).cloned().unwrap_or_default());
+        //         }
+        //
+        //         // add output
+        //         for key in self.output_keys() {
+        //             if let Some(vals) = &run.out_var(key) {
+        //                 row.push(vals.get(i).cloned().unwrap_or_else(String::new));
+        //             } else {
+        //                 row.push(String::new())
+        //             }
+        //         }
+        //
+        //         // ... and save the list for this run
+        //         rows_vec.push(row);
+        //     }
+        // }
 
         rows_vec
     }
@@ -373,7 +393,7 @@ impl ExperimentSeries {
     /// - there are no runs
     /// - there are runs, but none contain out_ files
     fn runs_are_empty(&self) -> bool {
-        self.runs.is_empty() || self.runs.iter().all(|run| run.out_files().is_empty())
+        todo!("remove this function");
     }
 
     /// Checks if the SeriesReader contains a valid trial run.
@@ -383,40 +403,13 @@ impl ExperimentSeries {
     /// - REPETITION == 1
     #[cfg(test)]
     fn is_valid_trial(&self) -> bool {
-        if self.run_count() == 1 && self.exomat_envs().repetition == 1 {
-            true
-        } else {
-            println!(
-                "not a valid trial:\n {:?} ({})\n {:?}",
-                self.runs,
-                self.run_count(),
-                self.source.exomat_envs()
-            );
-            false
-        }
+        todo!("remove this function");
     }
 
     /// Returns the number of runs recorded (Test helper)
     #[cfg(test)]
     fn run_count(&self) -> usize {
-        self.runs.len()
-    }
-
-    /// Parses a SeriesReader from multiple OutLists (Test helper)
-    ///
-    /// One OutList represents the out_files of one RunReader.
-    #[cfg(test)]
-    fn from_out_lists(list_of_envlist: Vec<OutList>) -> Self {
-        let runs: Vec<ExperimentRun> = list_of_envlist
-            .iter()
-            .map(|envlist| ExperimentRun::from_out_list_unchecked(&envlist))
-            .collect();
-
-        ExperimentSeries {
-            source: todo!(),
-            path: None,
-            runs: runs,
-        }
+        todo!("remove this method");
     }
 }
 
@@ -480,76 +473,77 @@ impl FileWriter for ExperimentSeries {
     ///   called `series_name` in the same directory
     /// - Panics if `exp_source` could not be read
     fn persist(&mut self, exp_series_dir: &Path) -> Result<()> {
-        debug!(
-            "attempting to build series directory from {}",
-            self.source.location().display()
-        );
-
-        trace!("checking if is dir");
-        if !self.source.location().is_dir() {
-            return Err(Error::HarnessRunError {
-                experiment: self.source.location().display().to_string(),
-                err: "is not directory".to_string(),
-            });
-        }
-
-        trace!("checking if source dir marker exists");
-        if !self.source.location().join(MARKER_SRC).is_file() {
-            return Err(Error::HarnessRunError {
-                experiment: self.source.location().display().to_string(),
-                err: "is not an experiment source directory".to_string(),
-            });
-        }
-
-        // check if series dir is valid
-        fn is_child_dir_of_of(maybe_child: &Path, parent: &Path) -> Result<bool> {
-            let parent = parent.canonicalize()?;
-
-            Ok(maybe_child
-                .ancestors()
-                .any(|ancestor| match ancestor.canonicalize() {
-                    Ok(ancestor) => ancestor == parent,
-                    Err(_) => false, // dir does not exist -> is certainly not parent
-                }))
-        }
-
-        debug!("checking if creating series inside of experiment (would be forbidden)");
-        if is_child_dir_of_of(exp_series_dir, self.source.location())? {
-            // log full paths to debug, but let error be handled (i.e. reported as error) outside
-            error!("refusing to build series dir inside of experiment dir, experiment dir: {}, to-be-created series dir: {}",
-               self.source.location().display(),
-               exp_series_dir.display());
-            return Err(Error::HarnessRunError {
-                experiment: self.source.location().display().to_string(),
-                err: "can not generate output inside of experiment dir".to_string(),
-            });
-        }
-        let src = create_harness_dir(&exp_series_dir.join(SERIES_SRC_DIR))?;
-        let runs = create_harness_dir(&exp_series_dir.join(SERIES_RUNS_DIR))?;
-
-        create_harness_file(&exp_series_dir.join(MARKER_SERIES))?;
-
-        let logfile = runs.join(SERIES_EXOMAT_LOG);
-        create_harness_file(&logfile)?;
-        crate::helper::logging::set_logfile(&logfile)?;
-
-        // copy exp_source/template to src and replace marker
-        copy_harness_dir(self.source.location(), &src)?;
-        std::fs::remove_file(src.join(MARKER_SRC))?;
-        create_harness_file(&src.join(MARKER_SRC_CP))?;
-
-        // create runs if there are any to be created
-        for run in &mut self.runs {
-            run.persist(&runs.join(run.run_dir_name()))?;
-        }
-
-        info!(
-            "Created new experiment series dir at {}",
-            exp_series_dir.display()
-        );
-        self.path = Some(exp_series_dir.to_path_buf());
-
-        Ok(())
+        todo!("refactor series generator");
+        // debug!(
+        //     "attempting to build series directory from {}",
+        //     self.source.location().display()
+        // );
+        //
+        // trace!("checking if is dir");
+        // if !self.source.location().is_dir() {
+        //     return Err(Error::HarnessRunError {
+        //         experiment: self.source.location().display().to_string(),
+        //         err: "is not directory".to_string(),
+        //     });
+        // }
+        //
+        // trace!("checking if source dir marker exists");
+        // if !self.source.location().join(MARKER_SRC).is_file() {
+        //     return Err(Error::HarnessRunError {
+        //         experiment: self.source.location().display().to_string(),
+        //         err: "is not an experiment source directory".to_string(),
+        //     });
+        // }
+        //
+        // // check if series dir is valid
+        // fn is_child_dir_of_of(maybe_child: &Path, parent: &Path) -> Result<bool> {
+        //     let parent = parent.canonicalize()?;
+        //
+        //     Ok(maybe_child
+        //         .ancestors()
+        //         .any(|ancestor| match ancestor.canonicalize() {
+        //             Ok(ancestor) => ancestor == parent,
+        //             Err(_) => false, // dir does not exist -> is certainly not parent
+        //         }))
+        // }
+        //
+        // debug!("checking if creating series inside of experiment (would be forbidden)");
+        // if is_child_dir_of_of(exp_series_dir, self.source.location())? {
+        //     // log full paths to debug, but let error be handled (i.e. reported as error) outside
+        //     error!("refusing to build series dir inside of experiment dir, experiment dir: {}, to-be-created series dir: {}",
+        //        self.source.location().display(),
+        //        exp_series_dir.display());
+        //     return Err(Error::HarnessRunError {
+        //         experiment: self.source.location().display().to_string(),
+        //         err: "can not generate output inside of experiment dir".to_string(),
+        //     });
+        // }
+        // let src = create_harness_dir(&exp_series_dir.join(SERIES_SRC_DIR))?;
+        // let runs = create_harness_dir(&exp_series_dir.join(SERIES_RUNS_DIR))?;
+        //
+        // create_harness_file(&exp_series_dir.join(MARKER_SERIES))?;
+        //
+        // let logfile = runs.join(SERIES_EXOMAT_LOG);
+        // create_harness_file(&logfile)?;
+        // crate::helper::logging::set_logfile(&logfile)?;
+        //
+        // // copy exp_source/template to src and replace marker
+        // copy_harness_dir(self.source.location(), &src)?;
+        // std::fs::remove_file(src.join(MARKER_SRC))?;
+        // create_harness_file(&src.join(MARKER_SRC_CP))?;
+        //
+        // // create runs if there are any to be created
+        // for run in &mut self.runs {
+        //     run.persist(&runs.join(run.run_dir_name()))?;
+        // }
+        //
+        // info!(
+        //     "Created new experiment series dir at {}",
+        //     exp_series_dir.display()
+        // );
+        // self.path = Some(exp_series_dir.to_path_buf());
+        //
+        // Ok(())
     }
 }
 
@@ -581,7 +575,8 @@ impl FileReader for ExperimentSeries {
         };
 
         debug!("adding missing keys");
-        reader.fill_missing_keys();
+        // reader.fill_missing_keys();
+        todo!("fill missing keys");
         Ok(reader)
     }
 
@@ -641,7 +636,7 @@ impl std::fmt::Display for ExperimentSeries {
         } else {
             if !self.runs_are_empty() {
                 let mut out = String::new();
-                for out_file in self.runs()[0].out_files().iter() {
+                for out_file in self.runs()[0].out_files().unwrap().iter() {
                     out.push_str(&format!("  {out_file}\n"));
                 }
                 out
@@ -723,34 +718,14 @@ mod tests {
     }
 
     #[test]
-    fn seriesreader_iter() {
-        // test iterating without error
-        let tmpdir = setup_series_dir();
-        let tmp_series = tmpdir.path().to_path_buf();
-
-        let series_reader = ExperimentSeries::parse(&tmp_series).unwrap();
-        assert_eq!(series_reader.run_count(), 3);
-
-        // iterate over runs and observations
-        for run in series_reader.runs.iter() {
-            for obs in run.iter() {
-                assert!(obs.get("number").is_some());
-                assert!(obs.get("word").is_some());
-            }
-        }
-    }
-
-    #[test]
     fn seriesreader_keys() {
         let tmpdir = setup_series_dir();
         let tmp_series = tmpdir.path().to_path_buf();
 
         let series_reader = ExperimentSeries::parse(&tmp_series).unwrap();
-        let keys = series_reader.output_keys();
-
-        assert!(keys.contains(&"number"));
-        assert!(keys.contains(&"word"));
-        assert!(keys.len() == 2);
+        let mut keys = series_reader.output_keys();
+        keys.sort();
+        assert_eq!(keys, vec!["number".to_string(), "word".to_string()]);
     }
 
     #[test]
@@ -761,12 +736,13 @@ mod tests {
         let series_reader = ExperimentSeries::parse(&runs_dir).unwrap();
 
         let keys = series_reader.output_keys();
-        assert!(keys.contains(&"empty"));
+        assert!(keys.contains(&String::from("empty")));
         assert!(keys.len() == 1);
 
-        let content = series_reader.runs()[0].out_var(keys[0]);
+        let out_files = series_reader.runs()[0].out_files().unwrap();
+        let content = out_files.outfile("empty");
         assert!(content.is_some());
-        assert_eq!(content.unwrap(), &vec![String::from("")]);
+        assert_eq!(content.unwrap().values(), &vec![String::from("")]);
     }
 
     #[test]
@@ -779,50 +755,6 @@ mod tests {
 
         assert!(keys.is_empty());
         assert!(series_reader.runs_are_empty());
-    }
-
-    #[rstest]
-    fn seriesreader_serialize_multiline(
-        #[from(skeleton_src)] outdir: TempDir,
-        outlist_mixed_weird: OutList,
-    ) {
-        let outdir = outdir.path().to_path_buf();
-        let out_file = outdir.join("2.csv");
-
-        // not created yet
-        assert!(!out_file.is_file());
-
-        let reader = ExperimentSeries::from_out_lists(vec![outlist_mixed_weird]);
-        reader.to_csv(&out_file).unwrap();
-
-        // with multiple keys and values the order of items after serialization is
-        // random, so only check if the correct lines are there
-        let file_2 = std::fs::read_to_string(out_file).unwrap();
-        assert!(contains_either(&file_2, "VAR1,VAR2\n", "VAR2,VAR1\n"));
-        assert!(contains_either(&file_2, "VALUE,\n", ",VALUE\n"));
-        assert!(contains_either(&file_2, "\"a,b\",baz\n", "baz,\"a,b\"\n"));
-    }
-
-    #[rstest]
-    #[case(OutList::default(), "")]
-    #[case(outlist_1a(), "1\na\n")]
-    #[case(outlist_one_var_no_val(), "VAR\n")]
-    #[case(outlist_empty_string(), "VAR\n\"\"\n")]
-    fn seriesreader_serialize_single(
-        #[from(skeleton_src)] outdir: TempDir,
-        #[case] outlist: OutList,
-        #[case] expected: String,
-    ) {
-        let outdir = outdir.path().to_path_buf();
-        let out_file = outdir.join("0.csv");
-
-        // not created yet
-        assert!(!out_file.is_file());
-
-        let reader = ExperimentSeries::from_out_lists(vec![outlist]);
-        reader.to_csv(&out_file).unwrap();
-
-        assert_eq!(std::fs::read_to_string(out_file).unwrap(), expected);
     }
 
     #[rstest]
@@ -854,7 +786,10 @@ mod tests {
         assert_eq!(reader.run_count(), 1);
         let res = &reader.runs()[0];
 
-        assert!(res.out_var("empty") == Some(&vec![String::new()]));
+        assert_eq!(
+            res.out_files().unwrap().outfile("empty").unwrap().values(),
+            &vec![String::new()]
+        );
     }
 
     #[rstest]
@@ -872,7 +807,9 @@ mod tests {
 
         assert_eq!(reader.run_count(), 2);
         for expected_outlist in expected_outlists {
-            let found = runs.iter().any(|run| run.out_files() == &expected_outlist);
+            let found = runs
+                .iter()
+                .any(|run| run.out_files().unwrap() == expected_outlist);
             assert!(found, "Expected OutList not found in results");
         }
     }
@@ -885,8 +822,8 @@ mod tests {
 
         let res = &reader.runs()[0];
 
-        assert!(res.out_var("some").is_some());
-        assert!(res.out_var("some.txt").is_some());
+        assert!(res.out_files().unwrap().outfile("some").is_some());
+        assert!(res.out_files().unwrap().outfile("some.txt").is_some());
     }
 
     #[rstest]
@@ -908,22 +845,26 @@ mod tests {
         let res = &reader.runs()[0];
 
         // check content, order is important
-        assert!(res.out_var("multi").is_some());
+        assert!(res.out_files().unwrap().outfile("multi").is_some());
         assert_eq!(
-            res.out_var("multi").unwrap(),
+            res.out_files().unwrap().outfile("multi").unwrap().values(),
             &vec!["11".to_string(), "20".to_string()]
         );
 
         // same as multi
-        assert!(res.out_var("trailing").is_some());
+        assert!(res.out_files().unwrap().outfile("trailing").is_some());
         assert_eq!(
-            res.out_var("trailing").unwrap(),
+            res.out_files()
+                .unwrap()
+                .outfile("trailing")
+                .unwrap()
+                .values(),
             &vec!["11".to_string(), "20".to_string()]
         );
 
-        assert!(res.out_var("single").is_some());
+        assert!(res.out_files().unwrap().outfile("single").is_some());
         assert_eq!(
-            res.out_var("single").unwrap(),
+            res.out_files().unwrap().outfile("single").unwrap().values(),
             &vec!["foo".to_string(), "foo".to_string()]
         );
     }
@@ -940,15 +881,15 @@ mod tests {
         let res = &reader.runs()[0];
 
         // check content
-        assert!(res.out_var("multi").is_some());
+        assert!(res.out_files().unwrap().outfile("multi").is_some());
         assert_eq!(
-            res.out_var("multi").unwrap(),
+            res.out_files().unwrap().outfile("multi").unwrap().values(),
             &vec!["foo".to_string(), "bar".to_string()]
         );
 
-        assert!(res.out_var("empty").is_some());
+        assert!(res.out_files().unwrap().outfile("empty").is_some());
         assert_eq!(
-            res.out_var("empty").unwrap(),
+            res.out_files().unwrap().outfile("empty").unwrap().values(),
             &vec![String::new(), String::new()]
         );
     }
@@ -1008,7 +949,7 @@ mod tests {
 
         // since the order of OutFiles per run is not always the same, test it this way
         for run in runs {
-            let outlist = run.out_files();
+            let outlist = run.out_files().unwrap();
             assert_eq!(outlist.len(), 3);
 
             assert!(
@@ -1052,5 +993,10 @@ mod tests {
         let tmp_series = setup_series_dir.path().to_path_buf();
         let series_reader = ExperimentSeries::parse(&tmp_series).unwrap();
         assert_eq!(vec!["VAR1", "VAR2"], series_reader.env_keys());
+    }
+
+    #[rstest]
+    fn predefined_vars_injected() {
+        todo!("ensure pre-defined vars are injected into runs on creation");
     }
 }

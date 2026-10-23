@@ -17,6 +17,8 @@ pub const SERIES_EXOMAT_LOG: &str = "exomat.log";
 // experiment run folder
 pub const RUN_RUN_FILE: &str = "run.sh";
 pub const RUN_ENV_FILE: &str = "environment.env";
+pub const RUN_OUT_EXOMAT_START_TIMESTAMP: &str = "out_exomat_start_timestamp";
+pub const RUN_OUT_EXOMAT_RUN_EXIT_CODE: &str = "out_exomat_run_exit_code";
 
 // names for marker files
 pub const MARKER_SRC: &str = ".exomat_source";
