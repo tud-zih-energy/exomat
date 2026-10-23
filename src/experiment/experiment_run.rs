@@ -538,8 +538,11 @@ mod tests {
 
         // check that exomat envs are included (or not)
         let envs = Environment::try_from(&run_dir.join(RUN_ENV_FILE)).unwrap();
-        assert_eq!(envs.get_env_val("REPETITION"), Some(&String::from("0")));
-        assert_eq!(envs.get_env_val("EXP_SRC_DIR"), None);
+        assert_eq!(
+            envs.get_env_val("EXOMAT_REPETITION"),
+            Some(&String::from("0"))
+        );
+        assert_eq!(envs.get_env_val("EXOMAT_EXP_SRC_DIR"), None);
     }
 
     #[test]
@@ -604,12 +607,12 @@ mod tests {
         .unwrap();
 
         // exomat variable, never serialized
-        assert!(!src_env.contains_env_var("EXP_SRC_DIR"));
-        assert!(!run_env.contains_env_var("EXP_SRC_DIR"));
+        assert!(!src_env.contains_env_var("EXOMAT_EXP_SRC_DIR"));
+        assert!(!run_env.contains_env_var("EXOMAT_EXP_SRC_DIR"));
 
         // exomat variable, serialized
-        assert!(!src_env.contains_env_var("REPETITION"));
-        assert!(run_env.contains_env_var("REPETITION"));
+        assert!(!src_env.contains_env_var("EXOMAT_REPETITION"));
+        assert!(run_env.contains_env_var("EXOMAT_REPETITION"));
 
         // user variable, always serialized
         assert!(src_env.contains_env_var("FOO"));

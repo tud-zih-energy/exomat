@@ -21,17 +21,20 @@ impl ExomatEnvironment {
 
     /// Returns an Environment with all variables of the `ExomatEnvironment`. This means it contains:
     ///
-    /// - "EXP_SRC_DIR" (absolute path)
-    /// - "REPETITION"
+    /// - "EXOMAT_EXP_SRC_DIR" (absolute path)
+    /// - "EXOMAT_REPETITION"
     pub fn to_environment_full(&self) -> Environment {
         let mut env = self.to_environment_serializable();
 
         env.extend_envs(&Environment::from(Vec::from([(
-            String::from("EXP_SRC_DIR"),
+            String::from("EXOMAT_EXP_SRC_DIR"),
             self.exp_src_dir
                 .canonicalize()
                 .unwrap_or_else(|_| {
-                    panic!("EXP_SRC_DIR is no dir ({})", self.exp_src_dir.display())
+                    panic!(
+                        "EXOMAT_EXP_SRC_DIR is no dir ({})",
+                        self.exp_src_dir.display()
+                    )
                 })
                 .display()
                 .to_string(),
@@ -43,16 +46,16 @@ impl ExomatEnvironment {
     /// Returns an Environment with all environment variables that are allowed to
     /// be serialized. This means it contains:
     ///
-    /// - "REPETITION"
+    /// - "EXOMAT_REPETITION"
     pub fn to_environment_serializable(&self) -> Environment {
         Environment::from(Vec::from([(
-            String::from("REPETITION"),
+            String::from("EXOMAT_REPETITION"),
             self.repetition.to_string(),
         )]))
     }
 
     /// List of all environment variable names that exomat reserves for internal use
-    pub const RESERVED_ENV_VARS: [&str; 2] = ["EXP_SRC_DIR", "REPETITION"];
+    pub const RESERVED_ENV_VARS: [&str; 2] = ["EXOMAT_EXP_SRC_DIR", "EXOMAT_REPETITION"];
 }
 
 /// Adds serializable exomat envs to an env file

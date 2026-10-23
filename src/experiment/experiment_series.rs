@@ -389,7 +389,7 @@ impl ExperimentSeries {
     ///
     /// Currently checks:
     /// - run count == 1
-    /// - REPETITION == 1
+    /// - EXOMAT_REPETITION == 1
     #[cfg(test)]
     fn is_valid_trial(&self) -> bool {
         if self.run_count() == 1 && self.exomat_envs().repetition == 1 {
