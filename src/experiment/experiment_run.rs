@@ -8,11 +8,10 @@ use crate::helper::{
     fs_names::*,
 };
 
-use log::warn;
-use log::{debug, error, info, trace};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use tracing::{debug, error, info, trace, warn};
 
 /// Describes the current state of an Experiment Run
 #[derive(Clone, Debug, PartialEq)]
@@ -86,7 +85,8 @@ impl ExperimentRun {
         debug!("writing environment");
         env.to_file(&run_dir.join(RUN_ENV_FILE))?;
 
-        create_harness_file(&run_dir.join(MARKER_RUN))?;
+        debug!("done, adding marker file");
+        let _ = create_harness_file(&run_dir.join(MARKER_RUN))?;
 
         Ok(Self { dir: run_dir })
     }
@@ -123,7 +123,8 @@ impl ExperimentRun {
 
     /// read environment from disk
     pub fn env(&self) -> Result<Environment> {
-        Environment::load_from_file(self.location())
+        let path = self.location().join(RUN_ENV_FILE);
+        Environment::try_from(&path)
     }
 
     /// shorthand to get basename of location
@@ -134,11 +135,6 @@ impl ExperimentRun {
             .to_str()
             .expect("basename contains non-utf8 characters, wtf?!")
     }
-}
-
-// ========================== Runner ==========================
-impl Runner for ExperimentRun {
-    type Item = ();
 
     /// Executes [RUN_RUN_FILE] script found in `run_folder`.
     ///
@@ -154,71 +150,74 @@ impl Runner for ExperimentRun {
     /// - Returns a `HarnessRunError` if the script could not be executed
     /// - Returns a `HarnessRunError` if there is no [RUN_RUN_FILE] in `run_folder`
     /// - Returns a `HarnessRunError` if there is no [RUN_ENV_FILE] in `run_folder`
-    fn execute(&mut self, exp_name: &str) -> Result<Self::Item> {
-        todo!("refactor");
-        // debug!("{exp_name}: Checking run directory {}", self.run_name);
-        // trace!("checking if run has been serialized");
-        // let run_folder = self
-        //     .location
-        //     .as_ref()
-        //     .unwrap()
-        //     .canonicalize()
-        //     .map_err(|e| Error::HarnessRunError {
-        //         experiment: exp_name.to_string(),
-        //         err: format!("Experiment Run has not been written to disk yet: {e}"),
-        //     })?;
-        //
-        // trace!("checking if all files exist in run");
-        // for file in REQUIRED_RUN_FILES {
-        //     if !run_folder.join(file).is_file() {
-        //         return Err(Error::HarnessRunError {
-        //             experiment: exp_name.to_string(),
-        //             err: format!("Missing {file} in experiment run directory"),
-        //         });
-        //     };
-        // }
-        //
-        // let run_name = run_folder
-        //     .file_stem()
-        //     .expect("run folder name inaccessable")
-        //     .display()
-        //     .to_string();
-        // let exp_name_full = format!("{exp_name} {run_name}");
-        //
-        // debug!("{exp_name_full}: reading run environment");
-        // let mut all_envs = self.exomat_env.to_environment_full();
-        // all_envs.extend_envs(&self.env);
-        //
-        // debug!("{exp_name_full}: Starting execution of {}", self.run_name);
-        //
-        // // execute command with envs and collect any output in child
-        // let mut run_command = Command::new(run_folder.join(RUN_RUN_FILE));
-        // run_command.envs(all_envs).current_dir(&run_folder);
-        // // automatically wrap stderr/stdout into logs
-        // let run_output =
-        //     crate::helper::logging::run_cmd_forwards_output(exp_name_full.as_str(), run_command)?;
-        //
-        // trace!("{exp_name_full}: Finished run {}", run_folder.display());
-        // self.status = match run_output.status.success() {
-        //     true => RunStatus::Success,
-        //     false => RunStatus::Fail(run_output.status.to_string()),
-        // };
-        // trace!("stored status: {:?}", self.status());
-        //
-        // let exit_status = run_output.status;
-        // match run_output.status.success() {
-        //     true => {
-        //         info!("{exp_name_full} finished successfully with {exit_status}");
-        //         Ok(())
-        //     }
-        //     false => {
-        //         error!("{exp_name_full} finished with non-zero {exit_status}");
-        //         Err(Error::HarnessRunError {
-        //             experiment: run_name.to_string(),
-        //             err: "exit status non-zero, consider reviewing logs".to_string(),
-        //         })
-        //     }
-        // }
+    pub fn execute(&mut self) -> Result<()> {
+        debug!("Checking run directory {}", self.dir.display());
+
+        // fail simple errors early
+        trace!("checking if all files exist in run");
+        for file in [MARKER_RUN, RUN_ENV_FILE, RUN_RUN_FILE] {
+            if !self.dir.join(file).is_file() {
+                return Err(Error::HarnessRunError {
+                    experiment: self.run_name().to_string(),
+                    err: format!("Missing {file} in experiment run directory"),
+                });
+            };
+        }
+
+        if self.dir.join(RUN_OUT_EXOMAT_START_TIMESTAMP).is_file() {
+            return Err(Error::HarnessRunError {
+                experiment: self.run_name().to_string(),
+                err: format!("run has already been started before, aborting"),
+            });
+        }
+
+        // execute command with envs and collect any output in child
+        let mut run_command = Command::new(self.dir.join(RUN_RUN_FILE));
+        trace!("preparing run invocation (env vars & pwd)");
+        run_command.envs(self.env()?).current_dir(&self.dir);
+
+        trace!("dumping start timestamp");
+        std::fs::write(
+            self.dir.join(RUN_OUT_EXOMAT_START_TIMESTAMP),
+            chrono::Utc::now().timestamp().to_string(),
+        )?;
+
+        debug!("Starting execution of {}", self.run_name());
+
+        // automatically wrap stderr/stdout into logs
+        let run_output =
+            crate::helper::logging::run_cmd_forwards_output(self.run_name(), run_command)?;
+
+        trace!("Finished execution of {}", self.run_name());
+
+        if let Some(exit_code) = run_output.status.code() {
+            debug!("dumping exit code");
+            std::fs::write(
+                self.dir.join(RUN_OUT_EXOMAT_RUN_EXIT_CODE),
+                format!("{exit_code}"),
+            )?;
+        } else {
+            return Err(Error::HarnessRunError {
+                experiment: self.run_name().to_string(),
+                err: format!("exit code of run not available (wtf?!)"),
+            });
+        }
+
+        let exit_status = run_output.status;
+        let run_name = self.run_name();
+        match run_output.status.success() {
+            true => {
+                info!("{run_name} finished successfully with {exit_status}");
+                Ok(())
+            }
+            false => {
+                error!("{run_name} finished with non-zero {exit_status}");
+                Err(Error::HarnessRunError {
+                    experiment: run_name.to_string(),
+                    err: "exit status non-zero, consider reviewing logs".to_string(),
+                })
+            }
+        }
     }
 }
 
@@ -235,109 +234,18 @@ impl FileReader for ExperimentRun {
     /// weird content in them, you will get weird output.
     ///
     /// ### Warnings, Errors and Panics
-    /// What you will be **warn**ed about:
-    /// - no env file at run/[RUN_ENV_FILE] (Empty Environment will be used)
-    /// - an out_ file shadows an env var
-    ///
-    /// What will cause an **Error**:
-    /// - invalid out_ file names
-    /// - unbalanced multiline out_ files
-    ///
-    /// This function might **Panic** if reading/writing failed.
+    /// Errors when there is no Marker file found.
+    /// Other errors might pop up later, but this struct is a thin wrapper around a path.
     fn parse(exp_run_dir: &Path) -> Result<Self::Item> {
-        debug!("reading environment");
-        let env = Environment::try_from(&exp_run_dir.join(RUN_ENV_FILE)).unwrap_or_else(|_| {
-            warn!("No environment found in run {}", exp_run_dir.display());
-            Environment::new()
-        });
-
-        debug!("reading run script");
-        let run_sh = std::fs::read_to_string(exp_run_dir.join(RUN_RUN_FILE))?;
-
-        trace!("Reading out_ files of Run {}", exp_run_dir.display());
-        let mut out_list: OutList = OutList::default();
-        let contained_files = <ExperimentRun as FileReader>::find_all_files(exp_run_dir);
-
-        for file in contained_files {
-            trace!("checking file {}", file.display());
-            match OutFile::parse(&file) {
-                Err(Error::Empty(e)) => return Err(Error::Empty(e)), // this means the name is invalid
-                Err(_) => continue,
-                Ok(outfile) => {
-                    // warn if out file shadows env var
-                    if env.contains_env_var(outfile.var_name()) {
-                        warn!(
-                            "in {}: out_{} shadows input environment variable ${}",
-                            outfile.var_name(),
-                            exp_run_dir.display(),
-                            outfile.var_name(),
-                        );
-                    }
-
-                    // extend existing outlist
-                    if out_list.contains(&outfile) {
-                        let to_extend = out_list
-                            .iter_mut()
-                            .find(|f| f.var_name() == outfile.var_name())
-                            .expect("Could not locate out file to append to");
-
-                        to_extend.extend_values(outfile.values());
-                    } else {
-                        out_list.push(outfile);
-                    }
-                }
-            }
+        let dir = exp_run_dir.to_path_buf();
+        if !dir.join(MARKER_RUN).is_file() {
+            return Err(Error::LoadingError(format!(
+                "run marker file missing in {}",
+                dir.display()
+            )));
         }
 
-        // balance values
-        trace!("Balancing out_ files of Run {}", exp_run_dir.display());
-        let out_balanced = match out_list.is_empty() {
-            true => out_list,
-            false => {
-                let max_length = out_list
-                    .iter()
-                    .map(|out| out.value_count())
-                    .max()
-                    .unwrap_or(1);
-
-                // for each variable
-                for outfile in out_list.iter_mut() {
-                    let len = outfile.value_count();
-
-                    if len == 1 && max_length > 1 {
-                        let to_extend = max_length - len;
-                        outfile.repeat(0, to_extend)?;
-
-                        // We got multiple values for var, check if it has the same number of rows as the
-                        // other columns
-                    } else if len != max_length {
-                        return Err(Error::EnvError {
-                                        reason: format!("Mismatched number of values for {} {len}, other value in {} has {max_length}", outfile.var_name(), exp_run_dir.display())});
-                    }
-                }
-
-                out_list
-            }
-        };
-
-        debug!("creating exomat environment");
-        let exomat_env = ExomatEnvironment::new(&PathBuf::new(), 1);
-        let run_name = exp_run_dir
-            .file_name()
-            .expect("Could not parse run name")
-            .display()
-            .to_string();
-
-        todo!();
-        // Ok(ExperimentRun {
-        //     run_sh,
-        //     run_name,
-        //     env,
-        //     exomat_env,
-        //     out_files: out_balanced,
-        //     status: RunStatus::Unknown,
-        //     location: Some(exp_run_dir.to_path_buf()),
-        // })
+        Ok(Self { dir })
     }
 }
 
@@ -348,20 +256,29 @@ mod tests {
     use super::*;
     use crate::experiment::ExperimentRun;
     use crate::harness::env::Environment;
-    use crate::test_fixtures::{env_1a, env_foo, template_dir};
+    use crate::test_fixtures::{env_a1, env_foo, template_dir};
     use rstest::{fixture, rstest};
+    use tracing_test::traced_test;
 
     use tempfile::TempDir;
 
+    struct TempDirAndRun {
+        /// handle to keep temp dir w/ run alive
+        #[allow(dead_code)]
+        tempdir: TempDir,
+        run: ExperimentRun,
+    }
+
     #[fixture]
-    fn run(template_dir: TempDir, env_foo: Environment) -> ExperimentRun {
-        todo!("also emit TempDir handle, otherwise run dir will be destroyed as well");
-        let new_dir = tempfile::TempDir::new().unwrap();
-        let dst = new_dir.path().join("run_dir");
-        ExperimentRun::create(template_dir.path(), &env_foo, dst.clone()).unwrap()
+    fn tempdir_and_run(template_dir: TempDir, env_foo: Environment) -> TempDirAndRun {
+        let tempdir = tempfile::TempDir::new().unwrap();
+        let dst = tempdir.path().join("run_dir");
+        let run = ExperimentRun::create(template_dir.path(), &env_foo, dst.clone()).unwrap();
+        TempDirAndRun { tempdir, run }
     }
 
     #[rstest]
+    #[traced_test]
     fn create_run(template_dir: TempDir, env_foo: Environment) {
         let new_dir = tempfile::TempDir::new().unwrap();
         let dst = new_dir.path().join("run_dir");
@@ -377,7 +294,7 @@ mod tests {
         assert!(dir.join("file").is_file());
         assert!(dir.join("subdir").join("file").is_file());
 
-        let env_from_file = Environment::load_from_file(&dir.join("environment.env")).unwrap();
+        let env_from_file = Environment::try_from(&dir.join("environment.env")).unwrap();
         assert_eq!(env_from_file, env_foo);
     }
 
@@ -392,7 +309,8 @@ mod tests {
     }
 
     #[rstest]
-    fn run_env_set(mut run: ExperimentRun) {
+    fn run_env_set(mut tempdir_and_run: TempDirAndRun) {
+        let run = &mut tempdir_and_run.run;
         let debug_script = r#"#!/usr/bin/env bash
 set -euo pipefail
 
@@ -400,18 +318,19 @@ echo $FOO > out_foo_val
 "#;
         std::fs::write(run.location().join(RUN_RUN_FILE), debug_script).unwrap();
 
-        run.execute("name").unwrap();
+        run.execute().unwrap();
 
         let foo_file = run.location().join("out_foo_val");
         assert!(foo_file.is_file());
-        assert_eq!("foo", std::fs::read_to_string(foo_file).unwrap());
+        assert_eq!("foo", std::fs::read_to_string(foo_file).unwrap().trim());
     }
 
     #[rstest]
     #[case(0)]
     #[case(1)]
     #[case(42)]
-    fn run_status_dumped(mut run: ExperimentRun, #[case] return_code: u32) {
+    fn run_status_dumped(mut tempdir_and_run: TempDirAndRun, #[case] return_code: u32) {
+        let run = &mut tempdir_and_run.run;
         let debug_script = format!(
             r#"#!/usr/bin/env bash
 set -euo pipefail
@@ -422,54 +341,61 @@ exit {return_code}
         std::fs::write(run.location().join(RUN_RUN_FILE), debug_script).unwrap();
 
         let exp_started_file = run.location().join(RUN_OUT_EXOMAT_START_TIMESTAMP);
-        let exp_done_file = run.location().join(RUN_OUT_EXOMAT_RUN_EXIT_CODE);
+        let exp_exit_status_file = run.location().join(RUN_OUT_EXOMAT_RUN_EXIT_CODE);
 
         assert!(!exp_started_file.is_file());
-        assert!(!exp_done_file.is_file());
+        assert!(!exp_exit_status_file.is_file());
 
-        run.execute("name").unwrap();
+        // may fail!
+        match return_code {
+            0 => assert!(run.execute().is_ok()),
+            _ => assert!(run.execute().is_err()),
+        }
 
         assert!(exp_started_file.is_file());
-        assert!(exp_done_file.is_file());
+        assert!(exp_exit_status_file.is_file());
 
-        todo!("check return code");
+        let return_code_s = std::fs::read_to_string(&exp_exit_status_file).unwrap();
+        assert_eq!(return_code_s, format!("{return_code}"));
     }
 
     #[rstest]
     #[case(RunStatus::NotStarted)]
     #[case(RunStatus::Success)]
     #[case(RunStatus::ExitNonZero(42))]
-    fn read_status_from_disk(
-        run: ExperimentRun,
-        #[values(true, false)] exp_started: bool,
-        #[case] given_status: RunStatus,
-    ) {
+    fn read_status_from_disk(mut tempdir_and_run: TempDirAndRun, #[case] given_status: RunStatus) {
+        let run = &mut tempdir_and_run.run;
         let exp_started_file = run.location().join(RUN_OUT_EXOMAT_START_TIMESTAMP);
-        let exp_done_file = run.location().join(RUN_OUT_EXOMAT_RUN_EXIT_CODE);
+        let exp_exit_status_file = run.location().join(RUN_OUT_EXOMAT_RUN_EXIT_CODE);
 
-        if exp_started {
-            std::fs::write(exp_started_file, "0").unwrap();
+        match &given_status {
+            RunStatus::NotStarted => {} //nop
+            RunStatus::Success | RunStatus::ExitNonZero(_) => {
+                std::fs::write(exp_started_file, "0").unwrap()
+            }
         }
 
-        todo!("write exit status");
+        let maybe_exit_code_to_write = match &given_status {
+            &RunStatus::ExitNonZero(code) => Some(code),
+            &RunStatus::NotStarted => None,
+            &RunStatus::Success => Some(0),
+        };
+        if let Some(exit_code_to_write) = maybe_exit_code_to_write {
+            std::fs::write(exp_exit_status_file, format!("{exit_code_to_write}")).unwrap();
+        }
 
         // check status corectly read from disk
-        let run: ExperimentRun = todo!("read exprun from disk");
-
-        match (exp_started, given_status) {
-            (false, RunStatus::NotStarted) => assert_eq!(given_status, run.status().unwrap()),
-            (false, _) => assert!(run.status().is_err()),
-            (true, RunStatus::NotStarted) => assert!(run.status().is_err()),
-            (true, _) => assert_eq!(given_status, run.status().unwrap()),
-        }
+        let parsed_run = ExperimentRun::parse(run.location()).unwrap();
+        assert_eq!(given_status, parsed_run.status().unwrap());
     }
 
     #[rstest]
     fn read_out_files(
-        run: ExperimentRun,
+        mut tempdir_and_run: TempDirAndRun,
         #[values(true, false)] out_a: bool,
         #[values(true, false)] out_b: bool,
     ) {
+        let run = &mut tempdir_and_run.run;
         if out_a {
             std::fs::write(run.location().join("out_a"), "foo").unwrap();
         }
@@ -501,8 +427,9 @@ exit {return_code}
 
     #[rstest]
     #[case(env_foo())]
-    #[case(env_1a())]
-    fn read_env(run: ExperimentRun, #[case] env: Environment) {
+    #[case(env_a1())]
+    fn read_env(mut tempdir_and_run: TempDirAndRun, #[case] env: Environment) {
+        let run = &mut tempdir_and_run.run;
         env.to_file(run.location().join(RUN_ENV_FILE).as_path())
             .unwrap();
 
@@ -510,7 +437,8 @@ exit {return_code}
     }
 
     #[rstest]
-    fn read_run_name(run: ExperimentRun) {
+    fn read_run_name(mut tempdir_and_run: TempDirAndRun) {
+        let run = &mut tempdir_and_run.run;
         assert_eq!(run.run_name(), run.location().file_name().unwrap());
     }
 }

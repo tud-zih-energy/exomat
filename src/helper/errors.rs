@@ -64,4 +64,8 @@ pub enum Error {
     /// Error while joining a sub-task
     #[error("failure to join async task: {0}")]
     TokioJoinError(#[from] tokio::task::JoinError),
+
+    /// error while loading something
+    #[error("failed during loading: {0}")]
+    LoadingError(String),
 }

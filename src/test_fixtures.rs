@@ -262,6 +262,12 @@ pub fn env_1a() -> Environment {
     Environment::from(vec![("1".to_string(), "a".to_string())])
 }
 
+/// generates an Environment with `A: "1"`
+#[fixture]
+pub fn env_a1() -> Environment {
+    Environment::from(vec![("A".to_string(), "1".to_string())])
+}
+
 /// generates an Environment with `FOO: "foo"`
 #[fixture]
 pub fn env_foo() -> Environment {
@@ -586,13 +592,20 @@ pub fn setup_run_dir() -> TempDir {
 
 #[fixture]
 pub fn template_dir() -> TempDir {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
     let dir = tempfile::tempdir().expect("Could not create tempdir");
 
-    std::fs::write(
-        &dir.path().join(RUN_ENV_FILE),
-        include_str!("./harness/run.sh.template"),
-    )
-    .unwrap();
+    let mut run_file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .mode(0o755)
+        .open(&dir.path().join(RUN_RUN_FILE))
+        .unwrap();
+    run_file
+        .write_all(include_bytes!("./harness/run.sh.template"))
+        .unwrap();
 
     let subdir = dir.path().join("subdir");
     std::fs::create_dir(&subdir).unwrap();

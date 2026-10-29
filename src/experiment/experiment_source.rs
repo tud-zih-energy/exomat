@@ -1,5 +1,5 @@
-use log::debug;
 use std::path::{Path, PathBuf};
+use tracing::debug;
 
 use crate::experiment::FileReader;
 use crate::helper::archivist::create_harness_file;
@@ -16,6 +16,7 @@ impl ExperimentSource {
     /// Create a skeleton of an experiment source on disk
     pub fn create_skeleton(dir: PathBuf) -> Result<Self> {
         use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
 
         debug!("creating dir");
         let dir = dir.canonicalize()?;
@@ -24,7 +25,12 @@ impl ExperimentSource {
         debug!("dumping run.sh");
         let template_dir = dir.join(SRC_TEMPLATE_DIR);
         std::fs::create_dir(&template_dir)?;
-        let mut run_file = std::fs::File::create(template_dir.join(SRC_RUN_FILE))?;
+
+        let mut run_file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .mode(0o755)
+            .open(&dir.join(RUN_RUN_FILE))?;
         run_file.write_all(include_bytes!("../harness/run.sh.template"))?;
 
         debug!("setting up initial env");
@@ -109,8 +115,10 @@ pub mod tests {
 
     use std::fs::read_to_string;
     use tempfile::TempDir;
+    use tracing_test::traced_test;
 
     #[test]
+    #[traced_test]
     fn skeleton_regular() {
         let work_dir = TempDir::new().unwrap();
         let new_dir = work_dir.path().join("new_dir");
@@ -147,7 +155,7 @@ pub mod tests {
         let existing_dir = TempDir::new().unwrap();
         let dir = existing_dir.path().join("my_dir");
         ExperimentSource::create_skeleton(dir.clone()).unwrap();
-        std::fs::remove_file(dir.join(MARKER_SRC));
+        std::fs::remove_file(dir.join(MARKER_SRC)).unwrap();
         let _ = ExperimentSource::parse(&dir).unwrap_err();
     }
 }

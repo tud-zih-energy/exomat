@@ -104,7 +104,7 @@ fn execute_exp_repetitions(series: &mut ExperimentSeries, is_trial: bool) -> Res
     for run in series.runs.iter_mut() {
         trace!("Using envs: {:?}", run.env());
 
-        run.execute(&experiment_name)?;
+        run.execute()?;
 
         // update progress
         tracing::Span::current().pb_inc(1);
@@ -156,7 +156,7 @@ mod tests {
             assert_eq!(ser.runs().len(), 1);
             let run: &mut  ExperimentRun = ser.runs_mut().first_mut().unwrap();
 
-            run.execute(exp_source.file_name().unwrap().to_str().unwrap()).unwrap();
+            run.execute().unwrap();
         }
 
         #[test]
