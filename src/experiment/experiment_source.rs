@@ -19,7 +19,6 @@ impl ExperimentSource {
         use std::os::unix::fs::OpenOptionsExt;
 
         debug!("creating dir");
-        let dir = dir.canonicalize()?;
         std::fs::create_dir(&dir)?;
 
         debug!("dumping run.sh");
@@ -30,7 +29,7 @@ impl ExperimentSource {
             .create(true)
             .write(true)
             .mode(0o755)
-            .open(&dir.join(RUN_RUN_FILE))?;
+            .open(&template_dir.join(SRC_RUN_FILE))?;
         run_file.write_all(include_bytes!("../harness/run.sh.template"))?;
 
         debug!("setting up initial env");
