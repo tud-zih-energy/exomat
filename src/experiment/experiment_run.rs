@@ -1,6 +1,7 @@
 use super::experiment_traits::{FileReader, FileWriter, Runner};
+use super::ExperimentSource;
 use crate::experiment::out_file::{Observation, OutFile, OutList};
-use crate::harness::env::{Environment, ExomatEnvironment};
+use crate::harness::env::{Environment, ExomatEnvironment, ENV_NAME_EXP_SOURCE_DIR};
 
 use crate::helper::{
     archivist::{create_harness_dir, create_harness_file},
@@ -40,7 +41,7 @@ impl ExperimentRun {
     /// create a new run dir at `run_dir`
     ///
     /// use given template & env
-    pub fn create(template: &Path, env: &Environment, run_dir: PathBuf) -> Result<Self> {
+    pub fn create(source: &ExperimentSource, env: &Environment, run_dir: PathBuf) -> Result<Self> {
         if run_dir.exists() {
             return Err(Error::HarnessCreateError {
                 entry: run_dir.to_string_lossy().to_string(),
@@ -73,7 +74,7 @@ impl ExperimentRun {
         })?;
 
         debug!("copying template");
-        cp_recursive_content(template, &run_dir)?;
+        cp_recursive_content(source.template().as_path(), &run_dir)?;
 
         if !run_dir.join(RUN_RUN_FILE).is_file() {
             warn!(
@@ -84,6 +85,17 @@ impl ExperimentRun {
 
         debug!("writing environment");
         env.to_file(&run_dir.join(RUN_ENV_FILE))?;
+
+        debug!("linking source");
+        let path_to_source_relative_to_run_dir: PathBuf =
+            pathdiff::diff_paths(source.location(), &run_dir).ok_or(Error::HarnessCreateError {
+                entry: run_dir.to_string_lossy().to_string(),
+                reason: "could not compute relative path to source, wtf?".to_string(),
+            })?;
+        std::os::unix::fs::symlink(
+            path_to_source_relative_to_run_dir,
+            run_dir.join(RUN_SOURCE_SYMLINK_NAME),
+        )?;
 
         debug!("done, adding marker file");
         let _ = create_harness_file(&run_dir.join(MARKER_RUN))?;
@@ -136,21 +148,18 @@ impl ExperimentRun {
             .expect("basename contains non-utf8 characters, wtf?!")
     }
 
-    /// Executes [RUN_RUN_FILE] script found in `run_folder`.
+    /// Executes [RUN_RUN_FILE] script found in `run_dir`.
     ///
-    /// 1. read envs from `run_folder/RUN_ENV_FILE`
-    /// 2. add `exomat_envs` (overwrites envs with the same name)
-    /// 3. run `run_folder/RUN_RUN_FILE` with these envs
-    /// 4. log run results
-    ///     - Exomat output will **not** automatically be duplicated to the log file
-    ///       by calling this function.
+    /// 1. read envs from `run_dir/RUN_ENV_FILE`
+    /// 2. add env var pointing to absolute path of symlinked experiment source.
+    /// 3. run `run_dir/RUN_RUN_FILE` with these envs
     ///
-    /// ## Errors and Panics
-    /// - Returns a `HarnessRunError` if the run has not been serialized yet
-    /// - Returns a `HarnessRunError` if the script could not be executed
-    /// - Returns a `HarnessRunError` if there is no [RUN_RUN_FILE] in `run_folder`
-    /// - Returns a `HarnessRunError` if there is no [RUN_ENV_FILE] in `run_folder`
-    pub fn execute(&mut self) -> Result<()> {
+    /// Stdout & stderr are forwarded to logs. Exomat output will **not** automatically be
+    /// duplicated to the log file by calling this function.
+    ///
+    /// Errors if the execution itself failed.
+    /// If the run script exited non-zero, Ok(...) is returned (!!)
+    pub fn execute(&mut self) -> Result<RunStatus> {
         debug!("Checking run directory {}", self.dir.display());
 
         // fail simple errors early
@@ -173,8 +182,20 @@ impl ExperimentRun {
 
         // execute command with envs and collect any output in child
         let mut run_command = Command::new(self.dir.join(RUN_RUN_FILE));
+
+        trace!("preparing env & loading full path to source");
+        let mut env = self.env()?;
+        env.add_env(
+            ENV_NAME_EXP_SOURCE_DIR.to_string(),
+            self.location()
+                .join(RUN_SOURCE_SYMLINK_NAME)
+                .canonicalize()?
+                .to_string_lossy()
+                .to_string(),
+        );
+
         trace!("preparing run invocation (env vars & pwd)");
-        run_command.envs(self.env()?).current_dir(&self.dir);
+        run_command.envs(env).current_dir(&self.dir);
 
         trace!("dumping start timestamp");
         std::fs::write(
@@ -206,18 +227,10 @@ impl ExperimentRun {
         let exit_status = run_output.status;
         let run_name = self.run_name();
         match run_output.status.success() {
-            true => {
-                info!("{run_name} finished successfully with {exit_status}");
-                Ok(())
-            }
-            false => {
-                error!("{run_name} finished with non-zero {exit_status}");
-                Err(Error::HarnessRunError {
-                    experiment: run_name.to_string(),
-                    err: "exit status non-zero, consider reviewing logs".to_string(),
-                })
-            }
-        }
+            true => info!("{run_name} finished successfully with {exit_status}"),
+            false => error!("{run_name} finished with non-zero {exit_status}"),
+        };
+        self.status()
     }
 }
 
@@ -256,34 +269,50 @@ mod tests {
     use super::*;
     use crate::experiment::ExperimentRun;
     use crate::harness::env::Environment;
-    use crate::test_fixtures::{env_a1, env_foo, template_dir};
+    use crate::test_fixtures::{env_a1, env_foo};
     use rstest::{fixture, rstest};
     use tracing_test::traced_test;
 
     use tempfile::TempDir;
 
-    struct TempDirAndRun {
+    struct RunWithHandles {
         /// handle to keep temp dir w/ run alive
         #[allow(dead_code)]
         tempdir: TempDir,
+        source: ExperimentSource,
         run: ExperimentRun,
     }
 
     #[fixture]
-    fn tempdir_and_run(template_dir: TempDir, env_foo: Environment) -> TempDirAndRun {
+    fn run_with_handles(env_foo: Environment) -> RunWithHandles {
         let tempdir = tempfile::TempDir::new().unwrap();
-        let dst = tempdir.path().join("run_dir");
-        let run = ExperimentRun::create(template_dir.path(), &env_foo, dst.clone()).unwrap();
-        TempDirAndRun { tempdir, run }
+
+        let src_dst = tempdir.path().join("source_dir");
+        let source = ExperimentSource::create_skeleton(src_dst).unwrap();
+
+        let run_dst = tempdir.path().join("run_dir");
+        let run = ExperimentRun::create(&source, &env_foo, run_dst.clone()).unwrap();
+        RunWithHandles {
+            tempdir,
+            run,
+            source,
+        }
     }
 
     #[rstest]
     #[traced_test]
-    fn create_run(template_dir: TempDir, env_foo: Environment) {
+    fn create_run_template_copied(run_with_handles: RunWithHandles, env_foo: Environment) {
+        // prepare template
+        let template_dir = run_with_handles.source.template();
+        std::fs::write(template_dir.join("file"), "").unwrap();
+        let subdir = template_dir.join("subdir");
+        std::fs::create_dir(&subdir).unwrap();
+        std::fs::write(&subdir.join("file"), "").unwrap();
+
+        // create run
         let new_dir = tempfile::TempDir::new().unwrap();
         let dst = new_dir.path().join("run_dir");
-
-        let run = ExperimentRun::create(template_dir.path(), &env_foo, dst.clone()).unwrap();
+        let run = ExperimentRun::create(&run_with_handles.source, &env_foo, dst.clone()).unwrap();
         let dir = run.location();
 
         assert_eq!(dir.canonicalize().unwrap(), dst.canonicalize().unwrap());
@@ -293,24 +322,50 @@ mod tests {
         assert!(dir.join("run.sh").is_file());
         assert!(dir.join("file").is_file());
         assert!(dir.join("subdir").join("file").is_file());
+        assert!(dir.join("exomat_source").is_symlink());
 
         let env_from_file = Environment::try_from(&dir.join("environment.env")).unwrap();
         assert_eq!(env_from_file, env_foo);
     }
 
     #[rstest]
-    fn create_run_dst_exists(template_dir: TempDir, env_foo: Environment) {
+    #[traced_test]
+    fn create_run_source_linked(run_with_handles: RunWithHandles, env_foo: Environment) {
         let new_dir = tempfile::TempDir::new().unwrap();
+        let dst = new_dir.path().join("run_dir");
 
-        assert!(
-            ExperimentRun::create(template_dir.path(), &env_foo, new_dir.path().to_path_buf())
-                .is_err()
-        );
+        let run = ExperimentRun::create(&run_with_handles.source, &env_foo, dst.clone()).unwrap();
+        let dir = run.location();
+
+        assert_eq!(dir.canonicalize().unwrap(), dst.canonicalize().unwrap());
+
+        let source_symlink = dir.join(RUN_SOURCE_SYMLINK_NAME);
+        assert!(source_symlink.is_symlink());
+        let source_symlink_target = std::fs::read_link(&source_symlink).unwrap();
+        assert!(source_symlink_target.is_relative());
+
+        // note: canonicalize() also follows symlinks
+        let source_symlink_target_full = source_symlink.canonicalize().unwrap();
+        let expected_source_dir_full = run_with_handles.source.location().canonicalize().unwrap();
+
+        assert_eq!(expected_source_dir_full, source_symlink_target_full);
     }
 
     #[rstest]
-    fn run_env_set(mut tempdir_and_run: TempDirAndRun) {
-        let run = &mut tempdir_and_run.run;
+    fn create_run_dst_exists(run_with_handles: RunWithHandles, env_foo: Environment) {
+        let new_dir = tempfile::TempDir::new().unwrap();
+
+        assert!(ExperimentRun::create(
+            &run_with_handles.source,
+            &env_foo,
+            new_dir.path().to_path_buf()
+        )
+        .is_err());
+    }
+
+    #[rstest]
+    fn run_env_set(mut run_with_handles: RunWithHandles) {
+        let run = &mut run_with_handles.run;
         let debug_script = r#"#!/usr/bin/env bash
 set -euo pipefail
 
@@ -329,8 +384,8 @@ echo $FOO > out_foo_val
     #[case(0)]
     #[case(1)]
     #[case(42)]
-    fn run_status_dumped(mut tempdir_and_run: TempDirAndRun, #[case] return_code: u32) {
-        let run = &mut tempdir_and_run.run;
+    fn run_status_dumped(mut run_with_handles: RunWithHandles, #[case] return_code: u32) {
+        let run = &mut run_with_handles.run;
         let debug_script = format!(
             r#"#!/usr/bin/env bash
 set -euo pipefail
@@ -346,11 +401,8 @@ exit {return_code}
         assert!(!exp_started_file.is_file());
         assert!(!exp_exit_status_file.is_file());
 
-        // may fail!
-        match return_code {
-            0 => assert!(run.execute().is_ok()),
-            _ => assert!(run.execute().is_err()),
-        }
+        // always Ok(), even on non-zero exit
+        run.execute().unwrap();
 
         assert!(exp_started_file.is_file());
         assert!(exp_exit_status_file.is_file());
@@ -363,8 +415,11 @@ exit {return_code}
     #[case(RunStatus::NotStarted)]
     #[case(RunStatus::Success)]
     #[case(RunStatus::ExitNonZero(42))]
-    fn read_status_from_disk(mut tempdir_and_run: TempDirAndRun, #[case] given_status: RunStatus) {
-        let run = &mut tempdir_and_run.run;
+    fn read_status_from_disk(
+        mut run_with_handles: RunWithHandles,
+        #[case] given_status: RunStatus,
+    ) {
+        let run = &mut run_with_handles.run;
         let exp_started_file = run.location().join(RUN_OUT_EXOMAT_START_TIMESTAMP);
         let exp_exit_status_file = run.location().join(RUN_OUT_EXOMAT_RUN_EXIT_CODE);
 
@@ -391,11 +446,11 @@ exit {return_code}
 
     #[rstest]
     fn read_out_files(
-        mut tempdir_and_run: TempDirAndRun,
+        mut run_with_handles: RunWithHandles,
         #[values(true, false)] out_a: bool,
         #[values(true, false)] out_b: bool,
     ) {
-        let run = &mut tempdir_and_run.run;
+        let run = &mut run_with_handles.run;
         if out_a {
             std::fs::write(run.location().join("out_a"), "foo").unwrap();
         }
@@ -428,8 +483,8 @@ exit {return_code}
     #[rstest]
     #[case(env_foo())]
     #[case(env_a1())]
-    fn read_env(mut tempdir_and_run: TempDirAndRun, #[case] env: Environment) {
-        let run = &mut tempdir_and_run.run;
+    fn read_env(mut run_with_handles: RunWithHandles, #[case] env: Environment) {
+        let run = &mut run_with_handles.run;
         env.to_file(run.location().join(RUN_ENV_FILE).as_path())
             .unwrap();
 
@@ -437,8 +492,34 @@ exit {return_code}
     }
 
     #[rstest]
-    fn read_run_name(mut tempdir_and_run: TempDirAndRun) {
-        let run = &mut tempdir_and_run.run;
+    fn read_run_name(mut run_with_handles: RunWithHandles) {
+        let run = &mut run_with_handles.run;
         assert_eq!(run.run_name(), run.location().file_name().unwrap());
+    }
+
+    #[rstest]
+    fn run_execute_source_symlink_exposed_to_var(mut run_with_handles: RunWithHandles) {
+        let run = &mut run_with_handles.run;
+        let debug_script = format!(
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+
+test -n "${{{ENV_NAME_EXP_SOURCE_DIR}}}"
+echo "${{{ENV_NAME_EXP_SOURCE_DIR}}}" > out_path
+"#
+        );
+        std::fs::write(run.location().join(RUN_RUN_FILE), debug_script).unwrap();
+
+        assert!(run.execute().is_ok());
+
+        let source_path_from_env_string =
+            std::fs::read_to_string(run.location().join("out_path")).unwrap();
+        let source_path_from_env_path = PathBuf::from(source_path_from_env_string.trim());
+        assert!(source_path_from_env_path.is_absolute());
+
+        assert_eq!(
+            source_path_from_env_path.canonicalize().unwrap(),
+            run_with_handles.source.location().canonicalize().unwrap()
+        );
     }
 }

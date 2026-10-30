@@ -16,6 +16,9 @@ pub use environment::Environment;
 pub use environment_container::EnvironmentContainer;
 pub use exomat_environment::ExomatEnvironment;
 
+pub const ENV_NAME_REPETITION: &str = "EXOMAT_REPETITION";
+pub const ENV_NAME_EXP_SOURCE_DIR: &str = "EXOMAT_EXP_SOURCE_DIR";
+
 /// map of all variables with all possible values
 ///
 /// ## Example

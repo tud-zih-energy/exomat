@@ -19,6 +19,7 @@ pub const RUN_RUN_FILE: &str = "run.sh";
 pub const RUN_ENV_FILE: &str = "environment.env";
 pub const RUN_OUT_EXOMAT_START_TIMESTAMP: &str = "out_exomat_start_timestamp";
 pub const RUN_OUT_EXOMAT_RUN_EXIT_CODE: &str = "out_exomat_run_exit_code";
+pub const RUN_SOURCE_SYMLINK_NAME: &str = "exomat_source";
 
 // names for marker files
 pub const MARKER_SRC: &str = ".exomat_source";

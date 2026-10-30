@@ -69,6 +69,20 @@ impl TryFrom<&ExperimentSource> for ExperimentSeries {
 }
 
 impl ExperimentSeries {
+    /// generate a new series on disk
+    ///
+    /// Generate `repetiotions` runs for each env in `source`.
+    /// Errors if `series_dst` already exists.
+    ///
+    /// Appends path to `source` and repetion number to each iteration.
+    pub fn create(
+        source: &ExperimentSource,
+        series_dst: PathBuf,
+        repetitions: u32,
+    ) -> Result<Self> {
+        todo!();
+    }
+
     /// Return a string describing the overall success of the Experiment Series
     ///
     /// - If any Experiment Run in self.runs failed, return `Failed. Reason: [...]`

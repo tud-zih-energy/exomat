@@ -76,6 +76,10 @@ impl ExperimentSource {
     pub fn location(&self) -> &PathBuf {
         &self.dir
     }
+
+    pub fn template(&self) -> PathBuf {
+        self.dir.join(SRC_TEMPLATE_DIR)
+    }
 }
 
 // ========================== Reader ==========================
