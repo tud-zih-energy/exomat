@@ -73,9 +73,3 @@ pub trait FileReader {
         files
     }
 }
-
-pub trait Runner {
-    type Item;
-
-    fn execute(&mut self, exp_name: &str) -> Result<Self::Item>;
-}

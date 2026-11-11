@@ -80,6 +80,10 @@ impl ExperimentSource {
     pub fn template(&self) -> PathBuf {
         self.dir.join(SRC_TEMPLATE_DIR)
     }
+
+    pub fn envs_dir(&self) -> PathBuf {
+        self.dir.join(SRC_ENV_DIR)
+    }
 }
 
 // ========================== Reader ==========================

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use tracing::info_span;
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 
-use crate::experiment::{ExperimentSeries, ExperimentSource, FileWriter, Runner};
+use crate::experiment::{ExperimentSeries, ExperimentSource, FileWriter};
 use crate::helper::errors::Result;
 
 /// Creates an experiment series/run directory for the given `experiment`.
@@ -97,9 +97,8 @@ fn execute_exp_repetitions(series: &mut ExperimentSeries, is_trial: bool) -> Res
 
     tracing::Span::current().pb_tick(); // show on 0th repetition
 
-    let experiment_name = series.experiment_name()?;
+    let experiment_name = series.series_name()?;
     info!("Starting experiment runs for {experiment_name}");
-    trace!("exomat envs are: {:?}", series.exomat_envs());
 
     for run in series.runs.iter_mut() {
         trace!("Using envs: {:?}", run.env());
@@ -154,7 +153,7 @@ mod tests {
 
             // run experiment
             assert_eq!(ser.runs().len(), 1);
-            let run: &mut  ExperimentRun = ser.runs_mut().first_mut().unwrap();
+            let run: &ExperimentRun = ser.runs().first().unwrap();
 
             run.execute().unwrap();
         }

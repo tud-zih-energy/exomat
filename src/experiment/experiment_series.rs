@@ -15,9 +15,6 @@ use log::{debug, error, info, trace};
 use rand::seq::SliceRandom;
 use std::path::{Path, PathBuf};
 
-#[cfg(test)]
-use crate::experiment::out_file::OutList;
-
 /// Container for an Experiment Series
 ///
 /// An Experiment Series must be written to the filesystem before it can be exeucted.
@@ -46,26 +43,8 @@ impl TryFrom<&ExperimentSource> for ExperimentSeries {
     /// ## Errors
     /// - retruns a `HarnessRunError` if source.location is PWD
     /// - returns an `IoError` if it cannot parse a valid Series name
-    fn try_from(source: &ExperimentSource) -> Result<Self> {
+    fn try_from(_source: &ExperimentSource) -> Result<Self> {
         todo!("remove");
-        if source.location().display().to_string() == "." {
-            return Err(Error::HarnessRunError {
-                experiment: source.name()?,
-                err: "Cannot start experiment run from the experiment source folder.".to_string(),
-            });
-        };
-
-        info!(
-            "generating Series of source \"{}\"",
-            source.location().display()
-        );
-        let location = Self::generate_series_filepath(source.location())?;
-
-        Ok(Self {
-            source: source.clone(),
-            path: Some(location),
-            runs: Vec::new(),
-        })
     }
 }
 
@@ -207,7 +186,7 @@ impl ExperimentSeries {
     /// Returns the location in the filesystem of this Experiment Series
     ///
     /// Is `None` if the Series has not been serialized, this
-    pub fn location(&self) -> &Option<PathBuf> {
+    pub fn location(&self) -> &PathBuf {
         todo!();
     }
 
@@ -594,20 +573,7 @@ impl std::fmt::Display for ExperimentSeries {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let exp_name = self.source.name().map_err(|_| std::fmt::Error)?;
 
-        // change output based on outfiles
-        let outfiles = if self.runs_are_empty() {
-            "created no out_ files\n".to_string()
-        } else {
-            if !self.runs_are_empty() {
-                let mut out = String::new();
-                for out_file in self.runs()[0].out_files().unwrap().iter() {
-                    out.push_str(&format!("  {out_file}\n"));
-                }
-                out
-            } else {
-                "error reading out_ files\n".to_string()
-            }
-        };
+        let outfiles: String = todo!("mention available out_ files");
         let path = match &self.path {
             Some(path) => path
                 .to_str()
@@ -639,34 +605,133 @@ out_ files:
 mod tests {
     use super::*;
 
-    use crate::test_fixtures::{
-        filled_series_run_duplicate, filled_series_run_invalid, filled_series_run_na, outlist_1a,
-        outlist_empty_string, outlist_mixed_weird, outlist_one_var_no_val, setup_series_dir,
-        setup_series_empty_out, setup_series_no_out, skeleton_series_run,
-        skeleton_series_run_empty, skeleton_src,
-    };
-    use crate::test_helper::{contains_either, create_out_file};
-    use rstest::rstest;
-    use rusty_fork::rusty_fork_test;
+    use crate::test_fixtures::{env_a1, env_foo};
+    use rstest::{fixture, rstest};
     use tempfile::TempDir;
 
-    #[rstest]
-    fn create_simple() {
-        todo!("source copied");
+    struct SeriesWithHandles {
+        // handles to keep dir w/ run alive
+        tempdir: TempDir,
+        source: ExperimentSource,
+    }
+
+    #[fixture]
+    fn series_with_handles(env_a1: Environment, env_foo: Environment) -> SeriesWithHandles {
+        let tempdir = tempfile::TempDir::new().unwrap();
+        let src_dst = tempdir.path().join("source_dir");
+        let source = ExperimentSource::create_skeleton(src_dst).unwrap();
+
+        env_a1.to_file(&source.envs_dir().join("0.env")).unwrap();
+        env_foo.to_file(&source.envs_dir().join("1.env")).unwrap();
+
+        SeriesWithHandles { tempdir, source }
     }
 
     #[rstest]
-    fn create_already_exists() {
-        todo!("existing dir refuses");
+    fn create_simple(
+        series_with_handles: SeriesWithHandles,
+        env_a1: Environment,
+        env_foo: Environment,
+    ) {
+        std::fs::write(
+            series_with_handles.source.location().join("sentinel_file"),
+            "",
+        )
+        .unwrap();
+
+        let series_dst = series_with_handles.tempdir.path().join("new_series");
+        let series =
+            ExperimentSeries::create(&series_with_handles.source, series_dst.clone(), 1).unwrap();
+
+        assert_eq!(*series.location(), series_dst);
+
+        // ensure one run per env
+        let all_run_envs = series
+            .runs()
+            .iter()
+            .map(|run| run.env().unwrap())
+            .collect::<Vec<_>>();
+        assert!(all_run_envs.contains(&env_a1));
+        assert!(all_run_envs.contains(&env_foo));
+        assert_eq!(2, all_run_envs.len());
+
+        // smoke-test that source dir is copied
+        let sentinel_copy_path = series.location().join(SERIES_SRC_DIR).join("sentinel_file");
+        assert!(sentinel_copy_path.is_file());
     }
 
     #[rstest]
-    fn create_repetitions() {
-        todo!("correct number of envs spawned");
+    fn create_already_exists(series_with_handles: SeriesWithHandles) {
+        let existing_dir = series_with_handles.tempdir.path().join("hdhjasd");
+        std::fs::create_dir(&existing_dir).unwrap();
+
+        assert!(ExperimentSeries::create(&series_with_handles.source, existing_dir, 1).is_err());
     }
 
     #[rstest]
-    fn repetition_vars_injected() {
-        todo!("ensure pre-defined vars are injected into runs on creation");
+    fn zero_repetitions(series_with_handles: SeriesWithHandles) {
+        let series_dst = series_with_handles.tempdir.path().join("new_series");
+        assert!(
+            ExperimentSeries::create(&series_with_handles.source, series_dst.clone(), 0).is_err()
+        );
+    }
+
+    #[rstest]
+    fn create_repetitions(
+        series_with_handles: SeriesWithHandles,
+        #[values(1, 2, 3, 4)] repetitions: u32,
+    ) {
+        let series_dst = series_with_handles.tempdir.path().join("new_series");
+        let series =
+            ExperimentSeries::create(&series_with_handles.source, series_dst, repetitions).unwrap();
+
+        assert_eq!(2 * repetitions as usize, series.runs().len());
+    }
+
+    #[rstest]
+    fn repetition_vars_injected(
+        series_with_handles: SeriesWithHandles,
+        #[values(1, 2, 3, 4)] repetitions: u32,
+    ) {
+        let series_dst = series_with_handles.tempdir.path().join("new_series");
+        let series =
+            ExperimentSeries::create(&series_with_handles.source, series_dst, repetitions).unwrap();
+
+        let mut all_repetition_env_vals = Vec::new();
+        for run in series.runs() {
+            let env = run.env().unwrap();
+            let repetition_val = env.get_env_val("REPETITION").unwrap().to_string();
+            all_repetition_env_vals.push(repetition_val);
+        }
+
+        let mut expected_repetition_vals = (1..=repetitions)
+            .chain(1..=repetitions)
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>();
+
+        expected_repetition_vals.sort();
+        all_repetition_env_vals.sort();
+
+        assert_eq!(expected_repetition_vals, all_repetition_env_vals);
+    }
+
+    #[rstest]
+    fn execute_naive() {
+        todo!("execute a simple series");
+    }
+
+    #[rstest]
+    fn execute_failing(#[values(true, false)] failfast: bool) {
+        todo!("execute a series where two runs fail");
+    }
+
+    #[rstest]
+    fn read_status_from_disk() {
+        todo!("extract status from disk");
+    }
+
+    #[rstest]
+    fn parse_from_disk() {
+        todo!("load series from disk");
     }
 }

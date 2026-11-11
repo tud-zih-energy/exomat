@@ -1,4 +1,4 @@
-use super::experiment_traits::{FileReader, FileWriter, Runner};
+use super::experiment_traits::{FileReader, FileWriter};
 use super::ExperimentSource;
 use crate::experiment::out_file::{Observation, OutFile, OutList};
 use crate::harness::env::{Environment, ExomatEnvironment, ENV_NAME_EXP_SOURCE_DIR};
@@ -159,7 +159,7 @@ impl ExperimentRun {
     ///
     /// Errors if the execution itself failed.
     /// If the run script exited non-zero, Ok(...) is returned (!!)
-    pub fn execute(&mut self) -> Result<RunStatus> {
+    pub fn execute(&self) -> Result<RunStatus> {
         debug!("Checking run directory {}", self.dir.display());
 
         // fail simple errors early

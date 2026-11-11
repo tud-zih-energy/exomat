@@ -27,24 +27,6 @@ pub fn create_file_at(location: &PathBuf, content: &str) {
     env.write_all(content.as_bytes()).unwrap();
 }
 
-/// generates an experiment source and an experiment series dir in `base`
-///
-/// Only the source gets serialized.
-pub fn populate_src_with_series(
-    base: &PathBuf,
-    src_name: &str,
-    series_name: &str,
-) -> (ExperimentSource, ExperimentSeries) {
-    let source = base.join(src_name);
-    let series = base.join(series_name);
-
-    let src = ExperimentSource::create_skeleton(source).unwrap();
-
-    let mut ser = ExperimentSeries::try_from(&src).unwrap();
-    ser.set_location(series);
-
-    (src, ser)
-}
 /// Checks if the given string contains either one or the other
 pub fn contains_either(string: &String, one: &str, other: &str) -> bool {
     string.contains(one) || string.contains(other)
