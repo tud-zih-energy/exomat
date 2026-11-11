@@ -47,6 +47,7 @@ impl TryFrom<&ExperimentSource> for ExperimentSeries {
     /// - retruns a `HarnessRunError` if source.location is PWD
     /// - returns an `IoError` if it cannot parse a valid Series name
     fn try_from(source: &ExperimentSource) -> Result<Self> {
+        todo!("remove");
         if source.location().display().to_string() == "." {
             return Err(Error::HarnessRunError {
                 experiment: source.name()?,
@@ -71,7 +72,7 @@ impl TryFrom<&ExperimentSource> for ExperimentSeries {
 impl ExperimentSeries {
     /// generate a new series on disk
     ///
-    /// Generate `repetiotions` runs for each env in `source`.
+    /// Generate `repetitions` runs for each env in `source`.
     /// Errors if `series_dst` already exists.
     ///
     /// Appends path to `source` and repetion number to each iteration.
@@ -89,6 +90,7 @@ impl ExperimentSeries {
     /// - If all Experiment Runs were successful, return `Successful`
     /// - If any Experiment Run has not been executed or its status in Unknown, return `Cannot determine run status`
     pub fn series_status(&self) -> String {
+        todo!("move status into separate struct");
         let runs_total = self.runs.len();
         let runs_success = self
             .runs
@@ -186,6 +188,7 @@ impl ExperimentSeries {
     /// ## Errors
     /// - returns an `IoError` if the current directory is inaccessable
     pub fn generate_series_filepath(exp_source: &Path) -> Result<PathBuf> {
+        todo!("move into binary");
         let format = format!("{}-%Y-%m-%d-%H-%M-%S", file_name_string(exp_source));
         let dirname = PathBuf::from(Local::now().format(&format).to_string());
         Ok(std::env::current_dir()?
@@ -194,116 +197,84 @@ impl ExperimentSeries {
             .to_path_buf())
     }
 
-    // ========================= getter ========================================
-
     /// Returns the Experiment name, taken from the Experiment Source of this Experiment Series
     ///
     /// For errors, see `ExperimentSource::name()`
-    pub fn experiment_name(&self) -> Result<String> {
-        self.source.name()
-    }
-
-    /// Returns the internal exomat Environment of the Experiment Source of this Experiment Series
-    pub fn exomat_envs(&self) -> &ExomatEnvironment {
-        self.source.exomat_envs()
+    pub fn series_name(&self) -> Result<String> {
+        todo!("basename of dir");
     }
 
     /// Returns the location in the filesystem of this Experiment Series
     ///
     /// Is `None` if the Series has not been serialized, this
     pub fn location(&self) -> &Option<PathBuf> {
-        &self.path
+        todo!();
     }
 
     /// Returns the list of Experiment Runs.
     pub fn runs(&self) -> &Vec<ExperimentRun> {
-        &self.runs
+        todo!();
     }
 
-    /// Returns a mutable list of Experiment Runs.
-    pub fn runs_mut(&mut self) -> &mut Vec<ExperimentRun> {
-        &mut self.runs
+    /// execute all runs; abort if any have been started already
+    pub fn execute_all(&self, failfast: bool) -> Result<()> {
+        todo!();
     }
+
+    /// execute all runs which have not been started yet
+    ///
+    /// if failfast is enabled: abort on first failure, otherwise continue on error
+    ///
+    /// Note: if there is an error in the infrastructure, the execution is aborted instantaneously
+    pub fn execute_not_started(&self, failfast: bool) -> Result<()> {
+        todo!();
+    }
+
+    // =========== TODO remove below ========================
 
     /// retrieve all names of outfiles, i.e. XXX for `out_XXX`
     pub fn output_keys(&self) -> Vec<String> {
-        let mut keys: Vec<String> = self
-            .runs
-            .iter()
-            .flat_map(|run| {
-                run.out_files()
-                    .unwrap()
-                    .iter()
-                    .map(|outfile| outfile.var_name().to_string())
-                    .collect::<Vec<String>>()
-            })
-            .collect();
-
-        // remove duplicate keys
-        keys.sort();
-        keys.dedup();
-        keys
+        todo!("remove");
+        // let mut keys: Vec<String> = self
+        //     .runs
+        //     .iter()
+        //     .flat_map(|run| {
+        //         run.out_files()
+        //             .unwrap()
+        //             .iter()
+        //             .map(|outfile| outfile.var_name().to_string())
+        //             .collect::<Vec<String>>()
+        //     })
+        //     .collect();
+        //
+        // // remove duplicate keys
+        // keys.sort();
+        // keys.dedup();
+        // keys
     }
 
     /// retrieve all names of variables in all environments
     pub fn env_keys(&self) -> Result<Vec<String>> {
-        let mut keys: Vec<String> = self
-            .runs
-            .iter()
-            .map(|run| {
-                Ok(run
-                    .env()?
-                    .get_env_vars()
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect::<Vec<String>>())
-            })
-            .collect::<Result<Vec<Vec<String>>>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-
-        keys.sort();
-        keys.dedup();
-        Ok(keys)
-    }
-
-    // ========================= setter ========================================
-
-    /// Updates the location of this Experiment Series.
-    pub fn set_location(&mut self, new_path: PathBuf) {
-        self.path = Some(new_path)
-    }
-
-    /// Updates the Experiment Source linked to this Experiment Series
-    pub fn include_source(&mut self, source: &ExperimentSource) {
-        self.source = source.clone()
-    }
-
-    // ========================= helper ========================================
-
-    /// Compiles a list of all repetitions for each environment, then suffles said list.
-    ///
-    /// The shuffled list is then sorted by repetition, so that all n-repetitions run
-    /// before all n+1-repetitions.
-    fn shuffled_environments(&self) -> Vec<((&PathBuf, &Environment), u64)> {
-        // let mut running_order = vec![];
-        let running_order = vec![];
-        // let max_rep = self.source.repetitions();
-        let max_rep: u64 = todo!();
-
-        trace!("Randomizing environments...");
-        for rep in 0..max_rep {
-            for env in self.source.envs() {
-                // include the repetition in a tuple, so that it can be sorted correctly later
-                running_order.push((env, rep));
-            }
-        }
-
-        running_order.shuffle(&mut rand::rng());
-        running_order.sort_by_key(|a| a.1);
-
-        running_order
+        todo!("remove");
+        // let mut keys: Vec<String> = self
+        //     .runs
+        //     .iter()
+        //     .map(|run| {
+        //         Ok(run
+        //             .env()?
+        //             .get_env_vars()
+        //             .iter()
+        //             .map(|s| s.to_string())
+        //             .collect::<Vec<String>>())
+        //     })
+        //     .collect::<Result<Vec<Vec<String>>>>()?
+        //     .into_iter()
+        //     .flatten()
+        //     .collect();
+        //
+        // keys.sort();
+        // keys.dedup();
+        // Ok(keys)
     }
 
     // TODO remove
@@ -347,6 +318,7 @@ impl ExperimentSeries {
     /// ]
     /// ```
     fn to_csv_rows(&self) -> Vec<Vec<String>> {
+        todo!("mv smwhere else/rm altogether");
         // sort runs by their repetition/env
         let mut sorted_runs = self.runs.clone();
         sorted_runs.sort_by_key(|run| run.run_name().to_owned());
@@ -402,31 +374,6 @@ impl ExperimentSeries {
 
         rows_vec
     }
-
-    /// Checks if there is anything recorded in self.runs
-    ///
-    /// Returns `true` if any of this true:
-    /// - there are no runs
-    /// - there are runs, but none contain out_ files
-    fn runs_are_empty(&self) -> bool {
-        todo!("remove this function");
-    }
-
-    /// Checks if the SeriesReader contains a valid trial run.
-    ///
-    /// Currently checks:
-    /// - run count == 1
-    /// - REPETITION == 1
-    #[cfg(test)]
-    fn is_valid_trial(&self) -> bool {
-        todo!("remove this function");
-    }
-
-    /// Returns the number of runs recorded (Test helper)
-    #[cfg(test)]
-    fn run_count(&self) -> usize {
-        todo!("remove this method");
-    }
 }
 
 // ========================== Writer ==========================
@@ -441,25 +388,26 @@ impl CsvWriter for ExperimentSeries {
     /// ## Errors
     /// - Returns a `CsvError` if something went wrong during the csv serialization
     fn to_csv(&self, csv_file: &Path) -> Result<()> {
-        let mut wtr = Writer::from_path(csv_file).map_err(|e| Error::CsvError {
-            reason: e.to_string(),
-        })?;
-
-        if !self.runs_are_empty() {
-            // turn self.runs into csv rows (contains header)
-            let content = self.to_csv_rows();
-            debug!("series contains content: {:?}", content);
-
-            for row in content {
-                wtr.write_record(row).map_err(|e| Error::CsvError {
-                    reason: e.to_string(),
-                })?;
-            }
-        }
-
-        wtr.flush().map_err(|e| Error::CsvError {
-            reason: e.to_string(),
-        })
+        todo!("rm");
+        // let mut wtr = Writer::from_path(csv_file).map_err(|e| Error::CsvError {
+        //     reason: e.to_string(),
+        // })?;
+        //
+        // if !self.runs_are_empty() {
+        //     // turn self.runs into csv rows (contains header)
+        //     let content = self.to_csv_rows();
+        //     debug!("series contains content: {:?}", content);
+        //
+        //     for row in content {
+        //         wtr.write_record(row).map_err(|e| Error::CsvError {
+        //             reason: e.to_string(),
+        //         })?;
+        //     }
+        // }
+        //
+        // wtr.flush().map_err(|e| Error::CsvError {
+        //     reason: e.to_string(),
+        // })
     }
 }
 
@@ -702,317 +650,23 @@ mod tests {
     use rusty_fork::rusty_fork_test;
     use tempfile::TempDir;
 
-    rusty_fork_test! {
-        #[test]
-        fn build_series_dir_simple() {
-            use crate::helper::fs_names::*;
-
-            // create base tempdir, to act as parent
-            let tmpdir = TempDir::new().unwrap();
-            let tmpdir = tmpdir.path();
-            std::env::set_current_dir(&tmpdir).unwrap();
-
-            //create experiment source dir
-            let exp_source = tmpdir.join("FooSource");
-            let exp_series = tmpdir.join("foo");
-
-            let source = ExperimentSource::create_skeleton(exp_source).unwrap();
-
-            // create series dir (next to exp_source, named "foo", is not a trial run)
-            let mut series = ExperimentSeries::try_from(&source).unwrap();
-            series.persist(&exp_series).unwrap();
-
-            assert!(tmpdir.join("foo").is_dir());
-            assert!(exp_series.join(SERIES_SRC_DIR).is_dir());
-            assert!(exp_series.join(SERIES_RUNS_DIR).is_dir());
-
-            assert!(exp_series.join(SERIES_RUNS_DIR).join(SERIES_EXOMAT_LOG).is_file());
-
-            // content of experiment source have been copied to exp_series/src
-            // .exomat_source changed to .exomat_source_cp
-        }
-    }
-
-    #[test]
-    fn seriesreader_keys() {
-        let tmpdir = setup_series_dir();
-        let tmp_series = tmpdir.path().to_path_buf();
-
-        let series_reader = ExperimentSeries::parse(&tmp_series).unwrap();
-        let mut keys = series_reader.output_keys();
-        keys.sort();
-        assert_eq!(keys, vec!["number".to_string(), "word".to_string()]);
-    }
-
-    #[test]
-    fn seriesreader_keys_no_content() {
-        let tmp_run = setup_series_empty_out();
-        let runs_dir = tmp_run.path().to_path_buf();
-
-        let series_reader = ExperimentSeries::parse(&runs_dir).unwrap();
-
-        let keys = series_reader.output_keys();
-        assert!(keys.contains(&String::from("empty")));
-        assert!(keys.len() == 1);
-
-        let out_files = series_reader.runs()[0].out_files().unwrap();
-        let content = out_files.outfile("empty");
-        assert!(content.is_some());
-        assert_eq!(content.unwrap().values(), &vec![String::from("")]);
-    }
-
-    #[test]
-    fn seriesreader_keys_no_out_files() {
-        let tmp_run = setup_series_no_out();
-        let dir = tmp_run.path().to_path_buf();
-
-        let series_reader = ExperimentSeries::parse(&dir).unwrap();
-        let keys = series_reader.output_keys();
-
-        assert!(keys.is_empty());
-        assert!(series_reader.runs_are_empty());
+    #[rstest]
+    fn create_simple() {
+        todo!("source copied");
     }
 
     #[rstest]
-    fn seriesreader_parse_empty(#[from(skeleton_src)] dir: TempDir) {
-        let dir = dir.path().to_path_buf();
-        let reader = ExperimentSeries::parse(&dir).unwrap();
-
-        assert_eq!(reader.run_count(), 0);
-        assert!(reader.runs_are_empty());
-        assert!(reader.output_keys().is_empty());
+    fn create_already_exists() {
+        todo!("existing dir refuses");
     }
 
     #[rstest]
-    fn seriesreader_parse_no_out(#[from(skeleton_series_run_empty)] dir: TempDir) {
-        let dir = dir.path().to_path_buf();
-        let reader = ExperimentSeries::parse(&dir).unwrap();
-
-        assert_eq!(reader.run_count(), 1);
-        assert!(reader.runs_are_empty());
-        assert!(reader.output_keys().is_empty());
+    fn create_repetitions() {
+        todo!("correct number of envs spawned");
     }
 
     #[rstest]
-    fn seriesreader_parse_empty_out(skeleton_series_run: TempDir) {
-        let dir = skeleton_series_run.path().to_path_buf();
-        let reader = ExperimentSeries::parse(&dir).unwrap();
-
-        // key "empty" should be present, but without values
-        assert_eq!(reader.run_count(), 1);
-        let res = &reader.runs()[0];
-
-        assert_eq!(
-            res.out_files().unwrap().outfile("empty").unwrap().values(),
-            &vec![String::new()]
-        );
-    }
-
-    #[rstest]
-    fn seriesreader_parse_no_value(filled_series_run_na: TempDir) {
-        let dir = filled_series_run_na.path().to_path_buf();
-
-        // both runs recognized
-        let reader = ExperimentSeries::parse(&dir).unwrap();
-        let runs = reader.runs();
-
-        let expected_outlists = vec![
-            OutList::try_from(vec![OutFile::new("empty", vec![String::from("")])]).unwrap(),
-            OutList::try_from(vec![OutFile::new("empty", vec![String::from("NA")])]).unwrap(),
-        ];
-
-        assert_eq!(reader.run_count(), 2);
-        for expected_outlist in expected_outlists {
-            let found = runs
-                .iter()
-                .any(|run| run.out_files().unwrap() == expected_outlist);
-            assert!(found, "Expected OutList not found in results");
-        }
-    }
-
-    #[rstest]
-    fn seriesreader_parse_duplicates(filled_series_run_duplicate: TempDir) {
-        let dir = filled_series_run_duplicate.path().to_path_buf();
-        let reader = ExperimentSeries::parse(&dir).unwrap();
-        assert_eq!(reader.run_count(), 1);
-
-        let res = &reader.runs()[0];
-
-        assert!(res.out_files().unwrap().outfile("some").is_some());
-        assert!(res.out_files().unwrap().outfile("some.txt").is_some());
-    }
-
-    #[rstest]
-    fn seriesreader_parse_out_no_name(filled_series_run_invalid: TempDir) {
-        let dir = filled_series_run_invalid.path().to_path_buf();
-        assert!(ExperimentSeries::parse(&dir).is_err());
-    }
-
-    #[rstest]
-    fn seriesreader_parse_multiline(skeleton_series_run: TempDir) {
-        // add out files
-        let dir = skeleton_series_run.path().to_path_buf();
-        create_out_file(&dir, None, "out_single", "foo");
-        create_out_file(&dir, None, "out_multi", "11\n20");
-        create_out_file(&dir, None, "out_trailing", "11\n20");
-
-        let reader = ExperimentSeries::parse(&dir).unwrap();
-        assert_eq!(reader.run_count(), 1);
-        let res = &reader.runs()[0];
-
-        // check content, order is important
-        assert!(res.out_files().unwrap().outfile("multi").is_some());
-        assert_eq!(
-            res.out_files().unwrap().outfile("multi").unwrap().values(),
-            &vec!["11".to_string(), "20".to_string()]
-        );
-
-        // same as multi
-        assert!(res.out_files().unwrap().outfile("trailing").is_some());
-        assert_eq!(
-            res.out_files()
-                .unwrap()
-                .outfile("trailing")
-                .unwrap()
-                .values(),
-            &vec!["11".to_string(), "20".to_string()]
-        );
-
-        assert!(res.out_files().unwrap().outfile("single").is_some());
-        assert_eq!(
-            res.out_files().unwrap().outfile("single").unwrap().values(),
-            &vec!["foo".to_string(), "foo".to_string()]
-        );
-    }
-
-    #[rstest]
-    fn seriesreader_parse_multiline_empty(skeleton_series_run: TempDir) {
-        // add out files
-        let dir = skeleton_series_run.path().to_path_buf();
-        create_out_file(&dir, None, "out_multi", "foo\nbar");
-        create_out_file(&dir, None, "out_empty", "");
-
-        let reader = ExperimentSeries::parse(&dir).unwrap();
-        assert_eq!(reader.run_count(), 1);
-        let res = &reader.runs()[0];
-
-        // check content
-        assert!(res.out_files().unwrap().outfile("multi").is_some());
-        assert_eq!(
-            res.out_files().unwrap().outfile("multi").unwrap().values(),
-            &vec!["foo".to_string(), "bar".to_string()]
-        );
-
-        assert!(res.out_files().unwrap().outfile("empty").is_some());
-        assert_eq!(
-            res.out_files().unwrap().outfile("empty").unwrap().values(),
-            &vec![String::new(), String::new()]
-        );
-    }
-
-    // If there are two values in the same run,
-    // they have to have the same number of rows.
-    #[rstest]
-    fn seriesreader_parse_multiline_mismatch(skeleton_series_run: TempDir) {
-        // add out files in both run reps
-        let dir = skeleton_series_run.path().to_path_buf();
-        create_out_file(&dir, None, "out_foo", "11\n20"); // two lines
-        create_out_file(&dir, None, "out_bar", "6\n48\n15"); // three lines
-
-        assert!(ExperimentSeries::parse(&dir).is_err());
-    }
-
-    // If there are multiple runs, then the number of rows in a value
-    // can differ between
-    #[rstest]
-    fn seriesreader_parse_multiline_multiple_dirs_diff_length(filled_series_run_na: TempDir) {
-        // add out files in both run reps
-        let dir = filled_series_run_na.path().to_path_buf();
-        create_out_file(&dir, Some(TEST_RUN_REP_DIR0), "out_foo", "11\n20"); // two lines
-        create_out_file(&dir, Some(TEST_RUN_REP_DIR1), "out_foo", "6\n48\n15"); // three lines
-
-        let reader = ExperimentSeries::parse(&dir).unwrap();
-
-        // check content
-        assert!(!reader.runs_are_empty());
-    }
-
-    #[rstest]
-    fn seriesreader_parse_output_full(filled_series_run_na: TempDir) {
-        // add multiple out_ files and some that will not be used
-        let dir = filled_series_run_na.path().to_path_buf();
-        create_out_file(&dir, Some(TEST_RUN_REP_DIR0), "not_out_file", "");
-        create_out_file(&dir, Some(TEST_RUN_REP_DIR0), "random", "");
-
-        create_out_file(&dir, Some(TEST_RUN_REP_DIR0), "out_empty.txt", "");
-        create_out_file(&dir, Some(TEST_RUN_REP_DIR0), "out_some", "foo");
-        create_out_file(&dir, Some(TEST_RUN_REP_DIR1), "out_some", "bar");
-
-        // both runs parsed
-        let reader = ExperimentSeries::parse(&dir).unwrap();
-        let runs = reader.runs();
-
-        // check results
-        let some0 = OutFile::new("some", vec![String::from("bar")]);
-        let empty0 = OutFile::new("empty", vec![String::from("NA")]);
-        let emptytxt0 = OutFile::new("empty.txt", vec![String::from("NA")]);
-
-        let some1 = OutFile::new("some", vec![String::from("foo")]);
-        let empty1 = OutFile::new("empty", vec![String::from("")]);
-        let emptytxt1 = OutFile::new("empty.txt", vec![String::from("")]);
-
-        assert_eq!(reader.run_count(), 2);
-
-        // since the order of OutFiles per run is not always the same, test it this way
-        for run in runs {
-            let outlist = run.out_files().unwrap();
-            assert_eq!(outlist.len(), 3);
-
-            assert!(
-                outlist.contains(&some0)
-                    && outlist.contains(&empty0)
-                    && outlist.contains(&emptytxt0)
-                    || outlist.contains(&some1)
-                        && outlist.contains(&empty1)
-                        && outlist.contains(&emptytxt1)
-            )
-        }
-    }
-
-    #[rstest]
-    fn seriesreader_invalid_trial(filled_series_run_na: TempDir) {
-        let dir = filled_series_run_na.path().to_path_buf();
-        let reader = ExperimentSeries::parse(&dir).unwrap();
-
-        assert!(!reader.is_valid_trial());
-    }
-
-    #[rstest]
-    fn seriesreader_valid_trial(setup_series_empty_out: TempDir) {
-        let dir = setup_series_empty_out.path().to_path_buf();
-        assert!(dir.is_dir());
-
-        let reader = ExperimentSeries::parse(&dir).unwrap();
-
-        assert!(reader.is_valid_trial());
-    }
-
-    #[rstest]
-    fn seriesreader_env_keys_empty(filled_series_run_na: TempDir) {
-        let dir = filled_series_run_na.path().to_path_buf();
-        let reader = ExperimentSeries::parse(&dir).unwrap();
-        assert!(dbg!(reader.env_keys().unwrap()).is_empty());
-    }
-
-    #[rstest]
-    fn seriesreader_env_keys_simple(setup_series_dir: TempDir) {
-        let tmp_series = setup_series_dir.path().to_path_buf();
-        let series_reader = ExperimentSeries::parse(&tmp_series).unwrap();
-        assert_eq!(vec!["VAR1", "VAR2"], series_reader.env_keys().unwrap());
-    }
-
-    #[rstest]
-    fn predefined_vars_injected() {
+    fn repetition_vars_injected() {
         todo!("ensure pre-defined vars are injected into runs on creation");
     }
 }
