@@ -19,6 +19,8 @@ use tracing::{debug, error, info, trace, warn};
 pub enum RunStatus {
     /// Run hsn't been executed yet
     NotStarted,
+    /// Run started, but did not finished yet
+    StartedButNotFinished,
     /// Run finished, and did not produce errors
     Success,
     /// Run finished, but exited with non-zero exit code
@@ -413,6 +415,7 @@ exit {return_code}
 
     #[rstest]
     #[case(RunStatus::NotStarted)]
+    #[case(RunStatus::StartedButNotFinished)]
     #[case(RunStatus::Success)]
     #[case(RunStatus::ExitNonZero(42))]
     fn read_status_from_disk(
@@ -425,14 +428,14 @@ exit {return_code}
 
         match &given_status {
             RunStatus::NotStarted => {} //nop
-            RunStatus::Success | RunStatus::ExitNonZero(_) => {
+            RunStatus::StartedButNotFinished | RunStatus::Success | RunStatus::ExitNonZero(_) => {
                 std::fs::write(exp_started_file, "0").unwrap()
             }
         }
 
         let maybe_exit_code_to_write = match &given_status {
             &RunStatus::ExitNonZero(code) => Some(code),
-            &RunStatus::NotStarted => None,
+            &RunStatus::NotStarted | &RunStatus::StartedButNotFinished => None,
             &RunStatus::Success => Some(0),
         };
         if let Some(exit_code_to_write) = maybe_exit_code_to_write {

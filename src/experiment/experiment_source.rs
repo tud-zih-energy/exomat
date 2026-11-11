@@ -7,7 +7,7 @@ use crate::helper::errors::{Error, Result};
 use crate::helper::fs_names::*;
 
 /// Representation of an experiment source dir on disk
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExperimentSource {
     dir: PathBuf,
 }

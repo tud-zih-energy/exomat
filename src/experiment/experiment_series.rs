@@ -1,3 +1,4 @@
+use super::SeriesStatus;
 use crate::experiment::{
     experiment_run::RunStatus, out_file::OutFile, CsvWriter, ExperimentRun, ExperimentSource,
     FileReader, FileWriter,
@@ -23,7 +24,7 @@ use std::path::{Path, PathBuf};
 /// 2. `generate_runs()`
 /// 2. `persist(...)`
 /// 3. `for run in series.runs.iter_mut() { run.execute(); }`
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct ExperimentSeries {
     pub source: ExperimentSource,
     pub path: Option<PathBuf>,
@@ -68,7 +69,7 @@ impl ExperimentSeries {
     /// - If any Experiment Run in self.runs failed, return `Failed. Reason: [...]`
     /// - If all Experiment Runs were successful, return `Successful`
     /// - If any Experiment Run has not been executed or its status in Unknown, return `Cannot determine run status`
-    pub fn series_status(&self) -> String {
+    pub fn series_status(&self) -> Result<SeriesStatus> {
         todo!("move status into separate struct");
         let runs_total = self.runs.len();
         let runs_success = self
@@ -195,9 +196,21 @@ impl ExperimentSeries {
         todo!();
     }
 
+    /// execute all runs
+    ///
+    /// - `failfast`:
+    ///    if set to true, abort on first failed run execution.
+    ///    if set to false keep executing after failure
+    /// - `resume`: resume existing series.
+    ///    if set to true, try to run all runs with status not started.
+    ///    if set to false, abort if there is a single run that is already started.
+    pub fn execute(&self, failfast: bool, resume: bool) -> Result<()> {
+        todo!("replace w/ unified execute");
+    }
+
     /// execute all runs; abort if any have been started already
     pub fn execute_all(&self, failfast: bool) -> Result<()> {
-        todo!();
+        todo!("replace w/ unified execute");
     }
 
     /// execute all runs which have not been started yet
@@ -206,7 +219,7 @@ impl ExperimentSeries {
     ///
     /// Note: if there is an error in the infrastructure, the execution is aborted instantaneously
     pub fn execute_not_started(&self, failfast: bool) -> Result<()> {
-        todo!();
+        todo!("replace w/ unified execute");
     }
 
     // =========== TODO remove below ========================
@@ -612,19 +625,56 @@ mod tests {
     struct SeriesWithHandles {
         // handles to keep dir w/ run alive
         tempdir: TempDir,
+        // run.sh succeeds
         source: ExperimentSource,
+        // run.sh fails
+        source_fails: ExperimentSource,
+        series: ExperimentSeries,
+        series_fails: ExperimentSeries,
     }
 
     #[fixture]
     fn series_with_handles(env_a1: Environment, env_foo: Environment) -> SeriesWithHandles {
+        let populate_src = |dir: PathBuf, new_run_sh: Option<&str>| -> ExperimentSource {
+            let source = ExperimentSource::create_skeleton(dir).unwrap();
+            env_a1.to_file(&source.envs_dir().join("0.env")).unwrap();
+            env_foo.to_file(&source.envs_dir().join("1.env")).unwrap();
+
+            if let Some(new_run_sh) = new_run_sh {
+                std::fs::write(source.template().join(SRC_RUN_FILE), new_run_sh).unwrap()
+            }
+
+            source
+        };
+
         let tempdir = tempfile::TempDir::new().unwrap();
         let src_dst = tempdir.path().join("source_dir");
-        let source = ExperimentSource::create_skeleton(src_dst).unwrap();
+        let source = populate_src(src_dst, None);
 
-        env_a1.to_file(&source.envs_dir().join("0.env")).unwrap();
-        env_foo.to_file(&source.envs_dir().join("1.env")).unwrap();
+        let src_fails_dst = tempdir.path().join("source_fails_dir");
+        let source_fails = populate_src(
+            src_fails_dst,
+            Some(
+                "#!/usr/bin/env bash
+set -euo pipefail
 
-        SeriesWithHandles { tempdir, source }
+false",
+            ),
+        );
+
+        let series_dst = tempdir.path().join("series");
+        let series = ExperimentSeries::create(&source, series_dst, 1).unwrap();
+
+        let series_fails_dst = tempdir.path().join("series_fails");
+        let series_fails = ExperimentSeries::create(&source, series_fails_dst, 5).unwrap();
+
+        SeriesWithHandles {
+            tempdir,
+            source,
+            source_fails,
+            series,
+            series_fails,
+        }
     }
 
     #[rstest]
@@ -716,22 +766,81 @@ mod tests {
     }
 
     #[rstest]
-    fn execute_naive() {
+    fn smoke_read_status_from_disk(series_with_handles: SeriesWithHandles) {
+        let series = &series_with_handles.series;
+        let series_status = series.series_status().unwrap();
+        assert_eq!(series.runs().len(), series_status.total());
+        assert_eq!(series.runs().len(), series_status.not_started);
+    }
+
+    #[rstest]
+    fn parse_from_disk(series_with_handles: SeriesWithHandles) {
+        let loaded_series =
+            ExperimentSeries::parse(series_with_handles.series.location().as_path()).unwrap();
+        assert_eq!(loaded_series, series_with_handles.series);
+    }
+
+    #[rstest]
+    fn execute_naive(series_with_handles: SeriesWithHandles) {
+        let series = &series_with_handles.series;
+        series.execute_all(true).unwrap();
+        let series_status = series.series_status().unwrap();
+        assert_eq!(series_status.success, series.runs().len());
+    }
+
+    #[rstest]
+    fn execute_failing(
+        series_with_handles: SeriesWithHandles,
+        #[values(true, false)] failfast: bool,
+    ) {
+        let series = &series_with_handles.series_fails;
+        assert_ne!(series.runs().len(), 1);
+
+        // must fail
+        series.execute_all(failfast).unwrap_err();
+
+        let status = series.series_status().unwrap();
+        assert_eq!(series.runs().len(), status.total());
+
+        let expected_failed = match failfast {
+            true => 1,
+            false => series.runs().len(),
+        };
+        let expected_not_started = match failfast {
+            true => series.runs().len() - 1,
+            false => 0,
+        };
+
+        assert_eq!(expected_failed, status.failed);
+        assert_eq!(expected_not_started, status.not_started);
+    }
+
+    #[rstest]
+    fn execute_not_started(series_with_handles: SeriesWithHandles) {
+        let series = &series_with_handles.series;
+        series.runs().first().unwrap().execute().unwrap();
+
         todo!("execute a simple series");
     }
 
     #[rstest]
-    fn execute_failing(#[values(true, false)] failfast: bool) {
-        todo!("execute a series where two runs fail");
-    }
+    fn execute_all_some_started(series_with_handles: SeriesWithHandles) {
+        let series = &series_with_handles.series;
+        series.runs().first().unwrap().execute().unwrap();
 
-    #[rstest]
-    fn read_status_from_disk() {
-        todo!("extract status from disk");
-    }
+        let expected_status = SeriesStatus {
+            success: 1,
+            not_started: series.runs().len() - 1,
+            ..SeriesStatus::default()
+        };
 
-    #[rstest]
-    fn parse_from_disk() {
-        todo!("load series from disk");
+        assert_eq!(expected_status, series.series_status().unwrap());
+
+        // do not start if some are started, even if non-started remain
+        let err = series.execute_all(false).unwrap_err();
+        assert!(err.to_string().contains("started"));
+
+        // nothing changed in state
+        assert_eq!(expected_status, series.series_status().unwrap());
     }
 }
